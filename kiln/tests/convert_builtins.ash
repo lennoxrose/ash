@@ -1,0 +1,10 @@
+print str(42);
+print str(3.5);
+print str(-7.25);
+print str(0);
+print num("42");
+print num("3.5");
+print num("-7.25");
+print num("  12.5abc");
+print num("abc");
+print num(str(123.456));

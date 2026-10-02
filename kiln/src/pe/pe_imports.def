@@ -1,0 +1,16 @@
+// X-macro list of every kernel32.dll function kiln's Windows codegen
+// calls. Single source of truth shared between pe_writer.c (which builds
+// the actual import/IAT tables) and any codegen file that needs to call
+// one of these (via PE_IMPORT_<NAME> from pe_writer.h) -- adding a new
+// import means adding one line here, nowhere else.
+//
+// PE_IMPORT(enum_suffix, "DLL export name")
+PE_IMPORT(EXIT_PROCESS, "ExitProcess")
+PE_IMPORT(WRITE_FILE, "WriteFile")
+PE_IMPORT(READ_FILE, "ReadFile")
+PE_IMPORT(CREATE_FILE_A, "CreateFileA")
+PE_IMPORT(CLOSE_HANDLE, "CloseHandle")
+PE_IMPORT(GET_FILE_SIZE, "GetFileSize")
+PE_IMPORT(VIRTUAL_ALLOC, "VirtualAlloc")
+PE_IMPORT(GET_COMMAND_LINE_A, "GetCommandLineA")
+PE_IMPORT(GET_STD_HANDLE, "GetStdHandle")

@@ -1,0 +1,26 @@
+# Build artifacts
+*.o
+/bin/
+
+# Compiled benchmark binaries (keep the .cpp sources, ignore the built outputs)
+ashvm/benchmarks/fib_cpp
+ashvm/benchmarks/loop_cpp
+ashvm/benchmarks/countdown_cpp
+ashvm/benchmarks/hashmap_cpp
+ashvm/benchmarks/native_jit
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*~
+
+# Dont put ai Slop in my Code
+.claude
+CLAUDE.md
+.agents
+skills-lock.json
+
+# Private Notes
+goals.md
+rundown.md
+missing.md

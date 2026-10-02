@@ -1,0 +1,14 @@
+print upper("hello world");
+print lower("HELLO WORLD");
+print upper("Already Mixed 123!");
+print trim("   hi there   ");
+print trim("no spaces");
+print trim("   ");
+print substring("hello world", 0, 5);
+print substring("hello world", 6, 11);
+print substring("hello world", -3, 100);
+print substring("hello world", 8, 3);
+print indexOf("hello world", "world");
+print indexOf("hello world", "xyz");
+print indexOf("hello world", "");
+print indexOf("hello world", "hello world");

@@ -1,0 +1,13 @@
+// X-macro list of every runtime routine that moves out of the binary and
+// into libkilnrt.so under --link=shared. Single source of truth shared
+// between the .so writer (which needs to export these by name) and the
+// executable's codegen (which needs a GOT slot per import) -- same
+// "adding one means adding one line here, nowhere else" reasoning as
+// pe/pe_imports.def.
+//
+// RUNTIME_EXPORT(enum_suffix, "exported symbol name")
+RUNTIME_EXPORT(HEAP_ALLOC, "kiln_heap_alloc")
+RUNTIME_EXPORT(BYTES_COPY, "kiln_bytes_copy")
+RUNTIME_EXPORT(STRING_ALLOC_PREFIXED, "kiln_string_alloc_prefixed")
+RUNTIME_EXPORT(PRINT_TOP, "kiln_print_top")
+RUNTIME_EXPORT(RAISE, "kiln_raise")

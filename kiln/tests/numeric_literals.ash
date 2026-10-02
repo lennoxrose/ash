@@ -1,0 +1,10 @@
+print 0xF;
+print 0x1A;
+print 0xFF;
+print 1e3;
+print 1.5e2;
+print 2e-2;
+print 1_000_000;
+print 1_000.5;
+print 0x10 + 1;
+print 3.14159;
