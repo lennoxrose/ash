@@ -100,7 +100,7 @@ kiln/           a standalone .ash compiler (Windows + Linux). Not started yet.
 
 ## Editor support
 
-A VS Code extension with syntax highlighting will come soon. 
+A VS Code extension with syntax highlighting is at https://github.com/lennoxrose/ash-syntax
 We could build an icon theme too, but we'd rather not
 it's too much work to maintain, so we'll leave that to other people. 
 In the future, though, we plan to release a kind of IDE/code editor built with Ash,
