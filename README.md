@@ -2,7 +2,7 @@
 
 # Ash
 
-<img src="logo.png" width="180" alt="Ash logo" />
+<img src="logo.svg" width="180" alt="Ash logo" />
 
 </div>
 
@@ -101,7 +101,8 @@ kiln/           a standalone .ash compiler (Windows + Linux). Not started yet.
 ## Editor support
 
 A VS Code extension with syntax highlighting is at https://github.com/lennoxrose/ash-syntax
-We could build an icon theme too, but we'd rather not
-it's too much work to maintain, so we'll leave that to other people. 
-In the future, though, we plan to release a kind of IDE/code editor built with Ash,
-for building things in Ash.
+A VS Code extension with the Icon pack is at https://github.com/lennoxrose/ash-icons/releases/tag/v1.2.12vsix
+
+## Future of Ash
+
+Read the plans.md for further plans about Ash
