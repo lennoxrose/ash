@@ -1,10 +1,10 @@
-#include "codegen/maps.h"
-#include "codegen/maps_internal.h"
-#include "codegen/emit_internal.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "codegen/bytes.h"
-#include "parser/parser.h"
+#include "codegen/H/collections/maps.h"
+#include "codegen/H/collections/maps_internal.h"
+#include "codegen/H/emit/emit_internal.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/bytes.h"
+#include "parser/H/core/parser.h"
 
 static void push_number_local(double v) {
     uint64_t bits;
@@ -17,7 +17,7 @@ static void push_number_local(double v) {
 
 // Scratch layout (base recomputed via `mov reg,rsp` after any call that
 // might have clobbered whichever register held it -- same technique
-// codegen/arrays.c's codegen_builtin_push uses): [0]=val_tag
+// codegen/C/collections/arrays.c's codegen_builtin_push uses): [0]=val_tag
 // [8]=val_payload [16]=key_payload [24]=map_object [32]=new_capacity
 // (grow path only) [40]=new_entries_block (grow path only)
 void codegen_map_index_store(void) {

@@ -1,14 +1,14 @@
-#include "codegen/keys_values.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/collections/keys_values.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // This implementation's map (unlike ashvm's capacity-sized hash table
 // with scattered "used" flags) keeps every live entry packed into
 // [0, count) -- delete() swaps the last entry into a removed slot rather
-// than leaving a hole (see codegen/maps_mutate.c) -- so both builtins
+// than leaving a hole (see codegen/C/collections/maps_mutate.c) -- so both builtins
 // below can just iterate 0..count directly, no "used" check needed.
 //
 // Scratch layout: [0]=count [8]=entries_ptr [16]=out_block [24]=i

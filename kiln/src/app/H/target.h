@@ -31,7 +31,7 @@ KilnLinkMode kiln_get_link_mode(void);
 
 // Separate from KilnLinkMode on purpose: link mode answers "should THIS
 // routine's own call sites (heap_emit_alloc etc.) reach their callee via
-// a local call or a GOT call" -- but codegen/layout.c's globals-address
+// a local call or a GOT call" -- but codegen/C/emit/layout.c's globals-address
 // selection needs to answer a DIFFERENT question, "which executable
 // layout owns the globals this code will read at runtime", and that
 // answer is the shared-mode layout in BOTH cases: when compiling a
@@ -39,7 +39,7 @@ KilnLinkMode kiln_get_link_mode(void);
 // goes into libkilnrt.so (its heap_alloc etc. always run on behalf of
 // some shared-mode executable's globals, never its own). Conflating
 // these into one flag was a real bug caught by testing (see
-// elf/elf_so_writer.c's comment) -- kiln_set_link_mode(STATIC) to get
+// elf/C/elf_so_writer.c's comment) -- kiln_set_link_mode(STATIC) to get
 // local intra-.so calls also silently broke the globals address.
 void kiln_set_compiling_so(int flag);
 int kiln_is_compiling_so(void);

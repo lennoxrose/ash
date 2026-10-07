@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "value/value.h"
-#include "value/hashmap.h"
+#include "value/H/value.h"
+#include "value/H/hashmap.h"
 
 VMValue vm_num(double n) {
     VMValue v; v.type = VM_NUM; v.number = n; v.str = NULL; v.array = NULL; v.map = NULL; v.closure = NULL; return v;

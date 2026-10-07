@@ -1,7 +1,7 @@
 #ifndef ASH_VM_STATE_H
 #define ASH_VM_STATE_H
 #include <setjmp.h>
-#include "vm/chunk.h"
+#include "vm/H/chunk.h"
 
 // Internal VM state shared between vm_dispatch.c, vm_errors.c, and vm_api.c
 // -- not part of the public API (vm.h). Mirrors the same

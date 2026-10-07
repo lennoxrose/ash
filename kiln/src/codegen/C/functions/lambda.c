@@ -1,16 +1,16 @@
 #include <string.h>
-#include "codegen/closures.h"
-#include "codegen/closures_internal.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "codegen/expr.h"
-#include "codegen/layout.h"
-#include "parser/parser.h"
-#include "parser/parser_internal.h"
-#include "parser/vars.h"
-#include "parser/functions.h"
-#include "parser/for_loop.h"
-#include "parser/loop_stack.h"
+#include "codegen/H/functions/closures.h"
+#include "codegen/H/functions/closures_internal.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/layout.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/core/parser_internal.h"
+#include "parser/H/declarations/vars.h"
+#include "parser/H/declarations/functions.h"
+#include "parser/H/statements/for_loop.h"
+#include "parser/H/statements/loop_stack.h"
 
 // `fn (params) { body }` as an expression. The closure-object creation
 // code (which runs in the OUTER frame, snapshotting captures by value)

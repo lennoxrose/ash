@@ -1,26 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "parser/parser.h"
-#include "parser/parser_internal.h"
-#include "parser/vars.h"
-#include "parser/loop_stack.h"
-#include "parser/functions.h"
-#include "parser/imports.h"
-#include "parser/constants.h"
-#include "codegen/expr.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "codegen/bytes.h"
-#include "codegen/string_alloc.h"
-#include "codegen/arrays.h"
-#include "codegen/maps.h"
-#include "codegen/errors.h"
-#include "codegen/print_int.h"
-#include "diagnostics/diagnostics.h"
-#include "elf/elf_writer.h"
-#include "target.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/core/parser_internal.h"
+#include "parser/H/declarations/vars.h"
+#include "parser/H/statements/loop_stack.h"
+#include "parser/H/declarations/functions.h"
+#include "parser/H/imports/imports.h"
+#include "parser/H/declarations/constants.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/collections/arrays.h"
+#include "codegen/H/collections/maps.h"
+#include "codegen/H/runtime/errors.h"
+#include "codegen/H/runtime/print_int.h"
+#include "diagnostics/H/diagnostics.h"
+#include "elf/H/elf_writer.h"
+#include "app/H/target.h"
 
 Token current;
 Token previous;
@@ -264,7 +264,7 @@ static void assignment_statement(void) {
 }
 
 // return [expr] ;  -- bare `return;` returns 0, matching ashc/ashvm.
-// Return value comes back as RBX=tag, RAX=payload (see codegen/expr.c's
+// Return value comes back as RBX=tag, RAX=payload (see codegen/C/expressions/expr.c's
 // call-site handling).
 static void return_statement(void) {
     advance_token();
@@ -285,7 +285,7 @@ static void return_statement(void) {
 
 // throw expr ;  -- expr must be a STRING (matches try/catch's own
 // convention: every caught error, built-in or user-thrown, is a plain
-// string). Reuses codegen/errors.c's raise routine directly -- the exact
+// string). Reuses codegen/C/runtime/errors.c's raise routine directly -- the exact
 // same catch/unwind mechanism M9's built-in errors (array bounds, missing
 // map key) already go through, just with a runtime message instead of a
 // compile-time-constant one.
@@ -302,7 +302,7 @@ static void throw_statement(void) {
 
 // break ;  -- jumps past the innermost loop; the jump is recorded, not
 // resolved here, since the innermost loop's own codegen (parser_control.c's
-// while_statement / parser/for_loop.c's for_statement) hasn't emitted the
+// while_statement / parser/C/statements/for_loop.c's for_statement) hasn't emitted the
 // "after the loop" landing point yet.
 static void break_statement(void) {
     advance_token();
@@ -372,7 +372,7 @@ void compile_program(const char *source, const char *source_path, CodeBuf *out) 
     // the whole program where that original RSP is still available
     // (nothing has touched it yet), so it's saved to a fixed globals
     // address here, before anything else, for argv() to read later from
-    // any frame (see codegen/argv_builtin.c and elf/elf_writer.h's
+    // any frame (see codegen/C/io/argv_builtin.c and elf/H/elf_writer.h's
     // KILN_ARGV_ADDR comment). Windows has no equivalent need: argv()
     // there calls GetCommandLineA() directly, callable at any point, so
     // there's nothing to snapshot this early.
@@ -387,7 +387,7 @@ void compile_program(const char *source, const char *source_path, CodeBuf *out) 
     // frame (see parser_control.c's fn_statement/parser.c's
     // return_statement) without disturbing this one -- the callee always
     // restores RBP before returning. Milestone 5: each slot is now 16
-    // bytes (tag + payload, see codegen/value.h), not 8.
+    // bytes (tag + payload, see codegen/H/emit/value.h), not 8.
     emit_mov_reg_reg(code, REG_RBP, REG_RSP);
     emit_sub_reg_imm32(code, REG_RSP, KILN_FRAME_RESERVE);
 

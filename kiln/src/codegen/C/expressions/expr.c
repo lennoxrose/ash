@@ -1,20 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "codegen/expr.h"
-#include "codegen/expr_internal.h"
-#include "codegen/emit.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/strings.h"
-#include "codegen/arrays.h"
-#include "codegen/maps.h"
-#include "codegen/builtins.h"
-#include "codegen/closures.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
-#include "parser/functions.h"
-#include "parser/constants.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/expressions/expr_internal.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/strings/strings.h"
+#include "codegen/H/collections/arrays.h"
+#include "codegen/H/collections/maps.h"
+#include "codegen/H/builtins/builtins.h"
+#include "codegen/H/functions/closures.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
+#include "parser/H/declarations/functions.h"
+#include "parser/H/declarations/constants.h"
 
 // Precedence climbing: expression -> logical_or -> logical_and ->
 // comparison -> additive -> term -> unary -> postfix -> primary
@@ -23,7 +23,7 @@
 // one (tag, payload) pair onto the real CPU stack -- tag first (deeper),
 // payload second (on top), so popping retrieves payload then tag.
 //
-// Milestone 5: a value can now be a number OR a string (codegen/value.h),
+// Milestone 5: a value can now be a number OR a string (codegen/H/emit/value.h),
 // so both halves travel generically via GP registers (raw bit-copying
 // doesn't care what the bits mean). XMM registers only ever hold the
 // payload transiently, at the point of actually doing floating-point
@@ -131,7 +131,7 @@ static void primary(void) {
         }
         // Not a variable -- fall back to a bare named-function reference
         // used as a value (not immediately called), wrapped as a
-        // zero-capture closure (see codegen/closures.c).
+        // zero-capture closure (see codegen/C/functions/closures.c).
         KilnFunction *fn = resolve_function_in_context(id.start, id.length);
         if (fn != NULL) {
             codegen_named_function_value(fn);

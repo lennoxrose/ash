@@ -1,11 +1,11 @@
 #include <string.h>
 #include <ctype.h>
-#include "lexer/lexer.h"
-#include "lexer/lexer_import.h"
+#include "lexer/H/lexer.h"
+#include "lexer/H/lexer_import.h"
 
 // lex_* (not the bare start/current/line these had as file-static
 // before) -- shared with lexer_import.c now, and a plain `current` would
-// collide with compiler/state.h's own global `Token current` at link time.
+// collide with compiler/H/state.h's own global `Token current` at link time.
 const char *lex_start;
 const char *lex_current;
 int lex_line;

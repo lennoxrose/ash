@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
-#include "value/hashmap.h"
+#include "value/H/hashmap.h"
 
 static unsigned long hash_string(const char *s) {
     unsigned long h = 5381;

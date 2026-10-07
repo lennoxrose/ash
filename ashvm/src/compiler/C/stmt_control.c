@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/internal.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/internal.h"
+#include "diagnostics/H/diagnostics.h"
 
 // Each function here assumes statement() already consumed the keyword token
 // (TOKEN_FN / TOKEN_IF / TOKEN_TRY / TOKEN_WHILE) that identified it.

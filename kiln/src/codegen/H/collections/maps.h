@@ -16,7 +16,7 @@ void codegen_map_index_read(void);
 // exists, otherwise appends a new entry (growing if needed).
 void codegen_map_index_store(void);
 
-// Builtins, dispatched from codegen/builtins.c -- each assumes its
+// Builtins, dispatched from codegen/C/builtins/builtins.c -- each assumes its
 // arguments already pushed left to right, matching the normal
 // call-argument convention. keys()/values() (each needs to build a new
 // ARRAY sized only-known-at-runtime, real extra complexity for

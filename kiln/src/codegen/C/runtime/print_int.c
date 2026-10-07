@@ -1,17 +1,17 @@
 #include <string.h>
-#include "codegen/print_int.h"
-#include "codegen/emit_internal.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/layout.h"
-#include "codegen/win_call.h"
-#include "codegen/platform_console.h"
-#include "elf/elf_dynamic_call.h"
-#include "target.h"
+#include "codegen/H/runtime/print_int.h"
+#include "codegen/H/emit/emit_internal.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/emit/layout.h"
+#include "codegen/H/platform/win_call.h"
+#include "codegen/H/platform/platform_console.h"
+#include "elf/H/elf_dynamic_call.h"
+#include "app/H/target.h"
 
 // Loads a compile-time-known double literal into an xmm register, via a
 // GP register holding its raw IEEE-754 bit pattern -- same technique
-// codegen/expr.c uses for user-written number literals (there's no "mov
+// codegen/C/expressions/expr.c uses for user-written number literals (there's no "mov
 // xmm, imm64" instruction).
 static void load_double_const(CodeBuf *code, XReg dst, double v) {
     uint64_t bits;
@@ -48,7 +48,7 @@ static void load_double_const(CodeBuf *code, XReg dst, double v) {
 // RBX=tag (NOT by popping them itself): a real CALL pushes a return
 // address on top of whatever the caller already pushed, so a `pop` here
 // would grab the return address instead of the caller's value -- same
-// register-based-argument reasoning codegen/heap.c's alloc routine
+// register-based-argument reasoning codegen/C/runtime/heap.c's alloc routine
 // already uses, not something print specifically needed before this
 // became a real subroutine. Each of its three paths (string/nil/number)
 // still balances its own RSP usage back to the entry value, which a real
@@ -88,9 +88,9 @@ static void emit_print_routine(CodeBuf *code) {
         // Position-independent path: needed only for libkilnrt.so, whose
         // load address ld.so chooses at runtime. libkilnrt.dll (Windows)
         // is fixed-base like everything else kiln emits (see
-        // pe/pe_dll_writer.h), so kiln_code_base() already resolves
+        // pe/H/pe_dll_writer.h), so kiln_code_base() already resolves
         // correctly there without RIP-relative addressing -- it now
-        // knows about DLL compilation specifically (see codegen/layout.c).
+        // knows about DLL compilation specifically (see codegen/C/emit/layout.c).
         if (kiln_is_compiling_so() && kiln_get_target() == KILN_TARGET_LINUX) {
             emit_lea_rip_back(code, REG_RSI, data_offset);
         } else {

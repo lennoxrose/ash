@@ -1,10 +1,10 @@
 #ifndef KILN_CLOSURES_H
 #define KILN_CLOSURES_H
-#include "parser/functions.h"
+#include "parser/H/declarations/functions.h"
 
 // `fn (params) { body }` as an EXPRESSION -- current sits on the 'fn'
 // token. Captures (by value, snapshotted at creation time -- see the
-// scope-limit note in codegen/value.h) every variable currently visible
+// scope-limit note in codegen/H/emit/value.h) every variable currently visible
 // in the enclosing scope, then pushes a TAG_FUNCTION value.
 void codegen_lambda_expr(void);
 
@@ -16,7 +16,7 @@ void codegen_named_function_value(KilnFunction *fn);
 
 // `id` already resolved to variable `slot` holding a TAG_FUNCTION value;
 // current sits on the first argument or ')' (the '(' already consumed,
-// same convention as codegen/expr_call.c's codegen_call). Parses args,
+// same convention as codegen/C/expressions/expr_call.c's codegen_call). Parses args,
 // calls indirectly through the closure object, and pushes the (tag,
 // payload) result.
 void codegen_indirect_call(int slot);

@@ -1,8 +1,8 @@
-#include "codegen/heap.h"
-#include "codegen/layout.h"
-#include "codegen/win_call.h"
-#include "elf/elf_dynamic_call.h"
-#include "target.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/layout.h"
+#include "codegen/H/platform/win_call.h"
+#include "elf/H/elf_dynamic_call.h"
+#include "app/H/target.h"
 
 #define HEAP_SIZE (16 * 1024 * 1024)
 #define MEM_COMMIT_RESERVE 0x3000u // MEM_COMMIT(0x1000) | MEM_RESERVE(0x2000)
@@ -30,7 +30,7 @@ static void emit_alloc_routine(CodeBuf *code) {
 }
 
 // Called by the dedicated "compile the runtime" driver (see
-// elf/elf_so_writer.c) to emit this routine into libkilnrt.so's OWN code
+// elf/C/elf_so_writer.c) to emit this routine into libkilnrt.so's OWN code
 // buffer, completely separate from any executable's compile_program.
 void heap_emit_alloc_routine_only(CodeBuf *code) {
     emit_alloc_routine(code);

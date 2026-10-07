@@ -1,12 +1,12 @@
-#include "codegen/higher_order.h"
-#include "codegen/expr.h"
-#include "codegen/closures.h"
-#include "codegen/emit.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/builtins/higher_order.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/functions/closures.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // Scratch layout: [0]=fn_tag [8]=fn_payload [16]=data_ptr [24]=count
 //   [32]=out_data_ptr [40]=i [48]=out_count

@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
-#include "compiler/internal.h"
-#include "compiler/import_paths.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/internal.h"
+#include "compiler/H/import_paths.h"
+#include "diagnostics/H/diagnostics.h"
 
 #define MAX_VM_IMPORTS 16
 #define MAX_VM_IMPORT_DEPTH 8
@@ -178,7 +178,7 @@ void compile_import_stmt(void) {
     resolving_depth++;
 
     // --- Save everything the recursive parse of the imported file will
-    // clobber, mirroring compiler/state.c's own save-recurse-restore
+    // clobber, mirroring compiler/C/state.c's own save-recurse-restore
     // pattern for locals (the C call stack gives correct nesting for
     // free, same as those). ---
     DiagnosticsSource saved_diag = diagnostics_save_source();

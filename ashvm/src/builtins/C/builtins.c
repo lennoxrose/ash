@@ -1,7 +1,7 @@
 #include <string.h>
-#include "builtins/builtins.h"
-#include "builtins/internal.h"
-#include "vm/vm.h"
+#include "builtins/H/builtins.h"
+#include "builtins/H/internal.h"
+#include "vm/H/vm.h"
 
 static const char *builtin_names[] = {
     "len", "push", "input", "str", "num", "sqrt", "abs", "floor",

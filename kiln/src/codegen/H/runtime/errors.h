@@ -1,11 +1,11 @@
 #ifndef KILN_ERRORS_H
 #define KILN_ERRORS_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
-// Runtime (not compile-time -- see parser/parser.h's parse_error for
+// Runtime (not compile-time -- see parser/H/core/parser.h's parse_error for
 // that) errors: array out of bounds, missing map key, and so on.
 // Emitted once, at the very start of the generated program (right after
-// codegen/heap.c's heap_emit_startup): a single reusable "raise" routine
+// codegen/C/runtime/heap.c's heap_emit_startup): a single reusable "raise" routine
 // that every runtime error jumps to (never called -- there's nothing to
 // return to, control either resumes at a catch block or the process
 // exits).
@@ -17,9 +17,9 @@ void errors_emit_raise_routine_only(CodeBuf *code);
 int errors_raise_routine_offset(void);
 
 // Embeds `msg` (compile-time-known, jumped over so it's never executed
-// as instructions -- same technique codegen/strings.c uses for string
+// as instructions -- same technique codegen/C/strings/strings.c uses for string
 // literals) and raises it: if a `try` is currently active (see
-// parser/try_catch.c), unwinds to its `catch` block with `msg` bound as
+// parser/C/statements/try_catch.c), unwinds to its `catch` block with `msg` bound as
 // a TAG_STRING value; otherwise writes it to stderr and exits with
 // status 1, same as before milestone 9.
 void errors_emit_die(CodeBuf *code, const char *msg);

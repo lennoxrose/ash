@@ -93,9 +93,13 @@ compiler/     single-pass compiler: parser/emitter state, expression chain,
 call/lambda emission, statement compilation
 builtins/     len, map, filter, reduce, string/file ops
 diagnostics/  shared Rust-style error reporting (compile-time and runtime)
-main.c        entry point (file mode + REPL)
+
+Every subsystem keeps sources in `C/`, headers in `H/`, and build output in a
+mirrored `O/` tree (kiln also has `D/` for dependency files), e.g.
+`src/vm/C/dispatch.c` includes `src/vm/H/vm.h` and builds to `src/vm/O/dispatch.o`.
+app/          main.c entry point (file mode + REPL)
 benchmarks/     .ash and .cpp benchmark programs, plus the x86-64 JIT experiment
-tests/          example programs covering each language feature
+tests/          cases/<feature>/*.ash programs covering each language feature; scripts/ holds the regression runners
 kiln/           a standalone .ash compiler (Windows + Linux). Not started yet.
 
 ## Editor support

@@ -2,7 +2,7 @@
 #define KILN_ARRAYS_H
 
 // primary()'s '[' handling: parses `[e0, e1, ...]`, allocates a heap
-// block sized for exactly that many elements (see codegen/value.h for
+// block sized for exactly that many elements (see codegen/H/emit/value.h for
 // the layout), and pushes (tag=TAG_ARRAY, payload=<block address>).
 void codegen_array_literal(void);
 
@@ -17,7 +17,7 @@ void codegen_array_index_read(void);
 void codegen_array_index_store(void);
 
 // Both assume their arguments already pushed left-to-right (matching
-// the normal call-argument convention) -- codegen/builtins.c's dispatch
+// the normal call-argument convention) -- codegen/C/builtins/builtins.c's dispatch
 // calls these after parsing push(arr, val) / len(arr)'s arguments.
 
 // push(array, value): appends, growing (a fresh, bigger heap block plus

@@ -15,8 +15,9 @@ ashvm/benchmarks/native_jit
 *~
 
 # Dont put ai Slop in my Code
-.claude
 CLAUDE.md
+AGENTS.md
+.claude
 .agents
 skills-lock.json
 

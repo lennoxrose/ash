@@ -1,11 +1,11 @@
-#include "codegen/higher_order.h"
-#include "codegen/expr.h"
-#include "codegen/closures.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/builtins/higher_order.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/functions/closures.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // Scratch layout (see vars.h's higher_order_scratch_offset -- everything
 // needed after codegen_call_closure_value must live here, never in a

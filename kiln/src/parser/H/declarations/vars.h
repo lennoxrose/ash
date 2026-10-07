@@ -16,14 +16,14 @@ int resolve_var(const char *name, int len);
 int declare_var(const char *name, int len);
 
 // Milestone 9: overwrites an already-declared slot's name in place (same
-// slot index, new name) -- parser/try_catch.c needs a catch variable's
+// slot index, new name) -- parser/C/statements/try_catch.c needs a catch variable's
 // slot reserved BEFORE its real name (`catch (e)`) is parsed, since the
 // slot's rbp-relative offset must be embedded into the handler struct at
 // try-entry, ahead of the try block's body.
 void rename_var(int slot, const char *name, int len);
 
 // Milestone 5: each variable now holds a (tag, payload) pair (16 bytes,
-// see codegen/value.h), not a bare 8-byte double -- so each slot takes
+// see codegen/H/emit/value.h), not a bare 8-byte double -- so each slot takes
 // 16 bytes: tag at [rbp - 16*(i+1)], payload right after it at
 // [rbp - 16*(i+1) + 8], below the frame pointer set up by parser.c's
 // prologue (`mov rbp, rsp; sub rsp, MAX_KILN_VARS*16`). Shared here so
@@ -67,7 +67,7 @@ void vars_scope_end(VarBlockScope saved);
 int resolve_var_in_current_scope(const char *name, int len);
 
 // Milestone 8: one extra RBP-relative slot beyond the normal variable
-// table, reserved for codegen/closures.c's indirect-call codegen to stash
+// table, reserved for codegen/C/functions/closures.c's indirect-call codegen to stash
 // a runtime-only capture_count across the `call` instruction (GP
 // registers are all freely clobbered by the callee; RBP is the one thing
 // provably restored to the caller's own value by the time any call
@@ -97,7 +97,7 @@ int32_t higher_order_scratch_offset(void);
 // at COMPILE TIME (nested `for` statements are literally nested calls in
 // this single-pass compiler), so each nesting level just gets its own
 // fixed offset rather than a runtime-tracked stack. Bounded the same way
-// every other table here is; parser/for_loop.c resets its nesting
+// every other table here is; parser/C/statements/for_loop.c resets its nesting
 // counter to 0 when entering a function or lambda body (mirroring
 // vars_save/vars_clear/vars_restore), since that body gets its own RBP
 // at runtime and can safely reuse the same offsets independently of how
@@ -107,7 +107,7 @@ int32_t higher_order_scratch_offset(void);
 #define KILN_FOR_STACK_SIZE (MAX_KILN_FOR_DEPTH * KILN_FOR_LEVEL_SIZE)
 int32_t for_level_offset(int depth);
 
-// Plan A, phase A3: one 8-byte RBP-relative slot for codegen/win_call.c to
+// Plan A, phase A3: one 8-byte RBP-relative slot for codegen/C/platform/win_call.c to
 // stash the original RSP across a Windows API call (dynamic 16-byte align
 // + shadow space reservation clobbers RSP by an amount only known at
 // runtime, so it can't be undone with a fixed `add rsp, N` -- see

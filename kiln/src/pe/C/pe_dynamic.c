@@ -1,12 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "pe/pe_writer.h"
+#include "pe/H/pe_writer.h"
 
 // --link=shared PE executable: same "tiny PE" single-RWX-section
 // technique as pe_writer.c's static-mode writer, but importing from TWO
 // DLLs (kernel32.dll for OS calls, libkilnrt.dll for the runtime -- see
-// pe/pe_dll_writer.h for the library side).
+// pe/H/pe_dll_writer.h for the library side).
 //
 // Section layout:
 //   [globals][import dir: k32,rt,null][ILT k32][IAT k32][ILT rt][IAT rt]
@@ -14,13 +14,13 @@
 
 static const char *const pe_import_names[] = {
 #define PE_IMPORT(name, str) str,
-#include "pe/pe_imports.def"
+#include "pe/H/pe_imports.def"
 #undef PE_IMPORT
 };
 
 static const char *const runtime_import_names[] = {
 #define RUNTIME_EXPORT(name, str) str,
-#include "codegen/runtime_exports.def"
+#include "codegen/H/emit/runtime_exports.def"
 #undef RUNTIME_EXPORT
 };
 

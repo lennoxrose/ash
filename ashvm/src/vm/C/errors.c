@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include "vm/vm.h"
-#include "vm/state.h"
-#include "diagnostics/diagnostics.h"
+#include "vm/H/vm.h"
+#include "vm/H/state.h"
+#include "diagnostics/H/diagnostics.h"
 
 // Every genuinely-runtime error (as opposed to a compile-time/structural one,
 // which stays a hard crash since ashvm resolves names at compile time) funnels

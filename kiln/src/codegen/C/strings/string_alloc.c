@@ -1,12 +1,12 @@
-#include "codegen/string_alloc.h"
-#include "codegen/heap.h"
-#include "codegen/win_call.h"
-#include "elf/elf_dynamic_call.h"
-#include "target.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/platform/win_call.h"
+#include "elf/H/elf_dynamic_call.h"
+#include "app/H/target.h"
 
 // Plan B, phase B1: emitted once (jumped over), called via emit_call_back
-// from all 13 call sites -- same pattern as codegen/heap.c's alloc
-// routine and codegen/bytes.c's copy routine (which this one itself
+// from all 13 call sites -- same pattern as codegen/C/runtime/heap.c's alloc
+// routine and codegen/C/emit/bytes.c's copy routine (which this one itself
 // calls, via heap_emit_alloc -- routines calling other routines nest
 // exactly like any other CALL/RET, no special handling needed). Note this
 // stays a LOCAL call even when compiling libkilnrt.so/.dll: the "compile

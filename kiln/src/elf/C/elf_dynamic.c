@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "elf/elf_dynamic.h"
+#include "elf/H/elf_dynamic.h"
 
 // Hand-written dynamically-linked ELF64 executable: PT_INTERP so the
 // kernel hands off to the REAL system dynamic linker, PT_DYNAMIC with
@@ -18,7 +18,7 @@
 
 static const char *const runtime_names[] = {
 #define RUNTIME_EXPORT(name, str) str,
-#include "codegen/runtime_exports.def"
+#include "codegen/H/emit/runtime_exports.def"
 #undef RUNTIME_EXPORT
 };
 

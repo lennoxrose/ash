@@ -20,7 +20,7 @@ void codegen_string_literal_bytes(const char *text, int len);
 // saved BEFORE calling -- these clobber RAX,RBX,RCX,RDX,RSI,RDI freely).
 
 // Pushes (tag=STRING, payload=<new heap address>) -- the concatenation.
-// Needs a real heap allocation (see codegen/heap.h) since the combined
+// Needs a real heap allocation (see codegen/H/runtime/heap.h) since the combined
 // size is only known at runtime.
 void codegen_string_concat(void);
 

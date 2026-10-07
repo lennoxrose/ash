@@ -1,9 +1,9 @@
 #ifndef KILN_ELF_WRITER_H
 #define KILN_ELF_WRITER_H
-#include "codegen/emit.h"
-#include "codegen/runtime_layout.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/runtime_layout.h"
 
-// Layout constants shared with codegen/heap.c: kiln generates a fixed,
+// Layout constants shared with codegen/C/runtime/heap.c: kiln generates a fixed,
 // non-PIE executable (always loaded at KILN_LOAD_BASE), so absolute
 // addresses are known at compile time. Milestone 5 needs one such fixed
 // address for the heap bump pointer (a "global" -- there's no per-call
@@ -15,8 +15,8 @@
 #define KILN_PHDR_SIZE 56
 
 // Milestone 9: the globals region also holds kiln's own hand-rolled
-// setjmp/longjmp equivalent for try/catch (see codegen/errors.c's raise
-// routine and parser/try_catch.c) -- a fixed-depth stack of "handler"
+// setjmp/longjmp equivalent for try/catch (see codegen/C/runtime/errors.c's raise
+// routine and parser/C/statements/try_catch.c) -- a fixed-depth stack of "handler"
 // records, since this is a freestanding binary with no libc setjmp to
 // call. Each handler is {saved_rsp, saved_rbp, target_addr,
 // error_slot_rbp_offset}, 4 x int64. Bounded the same way every other
@@ -31,7 +31,7 @@
 // saves that original RSP here -- a fixed absolute address, reachable
 // from any frame later on, since a called function's own RBP is no
 // longer the original one by the time argv() might be called from
-// inside it (see codegen/argv_builtin.c).
+// inside it (see codegen/C/io/argv_builtin.c).
 #define KILN_ARGV_SIZE 8
 
 #define KILN_GLOBALS_SIZE (8 + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_ARGV_SIZE) // heap_ptr, try_depth, handler stack, argv

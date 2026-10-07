@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "pe/pe_writer.h"
-#include "target.h"
+#include "pe/H/pe_writer.h"
+#include "app/H/target.h"
 
 // Hand-written minimal PE32+ console executable -- the Windows-side twin
-// of elf/elf_writer.c's "tiny ELF" technique: one RWX section holding
+// of elf/C/elf_writer.c's "tiny ELF" technique: one RWX section holding
 // everything (globals, import tables, code), a fixed non-relocated image
 // base, no external linker involved.
 //
@@ -20,7 +20,7 @@
 
 static const char *const pe_import_names[] = {
 #define PE_IMPORT(name, str) str,
-#include "pe/pe_imports.def"
+#include "pe/H/pe_imports.def"
 #undef PE_IMPORT
 };
 

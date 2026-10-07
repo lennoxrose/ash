@@ -1,12 +1,12 @@
 #include <stdint.h>
-#include "codegen/argv_builtin_internal.h"
-#include "codegen/string_alloc.h"
-#include "codegen/bytes.h"
-#include "codegen/heap.h"
-#include "codegen/value.h"
-#include "codegen/win_call.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/io/argv_builtin_internal.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/platform/win_call.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // GetCommandLineA() returns the whole command line as one string (e.g.
 // `prog.exe arg1 arg2`), not a pre-split argv array -- so unlike the

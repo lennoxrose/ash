@@ -1,4 +1,83 @@
 CC = gcc
+.DEFAULT_GOAL := all
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc
+LDFLAGS =
+
+KILN_SRC = \
+    src/app/C/main.c \
+    src/app/C/target.c \
+    src/lexer/C/lexer.c \
+    src/lexer/C/lexer_import.c \
+    src/parser/C/core/parser.c \
+    src/parser/C/declarations/constants.c \
+    src/parser/C/declarations/functions.c \
+    src/parser/C/declarations/vars.c \
+    src/parser/C/imports/import_paths.c \
+    src/parser/C/imports/imports.c \
+    src/parser/C/statements/for_loop.c \
+    src/parser/C/statements/loop_stack.c \
+    src/parser/C/statements/parser_control.c \
+    src/parser/C/statements/try_catch.c \
+    src/codegen/C/builtins/builtins.c \
+    src/codegen/C/builtins/filter_builtin.c \
+    src/codegen/C/builtins/map_builtin.c \
+    src/codegen/C/builtins/math_builtins.c \
+    src/codegen/C/builtins/num_builtin.c \
+    src/codegen/C/builtins/reduce_builtin.c \
+    src/codegen/C/builtins/str_builtin.c \
+    src/codegen/C/collections/arrays.c \
+    src/codegen/C/collections/keys_values.c \
+    src/codegen/C/collections/maps.c \
+    src/codegen/C/collections/maps_mutate.c \
+    src/codegen/C/emit/bytes.c \
+    src/codegen/C/emit/emit.c \
+    src/codegen/C/emit/emit_mem.c \
+    src/codegen/C/emit/emit_sse.c \
+    src/codegen/C/emit/layout.c \
+    src/codegen/C/expressions/expr.c \
+    src/codegen/C/expressions/expr_bool.c \
+    src/codegen/C/expressions/expr_call.c \
+    src/codegen/C/functions/closures.c \
+    src/codegen/C/functions/lambda.c \
+    src/codegen/C/io/argv_builtin.c \
+    src/codegen/C/io/argv_builtin_windows.c \
+    src/codegen/C/io/file_path.c \
+    src/codegen/C/io/input_builtin.c \
+    src/codegen/C/io/read_file_builtin.c \
+    src/codegen/C/io/write_file_builtins.c \
+    src/codegen/C/platform/platform_console.c \
+    src/codegen/C/platform/platform_file.c \
+    src/codegen/C/platform/win_call.c \
+    src/codegen/C/platform/win_file_call.c \
+    src/codegen/C/runtime/errors.c \
+    src/codegen/C/runtime/heap.c \
+    src/codegen/C/runtime/print_int.c \
+    src/codegen/C/strings/case_builtins.c \
+    src/codegen/C/strings/indexof_builtin.c \
+    src/codegen/C/strings/join_builtin.c \
+    src/codegen/C/strings/replace_builtin.c \
+    src/codegen/C/strings/split_builtin.c \
+    src/codegen/C/strings/string_alloc.c \
+    src/codegen/C/strings/strings.c \
+    src/codegen/C/strings/substring_builtin.c \
+    src/codegen/C/strings/trim_builtin.c \
+    src/elf/C/elf_dynamic.c \
+    src/elf/C/elf_dynamic_call.c \
+    src/elf/C/elf_so_writer.c \
+    src/elf/C/elf_writer.c \
+    src/pe/C/pe_dll_writer.c \
+    src/pe/C/pe_dynamic.c \
+    src/pe/C/pe_writer.c \
+    src/diagnostics/C/diagnostics.c
+
+# Objects and dependency files live in trees parallel to each C tree:
+#   src/<subsystem>/C/<feature>/x.c -> src/<subsystem>/O/<feature>/x.o
+#                                      src/<subsystem>/D/<feature>/x.d
+obj_of = $(patsubst %.c,%.o,$(subst /C/,/O/,$(1)))
+dep_of = $(patsubst %.c,%.d,$(subst /C/,/D/,$(1)))
+KILN_OBJ = $(foreach s,$(KILN_SRC),$(call obj_of,$(s)))
+KILN_DEP = $(foreach s,$(KILN_SRC),$(call dep_of,$(s)))
+
 # -MMD -MP: emit a per-object .d file listing the headers it includes, so
 # editing a shared header (e.g. vars.h) correctly triggers a rebuild of
 # every .o that includes it, not just files whose own .c changed. Without
@@ -6,29 +85,12 @@ CC = gcc
 # header-only edit silently produces a binary built from mismatched
 # offsets/constants across files, with no error, until something crashes
 # at runtime for reasons the source doesn't explain.
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -MMD -MP
-LDFLAGS =
-
-KILN_SRC = src/main.c src/target.c src/lexer/lexer.c src/lexer/lexer_import.c \
-           src/parser/parser.c src/parser/parser_control.c src/parser/vars.c src/parser/functions.c src/parser/try_catch.c src/parser/for_loop.c src/parser/loop_stack.c \
-           src/parser/import_paths.c src/parser/imports.c src/parser/constants.c \
-           src/codegen/emit.c src/codegen/emit_mem.c src/codegen/emit_sse.c src/codegen/heap.c src/codegen/bytes.c src/codegen/layout.c \
-           src/codegen/strings.c src/codegen/errors.c src/codegen/arrays.c src/codegen/maps.c src/codegen/maps_mutate.c src/codegen/builtins.c \
-           src/codegen/math_builtins.c src/codegen/str_builtin.c src/codegen/num_builtin.c \
-           src/codegen/map_builtin.c src/codegen/filter_builtin.c src/codegen/reduce_builtin.c src/codegen/keys_values.c \
-           src/codegen/string_alloc.c src/codegen/case_builtins.c src/codegen/trim_builtin.c \
-           src/codegen/substring_builtin.c src/codegen/indexof_builtin.c \
-           src/codegen/join_builtin.c src/codegen/split_builtin.c src/codegen/replace_builtin.c \
-           src/codegen/file_path.c src/codegen/read_file_builtin.c src/codegen/write_file_builtins.c \
-           src/codegen/input_builtin.c src/codegen/argv_builtin.c src/codegen/argv_builtin_windows.c \
-           src/codegen/expr.c src/codegen/expr_call.c src/codegen/expr_bool.c src/codegen/print_int.c \
-           src/codegen/closures.c src/codegen/lambda.c src/codegen/win_call.c src/codegen/win_file_call.c \
-           src/codegen/platform_console.c src/codegen/platform_file.c \
-           src/elf/elf_writer.c src/elf/elf_dynamic.c src/elf/elf_dynamic_call.c src/elf/elf_so_writer.c \
-           src/pe/pe_writer.c src/pe/pe_dynamic.c src/pe/pe_dll_writer.c \
-           src/diagnostics/diagnostics.c
-KILN_OBJ = $(KILN_SRC:.c=.o)
-KILN_DEP = $(KILN_SRC:.c=.d)
+define compile_rule
+$(call obj_of,$(1)): $(1)
+	@mkdir -p $$(dir $$@) $$(dir $(call dep_of,$(1)))
+	$$(CC) $$(CFLAGS) -MMD -MP -MF $(call dep_of,$(1)) -MT $$@ -c $$< -o $$@
+endef
+$(foreach s,$(KILN_SRC),$(eval $(call compile_rule,$(s))))
 
 BIN = ../bin/kiln
 

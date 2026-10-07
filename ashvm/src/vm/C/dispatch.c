@@ -3,11 +3,11 @@
 #include <string.h>
 #include <setjmp.h>
 #include <math.h>
-#include "vm/vm.h"
-#include "vm/state.h"
-#include "compiler/compiler.h"
-#include "builtins/builtins.h"
-#include "value/hashmap.h"
+#include "vm/H/vm.h"
+#include "vm/H/state.h"
+#include "compiler/H/compiler.h"
+#include "builtins/H/builtins.h"
+#include "value/H/hashmap.h"
 
 // The dispatch loop stays one function despite exceeding this project's
 // usual 200-line target: computed-goto (`&&label` / `goto *table[i]`)

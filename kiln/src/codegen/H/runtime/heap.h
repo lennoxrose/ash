@@ -1,6 +1,6 @@
 #ifndef KILN_HEAP_H
 #define KILN_HEAP_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // A bump allocator, no free (matches ashvm's own lack of GC -- neither
 // engine reclaims memory during a run, only at process exit). Backed by
@@ -13,7 +13,7 @@
 
 // Emitted once, at the very start of the generated program (before the
 // top-level statement loop): grabs a 16MB arena and records its start as
-// the heap bump pointer at KILN_GLOBALS_ADDR (see elf/elf_writer.h).
+// the heap bump pointer at KILN_GLOBALS_ADDR (see elf/H/elf_writer.h).
 void heap_emit_startup(CodeBuf *code);
 
 // Plan B: emits ONLY the alloc routine's body (no arena grab) -- used by

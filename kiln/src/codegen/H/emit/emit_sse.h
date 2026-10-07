@@ -1,6 +1,6 @@
 #ifndef KILN_EMIT_SSE_H
 #define KILN_EMIT_SSE_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // Scalar double-precision (SSE2) primitives -- milestone 4 replaces
 // kiln's integer-only numbers with real doubles throughout, matching
@@ -12,7 +12,7 @@
 typedef enum { XMM0 = 0, XMM1 = 1, XMM2 = 2, XMM3 = 3 } XReg;
 
 void emit_movq_xmm_from_reg(CodeBuf *buf, XReg dst, Reg src); // MOVQ xmm, r64 -- loads a GP register's raw 64 bits as a double's bit pattern (used for literals: the literal's IEEE-754 bits are computed once in kiln itself, at compile time)
-void emit_movq_reg_from_xmm(CodeBuf *buf, Reg dst, XReg src); // MOVQ r64, xmm -- the reverse: extracts a computed double's raw bits into a GP register, milestone 5's generic (tag, payload) values are always GP-transported (see codegen/value.h), so an arithmetic result has to come back out of XMM before it can be pushed
+void emit_movq_reg_from_xmm(CodeBuf *buf, Reg dst, XReg src); // MOVQ r64, xmm -- the reverse: extracts a computed double's raw bits into a GP register, milestone 5's generic (tag, payload) values are always GP-transported (see codegen/H/emit/value.h), so an arithmetic result has to come back out of XMM before it can be pushed
 void emit_movsd_xmm_xmm(CodeBuf *buf, XReg dst, XReg src);
 void emit_movsd_load_disp32(CodeBuf *buf, XReg dst, Reg base, int32_t disp);
 void emit_movsd_store_disp32(CodeBuf *buf, Reg base, int32_t disp, XReg src);

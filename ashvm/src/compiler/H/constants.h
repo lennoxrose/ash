@@ -1,6 +1,6 @@
 #ifndef ASH_VM_COMPILER_CONSTANTS_H
 #define ASH_VM_COMPILER_CONSTANTS_H
-#include "value/value.h"
+#include "value/H/value.h"
 
 #define MAX_VM_CONSTS 32
 

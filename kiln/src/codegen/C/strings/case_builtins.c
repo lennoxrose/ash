@@ -1,14 +1,14 @@
 #include <stdint.h>
-#include "codegen/string_builtins.h"
-#include "codegen/string_alloc.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "parser/parser.h"
+#include "codegen/H/strings/string_builtins.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "parser/H/core/parser.h"
 
 // Shared shape for upper()/lower(): allocate a same-length copy, then a
 // byte-by-byte transform loop advancing two raw pointers (source cursor
 // in RSI, dest cursor in RDI) rather than indexing -- same technique
-// codegen/closures.c's capture-copy loop uses, avoiding any need for a
+// codegen/C/functions/closures.c's capture-copy loop uses, avoiding any need for a
 // scaled-index addressing mode this project's emitter doesn't support.
 static void case_transform(char lo, char hi, int8_t delta) {
     emit_pop_reg(code, REG_RAX); // src payload

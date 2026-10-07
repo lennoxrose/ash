@@ -1,12 +1,12 @@
-#include "codegen/closures.h"
-#include "codegen/closures_internal.h"
-#include "codegen/emit.h"
-#include "codegen/expr.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "codegen/layout.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/functions/closures.h"
+#include "codegen/H/functions/closures_internal.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/layout.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // Closure-object creation and the two ways a TAG_FUNCTION value gets
 // built (a lambda literal's runtime header, and a zero-capture wrapper

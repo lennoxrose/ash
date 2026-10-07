@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# kiln/tests/run_regression.sh baseline|check
+# kiln/tests/scripts/run_regression.sh baseline|check
 set -uo pipefail
-cd "$(dirname "$0")/.." # -> kiln/
+cd "$(dirname "$0")/../.." # -> kiln/
 
 MODE="${1:-check}"
 if [[ "$MODE" != "baseline" && "$MODE" != "check" ]]; then
@@ -21,7 +21,7 @@ rm -f /tmp/kiln_file_test.txt
 make -s || { echo "build failed"; exit 1; }
 
 fail=0
-for f in tests/*.ash; do
+for f in tests/cases/*/*.ash; do
     name=$(basename "$f" .ash)
     bin="$BINDIR/${name}.bin"
     out="$OUTDIR/${name}.out"

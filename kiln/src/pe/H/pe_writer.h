@@ -1,11 +1,11 @@
 #ifndef KILN_PE_WRITER_H
 #define KILN_PE_WRITER_H
-#include "codegen/emit.h"
-#include "codegen/runtime_layout.h"
-#include "codegen/runtime_import_enum.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/runtime_layout.h"
+#include "codegen/H/emit/runtime_import_enum.h"
 
 // Kiln generates a fixed, non-relocated PE32+ executable, same "always
-// loaded at one known address" philosophy as elf/elf_writer.h's
+// loaded at one known address" philosophy as elf/H/elf_writer.h's
 // KILN_LOAD_BASE -- absolute addresses for string literals, closure code
 // addresses, and (this file's addition) imported-function IAT slots are
 // all known at compile time, no relocation table needed. 0x140000000 is
@@ -33,7 +33,7 @@
 #define KILN_PE_TRY_HANDLERS_ADDR (KILN_PE_TRY_DEPTH_ADDR + KILN_TRY_DEPTH_SIZE)
 // No argv slot: GetCommandLineA() can be called at any point, unlike
 // Linux's argv() which has to snapshot the kernel's original RSP before
-// anything else touches it (see codegen/argv_builtin.c).
+// anything else touches it (see codegen/C/io/argv_builtin.c).
 #define KILN_PE_GLOBALS_SIZE (8 + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE)
 
 // Every kernel32.dll function kiln's Windows codegen calls -- single list
@@ -41,7 +41,7 @@
 // bytes, so the two can never silently drift out of sync.
 typedef enum {
 #define PE_IMPORT(name, str) PE_IMPORT_##name,
-#include "pe/pe_imports.def"
+#include "pe/H/pe_imports.def"
 #undef PE_IMPORT
     PE_IMPORT_COUNT_
 } PeImport;
@@ -65,13 +65,13 @@ typedef enum {
     (KILN_PE_SECTION_RVA + (KILN_PE_GLOBALS_SIZE + KILN_PE_IMPORT_DIR_SIZE + KILN_PE_ILT_SIZE + KILN_PE_IAT_SIZE))
 
 // Absolute VA of `which`'s IAT slot -- what the loader overwrites with
-// the resolved function pointer at load time. codegen/win_call.c loads
+// the resolved function pointer at load time. codegen/C/platform/win_call.c loads
 // this address, dereferences it, and calls through the result (see that
 // file for why no RIP-relative addressing is needed here).
 uint64_t pe_import_addr(PeImport which);
 
 // ---- --link=shared layout: a SECOND imported DLL (libkilnrt.dll,
-// see pe/pe_dll_writer.h) alongside kernel32.dll. Kept as a fully
+// see pe/H/pe_dll_writer.h) alongside kernel32.dll. Kept as a fully
 // parallel set of constants, never touched by the static-mode ones
 // above, so --link=static output stays byte-for-byte unchanged --
 // pe_writer.c picks one whole layout or the other based on link mode,

@@ -19,7 +19,7 @@ standalone, freestanding ELF64 executable - no libc, raw syscalls only.
 
 ```bash
 cd kiln && make          # builds ../bin/kiln
-../bin/kiln tests/hello.ash -o /tmp/hello
+../bin/kiln tests/cases/basics/hello.ash -o /tmp/hello
 /tmp/hello                # prints 7  (1 + 2 * 3)
 ```
 
@@ -40,16 +40,27 @@ cd kiln && make          # builds ../bin/kiln
 
 ```
 kiln/
-  Makefile              builds ../bin/kiln
-  src/
-    lexer/               tokenizer (own copy, same shape as ashvm's)
-    parser/               token state + statement grammar
-    codegen/
-      emit.c/.h            raw x86-64 instruction encoding primitives
-      expr.c/.h             expression -> real arithmetic instructions
-      print_int.c/.h        int-to-decimal-ASCII + write(2) + exit(2)
-    elf/
-      elf_writer.c/.h        minimal "tiny ELF" executable writer
-    main.c                  argv parsing, drives the pipeline
-  tests/                  *.ash programs exercised by hand for now
+  Makefile                builds ../bin/kiln
+  src/                    each subsystem: C/ (sources), H/ (headers), D/ (deps), O/ (objects), mirrored
+    app/                   main.c argv parsing, drives the pipeline; target.c/.h
+    lexer/                 tokenizer (own copy, same shape as ashvm's)
+    parser/C/ H/ D/ O/
+      core/                  parser entry, shared parser state
+      statements/            control flow, for loops, try/catch, loop stack
+      declarations/          variables, functions, constants
+      imports/               import resolution
+    codegen/C/ H/ D/ O/    (same feature folders in each tree)
+      emit/                  raw x86-64 encoding, byte buffers, memory layout, value tags
+      expressions/           expression -> arithmetic instructions, calls, booleans
+      functions/             closures and lambdas
+      runtime/               heap, runtime errors, int printing
+      collections/           arrays, maps, keys/values
+      strings/               string values, allocation, string builtins
+      builtins/              builtin dispatch, math, map/filter/reduce, str/num
+      io/                    file, stdin and argv builtins
+      platform/              console/file and Windows-call wrappers
+    elf/                   ELF executable and shared-object writers
+    pe/                    PE executable and DLL writers
+    diagnostics/           error reporting
+  tests/                  cases/<feature>/*.ash programs (+ scripts/run_regression.sh)
 ```

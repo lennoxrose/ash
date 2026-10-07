@@ -1,9 +1,9 @@
 #ifndef KILN_PLATFORM_CONSOLE_H
 #define KILN_PLATFORM_CONSOLE_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // Console I/O, dispatching on kiln_get_target() internally so call sites
-// (codegen/print_int.c, codegen/errors.c, codegen/input_builtin.c) don't
+// (codegen/C/runtime/print_int.c, codegen/C/runtime/errors.c, codegen/C/io/input_builtin.c) don't
 // need their own target branch. Linux writes/reads a fixed fd (1/2/0)
 // directly via raw syscall; Windows has no such fixed handle -- it has to
 // call GetStdHandle first, so each of these costs one extra call there.
@@ -18,7 +18,7 @@ void platform_emit_write_stderr(CodeBuf *code);
 void platform_emit_read_stdin_byte(CodeBuf *code);
 
 // Split out of platform_emit_read_stdin_byte for callers that read many
-// bytes in a loop (codegen/input_builtin.c): looking the handle up once
+// bytes in a loop (codegen/C/io/input_builtin.c): looking the handle up once
 // outside the loop instead of once per byte cuts a multi-byte line's
 // worth of GetStdHandle round-trips down to one, which matters on
 // Windows -- unlike Linux's fixed fd 0, nothing here is free.

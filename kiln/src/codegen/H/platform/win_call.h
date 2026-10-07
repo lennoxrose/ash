@@ -1,12 +1,12 @@
 #ifndef KILN_WIN_CALL_H
 #define KILN_WIN_CALL_H
-#include "codegen/emit.h"
-#include "pe/pe_writer.h"
+#include "codegen/H/emit/emit.h"
+#include "pe/H/pe_writer.h"
 
 // Windows x64 calling convention -- the caller-side sequence for calling
 // an imported kernel32.dll function. New territory for this codebase:
 // unlike kiln's own internal `fn` convention (stack-push based, see
-// parser/parser_control.c), this has to match a REAL external ABI, with
+// parser/C/statements/parser_control.c), this has to match a REAL external ABI, with
 // rules kiln has never had to satisfy before:
 //   - first four integer/pointer args in RCX, RDX, R8, R9
 //   - a mandatory 32-byte "shadow space" the CALLEE is allowed to spill

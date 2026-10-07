@@ -1,12 +1,12 @@
-#include "codegen/maps.h"
-#include "codegen/maps_internal.h"
-#include "codegen/expr.h"
-#include "codegen/strings.h"
-#include "codegen/emit_internal.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "codegen/errors.h"
-#include "parser/parser.h"
+#include "codegen/H/collections/maps.h"
+#include "codegen/H/collections/maps_internal.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/strings/strings.h"
+#include "codegen/H/emit/emit_internal.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/runtime/errors.h"
+#include "parser/H/core/parser.h"
 
 void codegen_map_literal(void) {
     advance_token(); // consume '{'

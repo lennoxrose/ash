@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "vm/vm.h"
-#include "vm/state.h"
-#include "compiler/compiler.h"
+#include "vm/H/vm.h"
+#include "vm/H/state.h"
+#include "compiler/H/compiler.h"
 
 void vm_set_repl_recovery(jmp_buf *jb) {
     repl_recovery_jmp = jb;

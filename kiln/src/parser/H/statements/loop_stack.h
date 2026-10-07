@@ -36,7 +36,7 @@ void loop_pop_and_patch_breaks(void);
 
 // Save/reset/restore the loop-nesting depth, for fn_statement/lambda.c
 // to wrap around a called body's compilation (same spirit as
-// parser/vars.h's vars_save/vars_clear/vars_restore and for_loop.h's
+// parser/H/declarations/vars.h's vars_save/vars_clear/vars_restore and for_loop.h's
 // for_depth_save/reset/restore): a break/continue inside a function or
 // lambda body must never reach past that body into an ENCLOSING loop it
 // happens to be textually written inside.

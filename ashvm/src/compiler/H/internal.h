@@ -1,7 +1,7 @@
 #ifndef ASH_VM_COMPILER_INTERNAL_H
 #define ASH_VM_COMPILER_INTERNAL_H
-#include "compiler/state.h"
-#include "compiler/constants.h"
+#include "compiler/H/state.h"
+#include "compiler/H/constants.h"
 
 // Cross-file forward declarations between compiler_expr.c and
 // compiler_stmt.c -- not part of the public API (compiler.h).

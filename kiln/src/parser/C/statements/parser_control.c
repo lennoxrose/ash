@@ -1,13 +1,13 @@
 #include <string.h>
-#include "parser/parser.h"
-#include "parser/parser_internal.h"
-#include "parser/vars.h"
-#include "parser/functions.h"
-#include "parser/for_loop.h"
-#include "parser/loop_stack.h"
-#include "codegen/expr.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/core/parser_internal.h"
+#include "parser/H/declarations/vars.h"
+#include "parser/H/declarations/functions.h"
+#include "parser/H/statements/for_loop.h"
+#include "parser/H/statements/loop_stack.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
 
 // Truthiness test for if/while conditions: pop the value (tag discarded,
 // assumed NUMBER -- matches ashvm's own truthy(), which requires a

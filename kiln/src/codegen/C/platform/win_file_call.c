@@ -1,6 +1,6 @@
-#include "codegen/win_file_call.h"
-#include "codegen/win_call.h"
-#include "parser/vars.h"
+#include "codegen/H/platform/win_file_call.h"
+#include "codegen/H/platform/win_call.h"
+#include "parser/H/declarations/vars.h"
 
 // &ignored_out needs to be a real writable address (Windows doesn't
 // accept NULL there for synchronous handles), so it points at a

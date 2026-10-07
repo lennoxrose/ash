@@ -1,6 +1,6 @@
 #ifndef ASH_VM_BUILTINS_INTERNAL_H
 #define ASH_VM_BUILTINS_INTERNAL_H
-#include "value/value.h"
+#include "value/H/value.h"
 
 // Each group handles a contiguous id range within vm_call_builtin's switch;
 // see builtins.c for the range -> group mapping and the shared name table.

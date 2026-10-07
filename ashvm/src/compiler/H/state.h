@@ -1,7 +1,7 @@
 #ifndef ASH_VM_COMPILER_STATE_H
 #define ASH_VM_COMPILER_STATE_H
-#include "compiler/compiler.h"
-#include "lexer/lexer.h"
+#include "compiler/H/compiler.h"
+#include "lexer/H/lexer.h"
 
 // Shared parser/emitter state for compiler_expr.c and compiler_stmt.c --
 // not part of the public API (compiler.h). Mirrors the same

@@ -1,11 +1,11 @@
 #include <string.h>
-#include "codegen/expr.h"
-#include "codegen/expr_internal.h"
-#include "codegen/emit.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/strings.h"
-#include "parser/parser.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/expressions/expr_internal.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/strings/strings.h"
+#include "parser/H/core/parser.h"
 
 // Precedence climbing continued from expr.c: comparison -> logical_and ->
 // logical_or -> expression. See expr.c's header comment for the full
@@ -29,7 +29,7 @@ static void push_number_literal(double v) {
 
 // Turns "condition true/false" (as of the last ucomisd) into a clean
 // pushed 0.0/1.0, via the same jcc-and-patch technique
-// codegen/print_int.c already uses for its digit loop -- just applied to
+// codegen/C/runtime/print_int.c already uses for its digit loop -- just applied to
 // a general boolean result instead of a hardcoded loop exit. `cc_if_true`
 // must be one of ucomisd's unsigned-style condition codes (COND_B/BE/A/AE
 // or COND_E/NE), never the signed integer ones.

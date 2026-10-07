@@ -1,8 +1,8 @@
-#include "codegen/math_builtins.h"
-#include "codegen/emit.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "parser/parser.h"
+#include "codegen/H/builtins/math_builtins.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "parser/H/core/parser.h"
 
 void codegen_builtin_sqrt(void) {
     emit_pop_reg(code, REG_RAX); // payload

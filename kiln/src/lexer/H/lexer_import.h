@@ -1,6 +1,6 @@
 #ifndef KILN_LEXER_IMPORT_H
 #define KILN_LEXER_IMPORT_H
-#include "lexer/lexer.h"
+#include "lexer/H/lexer.h"
 
 // Cross-file link between lexer.c (the tokenizer's cursor state and its
 // low-level scan primitives) and lexer_import.c (state save/restore plus

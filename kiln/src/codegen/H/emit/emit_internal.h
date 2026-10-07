@@ -1,6 +1,6 @@
 #ifndef KILN_EMIT_INTERNAL_H
 #define KILN_EMIT_INTERNAL_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // Shared byte-buffer primitives and ModRM builders, used by both emit.c
 // (register arithmetic) and emit_mem.c (memory/stack/jump instructions).

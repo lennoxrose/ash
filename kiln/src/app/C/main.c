@@ -1,15 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "parser/parser.h"
-#include "codegen/emit.h"
-#include "elf/elf_writer.h"
-#include "elf/elf_dynamic.h"
-#include "elf/elf_so_writer.h"
-#include "pe/pe_writer.h"
-#include "pe/pe_dll_writer.h"
-#include "diagnostics/diagnostics.h"
-#include "target.h"
+#include "parser/H/core/parser.h"
+#include "codegen/H/emit/emit.h"
+#include "elf/H/elf_writer.h"
+#include "elf/H/elf_dynamic.h"
+#include "elf/H/elf_so_writer.h"
+#include "pe/H/pe_writer.h"
+#include "pe/H/pe_dll_writer.h"
+#include "diagnostics/H/diagnostics.h"
+#include "app/H/target.h"
 
 static char *read_file(const char *path) {
     FILE *file = fopen(path, "rb");
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
     // mode from compiling a program.
     if (argc >= 4 && argc <= 5 && strcmp(argv[1], "--emit-runtime") == 0 && strcmp(argv[2], "-o") == 0) {
         if (argc == 5) kiln_set_target(parse_target(argv[4], argv[0]));
-        // The runtime's own globals-address computation (codegen/layout.c)
+        // The runtime's own globals-address computation (codegen/C/emit/layout.c)
         // needs to resolve as if for a --link=shared executable, since
         // that's whose globals this code reads/writes at runtime --
         // elf_write_shared_runtime/pe_write_shared_runtime additionally

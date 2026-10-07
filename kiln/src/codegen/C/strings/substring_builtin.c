@@ -1,11 +1,11 @@
-#include "codegen/string_builtins.h"
-#include "codegen/string_alloc.h"
-#include "codegen/expr.h"
-#include "codegen/bytes.h"
-#include "codegen/emit.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "parser/parser.h"
+#include "codegen/H/strings/string_builtins.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "parser/H/core/parser.h"
 
 // substring(str, start, end): clamps start>=0, end<=len, start>end->start=end
 // (matching ashvm's own clamping exactly, not erroring on out-of-range).

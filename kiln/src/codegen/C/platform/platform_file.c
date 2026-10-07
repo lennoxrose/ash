@@ -1,7 +1,7 @@
-#include "codegen/platform_file.h"
-#include "codegen/win_call.h"
-#include "codegen/win_file_call.h"
-#include "target.h"
+#include "codegen/H/platform/platform_file.h"
+#include "codegen/H/platform/win_call.h"
+#include "codegen/H/platform/win_file_call.h"
+#include "app/H/target.h"
 
 #define GENERIC_READ 0x80000000u
 #define GENERIC_WRITE 0x40000000u

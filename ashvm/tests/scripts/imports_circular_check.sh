@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
-OUT=$(../bin/ashvm tests/fixtures/imports_circular_a.ash 2>&1)
+OUT=$(../bin/ashvm tests/cases/imports/fixtures/imports_circular_a.ash 2>&1)
 STATUS=$?
 
 if [[ $STATUS -eq 0 ]]; then

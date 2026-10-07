@@ -1,7 +1,7 @@
 #include <string.h>
 #include <stdio.h>
-#include "parser/functions.h"
-#include "parser/parser.h"
+#include "parser/H/declarations/functions.h"
+#include "parser/H/core/parser.h"
 
 static KilnFunction functions[MAX_KILN_FUNCS];
 static int function_count = 0;

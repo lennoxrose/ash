@@ -77,7 +77,7 @@ void emit_load_mem_disp32(CodeBuf *buf, Reg dst, Reg base, int32_t disp);
 // Byte (8-bit) memory stores through a register-indirect address [reg] --
 // `reg` must not be RSP/RBP (both need a SIB/disp encoding this module
 // deliberately doesn't support; callers route byte-buffer pointers through
-// RCX instead, see codegen/print_int.c).
+// RCX instead, see codegen/C/runtime/print_int.c).
 void emit_store_byte_imm(CodeBuf *buf, Reg base, uint8_t imm);
 void emit_store_byte_reg(CodeBuf *buf, Reg base, Reg src); // src must be RAX/RCX/RDX/RBX (low byte AL/CL/DL/BL)
 void emit_load_byte_reg(CodeBuf *buf, Reg dst, Reg base);  // dst = zero-extended byte from [base] (MOVZX)

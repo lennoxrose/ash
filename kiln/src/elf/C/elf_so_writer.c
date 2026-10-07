@@ -2,18 +2,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "elf/elf_so_writer.h"
-#include "elf/elf_dynamic.h"
-#include "codegen/heap.h"
-#include "codegen/bytes.h"
-#include "codegen/string_alloc.h"
-#include "codegen/print_int.h"
-#include "codegen/errors.h"
-#include "target.h"
+#include "elf/H/elf_so_writer.h"
+#include "elf/H/elf_dynamic.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/runtime/print_int.h"
+#include "codegen/H/runtime/errors.h"
+#include "app/H/target.h"
 
 static const char *const export_names[] = {
 #define RUNTIME_EXPORT(name, str) str,
-#include "codegen/runtime_exports.def"
+#include "codegen/H/emit/runtime_exports.def"
 #undef RUNTIME_EXPORT
 };
 
@@ -44,7 +44,7 @@ static uint32_t elf_hash(const char *name) {
 int elf_write_shared_runtime(const char *path) {
     // ---- compile the runtime itself, position-independent, into its own
     // fresh CodeBuf. Link mode STAYS shared (main.c sets it before
-    // calling this) so codegen/layout.c resolves globals addresses using
+    // calling this) so codegen/C/emit/layout.c resolves globals addresses using
     // the shared-mode executable layout -- but kiln_set_compiling_so(1)
     // makes each routine's OWN call sites (e.g. string_alloc_prefixed
     // calling heap_emit_alloc) resolve as ordinary same-buffer relative

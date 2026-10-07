@@ -1,12 +1,12 @@
 #include <stdint.h>
-#include "codegen/file_builtins.h"
-#include "codegen/file_path.h"
-#include "codegen/expr.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/platform_file.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/io/file_builtins.h"
+#include "codegen/H/io/file_path.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/platform/platform_file.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 static void push_number(double v) {
     emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);

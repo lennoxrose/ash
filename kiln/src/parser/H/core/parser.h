@@ -1,9 +1,9 @@
 #ifndef KILN_PARSER_H
 #define KILN_PARSER_H
-#include "lexer/lexer.h"
-#include "codegen/emit.h"
+#include "lexer/H/lexer.h"
+#include "codegen/H/emit/emit.h"
 
-// Shared parser state, read by codegen/expr.c as well as parser.c --
+// Shared parser state, read by codegen/C/expressions/expr.c as well as parser.c --
 // mirrors ashvm/src/compiler/state.h's split (state lives in a small
 // header, expression codegen and statement parsing both consume it).
 extern Token current;

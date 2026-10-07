@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/state.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/state.h"
+#include "diagnostics/H/diagnostics.h"
 
 VMFunction vm_functions[MAX_VM_FUNCS];
 int vm_function_count = 0;

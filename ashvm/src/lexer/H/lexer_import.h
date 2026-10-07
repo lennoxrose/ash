@@ -1,6 +1,6 @@
 #ifndef ASHVM_LEXER_IMPORT_H
 #define ASHVM_LEXER_IMPORT_H
-#include "lexer/lexer.h"
+#include "lexer/H/lexer.h"
 
 // Cross-file link between lexer.c (the tokenizer's cursor state and its
 // low-level scan primitives) and lexer_import.c (state save/restore plus
@@ -13,7 +13,7 @@
 // between lexer.h (public surface) and lexer_import.h (private,
 // cross-file plumbing).
 //
-// Named lex_* rather than the bare start/current/line: compiler/state.h
+// Named lex_* rather than the bare start/current/line: compiler/H/state.h
 // already declares its own global `Token current`, and since these now
 // need external linkage to be shared across the two .c files, a second
 // plain `current` global here would collide with it at link time.

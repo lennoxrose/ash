@@ -1,8 +1,8 @@
 #include <stdint.h>
-#include "codegen/file_path.h"
-#include "codegen/bytes.h"
-#include "codegen/heap.h"
-#include "parser/vars.h"
+#include "codegen/H/io/file_path.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/runtime/heap.h"
+#include "parser/H/declarations/vars.h"
 
 void filepath_emit_nullterm(CodeBuf *code) {
     int32_t base = higher_order_scratch_offset();

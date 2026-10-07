@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# kiln/tests/imports_circular_check.sh -- not part of run_regression.sh's
+# kiln/tests/scripts/imports_circular_check.sh -- not part of run_regression.sh's
 # stdout-diff loop, since this test asserts a COMPILE FAILURE with
 # specific message content, not a successful program's stdout.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
-OUT=$(../bin/kiln tests/fixtures/imports_circular_a.ash -o /tmp/imports_circular_a 2>&1)
+OUT=$(../bin/kiln tests/cases/imports/fixtures/imports_circular_a.ash -o /tmp/imports_circular_a 2>&1)
 STATUS=$?
 
 if [[ $STATUS -eq 0 ]]; then

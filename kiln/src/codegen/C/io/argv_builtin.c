@@ -1,14 +1,14 @@
 #include <stdint.h>
-#include "codegen/argv_builtin.h"
-#include "codegen/argv_builtin_internal.h"
-#include "codegen/string_alloc.h"
-#include "codegen/bytes.h"
-#include "codegen/heap.h"
-#include "codegen/value.h"
-#include "elf/elf_writer.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
-#include "target.h"
+#include "codegen/H/io/argv_builtin.h"
+#include "codegen/H/io/argv_builtin_internal.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/value.h"
+#include "elf/H/elf_writer.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
+#include "app/H/target.h"
 
 static void codegen_builtin_argv_linux(void);
 

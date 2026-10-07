@@ -1,9 +1,9 @@
-#include "codegen/higher_order.h"
-#include "codegen/expr.h"
-#include "codegen/closures.h"
-#include "codegen/emit.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/builtins/higher_order.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/functions/closures.h"
+#include "codegen/H/emit/emit.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // Scratch layout: [0]=acc_tag [8]=acc_payload [16]=fn_tag [24]=fn_payload
 //   [32]=data_ptr [40]=count [48]=i

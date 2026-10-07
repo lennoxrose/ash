@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "elf/elf_writer.h"
+#include "elf/H/elf_writer.h"
 
 static void put8(CodeBuf *f, uint8_t v) {
     if (f->count >= f->capacity) {
@@ -48,7 +48,7 @@ int elf_write_executable(const char *path, const CodeBuf *machine_code) {
     put32(&file, 1);           // p_type = PT_LOAD
     // p_flags = PF_R | PF_W | PF_X. Milestone 1-4 only needed R|X (code
     // never wrote into its own segment); milestone 5's heap bump pointer
-    // (see elf_writer.h / codegen/heap.c) is a global living inside this
+    // (see elf_writer.h / codegen/C/runtime/heap.c) is a global living inside this
     // same segment, so it needs to be writable too. A real compiler would
     // split .text (R|X) from .data (R|W) into separate segments -- kiln
     // doesn't do that yet, so the whole thing is RWX for now.

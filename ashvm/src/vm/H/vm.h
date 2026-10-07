@@ -1,7 +1,7 @@
 #ifndef ASH_VM_VM_H
 #define ASH_VM_VM_H
 #include <setjmp.h>
-#include "vm/chunk.h"
+#include "vm/H/chunk.h"
 
 void vm_run(Chunk *main_chunk);
 void vm_run_from(Chunk *chunk, int start_offset, int is_first_call);

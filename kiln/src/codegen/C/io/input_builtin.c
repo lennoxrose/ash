@@ -1,12 +1,12 @@
 #include <stdint.h>
-#include "codegen/input_builtin.h"
-#include "codegen/string_alloc.h"
-#include "codegen/bytes.h"
-#include "codegen/heap.h"
-#include "codegen/value.h"
-#include "codegen/platform_console.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/io/input_builtin.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/platform/platform_console.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // Reads one line from stdin (matching ashvm's fgets(buf,1024,stdin) +
 // trailing-newline-strip): a fixed 1024-byte cap, same as ashvm's own

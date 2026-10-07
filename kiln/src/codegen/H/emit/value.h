@@ -4,7 +4,7 @@
 // Milestone 5: an ash value is no longer always a bare double -- it can
 // also be a string. Every value is now a (tag, payload) pair, 16 bytes
 // total, moved around generically via GP registers (raw bit-copying
-// doesn't care what the bits mean -- see codegen/expr.c's header
+// doesn't care what the bits mean -- see codegen/C/expressions/expr.c's header
 // comment). XMM registers only ever hold the payload transiently, at the
 // point of actually doing floating-point arithmetic on a NUMBER-tagged
 // value.
@@ -13,8 +13,8 @@
 // non-PIE executable, so absolute addresses are stable and known at
 // compile time) pointing at a length-prefixed byte block: 8 bytes of
 // length, followed by that many raw bytes. String literals are embedded
-// directly in the code buffer (see codegen/strings.c); concatenation
-// results are heap-allocated (see codegen/heap.c) since their size is
+// directly in the code buffer (see codegen/C/strings/strings.c); concatenation
+// results are heap-allocated (see codegen/C/runtime/heap.c) since their size is
 // only known at runtime.
 #define TAG_NUMBER 0
 #define TAG_STRING 1
@@ -26,9 +26,9 @@
 // coincides with +0.0's bit pattern. That's what lets nil ride the
 // EXISTING truthy-test and numeric-comparison codegen (both just
 // ucomisd the payload against 0.0) without needing its own special case
-// anywhere except print (see codegen/print_int.c's dispatch) and the
+// anywhere except print (see codegen/C/runtime/print_int.c's dispatch) and the
 // tag-equality short-circuit in comparisons (already tag-aware since
-// M5's `==`/`!=`, see codegen/expr_bool.c -- nil==nil compares equal
+// M5's `==`/`!=`, see codegen/C/expressions/expr_bool.c -- nil==nil compares equal
 // tags then falls into the numeric path, 0.0==0.0; nil compared against
 // any other tag is caught by the tags-differ branch before ever
 // touching the payload). `true`/`false` are NOT a separate tag --
@@ -40,7 +40,7 @@
 #define TAG_NIL 5
 
 // An array's payload is the address of a small, fixed-size, STABLE
-// "array object" (see codegen/strings.h's comment on why absolute
+// "array object" (see codegen/H/strings/strings.h's comment on why absolute
 // addresses are safe: kiln is always a fixed, non-PIE executable):
 //   [0]  capacity (int64, how many elements the data block has room for)
 //   [8]  count (int64, how many are actually in use)
@@ -75,13 +75,13 @@
 // arrays/maps) heap block:
 //   [0]  absolute code address (already resolved to KILN_LOAD_BASE +
 //        KILN_CODE_START_OFFSET + code_offset at compile time -- kiln is
-//        a fixed non-PIE executable, see elf/elf_writer.h, so this is
+//        a fixed non-PIE executable, see elf/H/elf_writer.h, so this is
 //        known and stable)
 //   [8]  capture_count (int64)
 //   [16+16*i] capture i's tag   [16+16*i+8] capture i's payload
 // A plain named function used as a value (not immediately called) gets
 // capture_count=0 -- the same shape as any closure with zero captures, so
-// codegen/closures.c's indirect-call codegen never special-cases "0
+// codegen/C/functions/closures.c's indirect-call codegen never special-cases "0
 // captures", it just runs a 0-iteration loop.
 //
 // Scope limit (documented, not silently pretended away -- same spirit as

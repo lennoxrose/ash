@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
-#include "codegen/emit_internal.h"
+#include "codegen/H/emit/emit_internal.h"
 
 void code_init(CodeBuf *buf) {
     buf->code = NULL;

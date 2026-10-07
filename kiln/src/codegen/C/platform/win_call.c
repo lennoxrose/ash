@@ -1,7 +1,7 @@
-#include "codegen/win_call.h"
-#include "codegen/emit_internal.h"
-#include "codegen/layout.h"
-#include "parser/vars.h"
+#include "codegen/H/platform/win_call.h"
+#include "codegen/H/emit/emit_internal.h"
+#include "codegen/H/emit/layout.h"
+#include "parser/H/declarations/vars.h"
 
 // AND RSP, imm8 (sign-extended) -- opcode 0x83 /4. Nothing else in kiln
 // needs a register-immediate AND, so this stays local instead of joining
@@ -94,8 +94,8 @@ void win_call_end(CodeBuf *code) {
 // Windows API, needs the full shadow-space dance above), libkilnrt.dll's
 // exports are kiln's OWN code using kiln's OWN simple per-routine
 // register conventions (RAX/RBX/RDI/RDX depending on which routine, see
-// codegen/heap.c etc.) -- exactly like the Linux GOT call
-// (elf/elf_dynamic_call.c's emit_call_abs32), no register is safe to
+// codegen/C/runtime/heap.c etc.) -- exactly like the Linux GOT call
+// (elf/C/elf_dynamic_call.c's emit_call_abs32), no register is safe to
 // clobber loading the IAT address first. Can't reuse emit_call_abs32's
 // technique directly, though: kiln's PE image base (0x140000000) is
 // already past the 32-bit absolute-displacement addressing mode's

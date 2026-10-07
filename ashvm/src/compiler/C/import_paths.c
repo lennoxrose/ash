@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "compiler/import_paths.h"
+#include "compiler/H/import_paths.h"
 
 void import_path_dirname(const char *path, char *out, int out_size) {
     const char *slash = strrchr(path, '/');

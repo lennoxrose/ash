@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# kiln/tests/imports_collision_check.sh -- asserts BOTH resolved paths
+# kiln/tests/scripts/imports_collision_check.sh -- asserts BOTH resolved paths
 # appear in the error message, not just that a compile error fires (see
 # the design spec's "Testing plan" section -- with no `as` clause to
 # disambiguate, this message is the only diagnostic a user gets).
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
-OUT=$(../bin/kiln tests/fixtures/imports_collision_main.ash -o /tmp/imports_collision_main 2>&1)
+OUT=$(../bin/kiln tests/cases/imports/fixtures/imports_collision_main.ash -o /tmp/imports_collision_main 2>&1)
 STATUS=$?
 
 if [[ $STATUS -eq 0 ]]; then

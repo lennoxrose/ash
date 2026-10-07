@@ -1,11 +1,11 @@
 #include <string.h>
-#include "codegen/convert_builtins.h"
-#include "codegen/emit.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "codegen/bytes.h"
-#include "parser/parser.h"
+#include "codegen/H/builtins/convert_builtins.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/bytes.h"
+#include "parser/H/core/parser.h"
 
 static void load_double_const(XReg dst, double v) {
     uint64_t bits;

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include "diagnostics/diagnostics.h"
+#include "diagnostics/H/diagnostics.h"
 
 static const char *g_source = NULL;
 static const char *g_filename = "source";

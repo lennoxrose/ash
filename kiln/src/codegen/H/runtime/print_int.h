@@ -1,6 +1,6 @@
 #ifndef KILN_CODEGEN_PRINT_INT_H
 #define KILN_CODEGEN_PRINT_INT_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // Emitted once, at program start (see parser.c's compile_program) --
 // must run before any call to codegen_print_top below.

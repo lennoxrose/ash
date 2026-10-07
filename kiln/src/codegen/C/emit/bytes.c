@@ -1,11 +1,11 @@
-#include "codegen/bytes.h"
-#include "codegen/win_call.h"
-#include "elf/elf_dynamic_call.h"
-#include "target.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/platform/win_call.h"
+#include "elf/H/elf_dynamic_call.h"
+#include "app/H/target.h"
 
 // Plan B, phase B1: emitted once (jumped over), called via emit_call_back
 // from all 18 call sites instead of each re-emitting this loop inline --
-// same pattern as codegen/heap.c's alloc routine. Phase B3/B4: skipped
+// same pattern as codegen/C/runtime/heap.c's alloc routine. Phase B3/B4: skipped
 // entirely under --link=shared (this routine lives in libkilnrt.so/.dll
 // instead, emitted by the separate "compile the runtime" driver via
 // bytes_emit_copy_routine_only), and bytes_emit_copy becomes a call

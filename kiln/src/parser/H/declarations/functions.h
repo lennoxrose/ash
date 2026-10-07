@@ -7,7 +7,7 @@
 // ashvm's compiler has (see emit_call_back's comment) -- so by the time a
 // call site compiles, the callee's code_offset is always already known.
 //
-// Imports (see parser/imports.c) don't change this table's shape at all
+// Imports (see parser/C/imports/imports.c) don't change this table's shape at all
 // -- an imported function is declared under a namespaced string (e.g.
 // "math.add") in the exact same flat array. 64 (up from 32) gives real
 // programs room to import a handful of libraries without hitting the cap
@@ -31,9 +31,9 @@ KilnFunction *resolve_function(const char *name, int len);
 // doesn't fit in the 64-byte name field.
 KilnFunction *declare_function(const char *name, int len);
 
-// --- Import namespace context (parser/imports.c sets/restores this around
+// --- Import namespace context (parser/C/imports/imports.c sets/restores this around
 // each recursively-parsed imported file; parser_control.c's fn_statement
-// and codegen/expr.c + expr_call.c's call-site resolution consult it) ---
+// and codegen/C/expressions/expr.c + expr_call.c's call-site resolution consult it) ---
 
 // Sets the namespace prefix every subsequent declare_function_in_context/
 // resolve_function_in_context call should use. Pass len=0 (ns may be NULL)

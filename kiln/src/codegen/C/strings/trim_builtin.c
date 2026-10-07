@@ -1,9 +1,9 @@
-#include "codegen/string_builtins.h"
-#include "codegen/string_alloc.h"
-#include "codegen/bytes.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "parser/parser.h"
+#include "codegen/H/strings/string_builtins.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "parser/H/core/parser.h"
 
 // Advances RSI forward past leading whitespace, then RDI backward past
 // trailing whitespace (RDI starts as the exclusive end pointer), each via

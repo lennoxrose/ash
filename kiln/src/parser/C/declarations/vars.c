@@ -1,13 +1,13 @@
 #include <string.h>
-#include "parser/vars.h"
-#include "parser/parser.h"
+#include "parser/H/declarations/vars.h"
+#include "parser/H/core/parser.h"
 
 static char var_names[MAX_KILN_VARS][64];
 static int var_count = 0;
 static int scope_start = 0;
 
 // Scans newest-first (most-recently-declared wins), standard shadowing
-// semantics -- required for try/catch: parser/try_catch.c reserves each
+// semantics -- required for try/catch: parser/C/statements/try_catch.c reserves each
 // catch variable's slot with a synthetic placeholder name and renames it
 // to the real name only after the fact (the slot's rbp-offset has to be
 // known before the try body compiles, before the real name is even

@@ -1,6 +1,6 @@
 #ifndef KILN_ELF_DYNAMIC_CALL_H
 #define KILN_ELF_DYNAMIC_CALL_H
-#include "elf/elf_dynamic.h"
+#include "elf/H/elf_dynamic.h"
 
 // Calls `which` through its GOT slot (filled in by ld.so before this
 // program's own code ever runs) -- a single `call [addr]` touching no

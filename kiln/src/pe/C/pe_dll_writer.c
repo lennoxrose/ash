@@ -1,17 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "pe/pe_dll_writer.h"
-#include "codegen/heap.h"
-#include "codegen/bytes.h"
-#include "codegen/string_alloc.h"
-#include "codegen/print_int.h"
-#include "codegen/errors.h"
-#include "target.h"
+#include "pe/H/pe_dll_writer.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/runtime/print_int.h"
+#include "codegen/H/runtime/errors.h"
+#include "app/H/target.h"
 
 // Hand-written PE32+ DLL: IMAGE_FILE_DLL characteristic, an Export Data
 // Directory instead of an Import one -- the Windows-side twin of
-// elf/elf_so_writer.c. The Windows loader resolves imports-by-name via a
+// elf/C/elf_so_writer.c. The Windows loader resolves imports-by-name via a
 // BINARY SEARCH over the DLL's Name Pointer Table, which means (unlike
 // ELF's hash-table symbol lookup) that table must be in sorted order, or
 // GetProcAddress-style resolution silently fails to find some exports --
@@ -19,7 +19,7 @@
 
 static const char *const export_names[] = {
 #define RUNTIME_EXPORT(name, str) str,
-#include "codegen/runtime_exports.def"
+#include "codegen/H/emit/runtime_exports.def"
 #undef RUNTIME_EXPORT
 };
 

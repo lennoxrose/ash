@@ -3,13 +3,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
-#include "parser/imports.h"
-#include "parser/import_paths.h"
-#include "parser/parser.h"
-#include "parser/parser_internal.h"
-#include "parser/functions.h"
-#include "lexer/lexer.h"
-#include "diagnostics/diagnostics.h"
+#include "parser/H/imports/imports.h"
+#include "parser/H/imports/import_paths.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/core/parser_internal.h"
+#include "parser/H/declarations/functions.h"
+#include "lexer/H/lexer.h"
+#include "diagnostics/H/diagnostics.h"
 
 #define MAX_KILN_IMPORTS 16
 #define MAX_KILN_IMPORT_DEPTH 8

@@ -1,13 +1,13 @@
 #include <string.h>
-#include "codegen/errors.h"
-#include "codegen/emit_internal.h"
-#include "codegen/value.h"
-#include "codegen/layout.h"
-#include "codegen/runtime_layout.h"
-#include "codegen/platform_console.h"
-#include "codegen/win_call.h"
-#include "elf/elf_dynamic_call.h"
-#include "target.h"
+#include "codegen/H/runtime/errors.h"
+#include "codegen/H/emit/emit_internal.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/emit/layout.h"
+#include "codegen/H/emit/runtime_layout.h"
+#include "codegen/H/platform/platform_console.h"
+#include "codegen/H/platform/win_call.h"
+#include "elf/H/elf_dynamic_call.h"
+#include "app/H/target.h"
 
 static int raise_routine_offset = -1;
 
@@ -16,7 +16,7 @@ static int is_shared(void) {
 }
 
 // Embeds `msg` as a proper length-prefixed string (jumped over, never
-// executed as instructions) -- the SAME layout codegen/strings.c's
+// executed as instructions) -- the SAME layout codegen/C/strings/strings.c's
 // literals use ([payload-8]=length, no trailing newline in the data
 // itself), since milestone 9 makes a caught error a real, usable
 // TAG_STRING value (print/concat/equality all assume this layout). This
@@ -131,7 +131,7 @@ void errors_emit_die(CodeBuf *code, const char *msg) {
 // The ONE case that must never be "catchable" (exceeding
 // MAX_KILN_TRY_DEPTH itself -- silently continuing there would mean
 // pushing a handler past the fixed table, corrupting the adjacent code
-// segment). Only ever called from one site (parser/try_catch.c), so
+// segment). Only ever called from one site (parser/C/statements/try_catch.c), so
 // there's no deduplication payoff in routing it through the shared
 // runtime at all -- it just emits its own small inline write+exit
 // sequence directly, in every link mode, decoupled from wherever RAISE

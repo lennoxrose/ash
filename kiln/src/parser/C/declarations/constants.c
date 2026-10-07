@@ -1,10 +1,10 @@
 #include <string.h>
 #include <stdint.h>
-#include "parser/constants.h"
-#include "parser/parser.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "codegen/strings.h"
+#include "parser/H/declarations/constants.h"
+#include "parser/H/core/parser.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/strings/strings.h"
 
 static KilnConstant constants[MAX_KILN_CONSTS];
 static int constant_count = 0;

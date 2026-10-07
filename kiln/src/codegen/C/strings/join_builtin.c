@@ -1,11 +1,11 @@
-#include "codegen/string_builtins.h"
-#include "codegen/string_alloc.h"
-#include "codegen/expr.h"
-#include "codegen/bytes.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/strings/string_builtins.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // Two-pass: pass 1 sums each element's length (+ delim length between
 // consecutive elements) to get the exact output size; pass 2 allocates

@@ -1,12 +1,12 @@
-#include "codegen/arrays.h"
-#include "codegen/expr.h"
-#include "codegen/emit_internal.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "codegen/bytes.h"
-#include "codegen/errors.h"
-#include "parser/parser.h"
+#include "codegen/H/collections/arrays.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/emit_internal.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/runtime/errors.h"
+#include "parser/H/core/parser.h"
 
 void codegen_array_literal(void) {
     advance_token(); // consume '['

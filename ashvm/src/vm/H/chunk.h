@@ -1,7 +1,7 @@
 #ifndef ASH_VM_CHUNK_H
 #define ASH_VM_CHUNK_H
 #include <stdint.h>
-#include "value/value.h"
+#include "value/H/value.h"
 
 typedef enum {
     OP_CONST,

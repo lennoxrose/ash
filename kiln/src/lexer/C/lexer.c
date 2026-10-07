@@ -1,7 +1,7 @@
 #include <string.h>
 #include <ctype.h>
-#include "lexer/lexer.h"
-#include "lexer/lexer_import.h"
+#include "lexer/H/lexer.h"
+#include "lexer/H/lexer_import.h"
 
 // lex_* (not the bare start/current/line these had as file-static
 // before) -- shared with lexer_import.c now, and a plain `current` would
@@ -89,7 +89,7 @@ Token error_token(const char *message) {
 // lexer just has to not stop early and hand back a truncated token.
 // Underscore digit separators (1_000_000) are the one thing strtod
 // itself doesn't understand -- primary() strips those out of the token
-// text before calling strtod, see codegen/expr.c.
+// text before calling strtod, see codegen/C/expressions/expr.c.
 static Token number(void) {
     if (lex_start[0] == '0' && (peek() == 'x' || peek() == 'X')) {
         advance(); // consume 'x'/'X'

@@ -1,9 +1,9 @@
-#include "codegen/layout.h"
-#include "target.h"
-#include "elf/elf_writer.h"
-#include "elf/elf_dynamic.h"
-#include "pe/pe_writer.h"
-#include "pe/pe_dll_writer.h"
+#include "codegen/H/emit/layout.h"
+#include "app/H/target.h"
+#include "elf/H/elf_writer.h"
+#include "elf/H/elf_dynamic.h"
+#include "pe/H/pe_writer.h"
+#include "pe/H/pe_dll_writer.h"
 
 static int is_linux_shared(void) {
     return kiln_get_target() == KILN_TARGET_LINUX && kiln_get_link_mode() == KILN_LINK_SHARED;

@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
-#include "compiler/compiler.h"
-#include "vm/vm.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/compiler.h"
+#include "vm/H/vm.h"
+#include "diagnostics/H/diagnostics.h"
 
 static char *read_file(const char *path) {
     FILE *file = fopen(path, "rb");

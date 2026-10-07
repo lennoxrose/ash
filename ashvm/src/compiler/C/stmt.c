@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/internal.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/internal.h"
+#include "diagnostics/H/diagnostics.h"
 
 // statement() is shared between top-level parsing (compile()'s own loop,
 // and stmt_import.c's parse_imported_file_body()) and here, inside a

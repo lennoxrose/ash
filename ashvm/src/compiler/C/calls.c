@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/internal.h"
-#include "builtins/builtins.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/internal.h"
+#include "builtins/H/builtins.h"
+#include "diagnostics/H/diagnostics.h"
 
 void emit_call(Token id) {
     int builtin_id = vm_builtin_lookup(id.start, id.length);

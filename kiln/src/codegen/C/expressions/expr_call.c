@@ -1,11 +1,11 @@
 #include <stdio.h>
-#include "codegen/expr.h"
-#include "codegen/emit.h"
-#include "codegen/builtins.h"
-#include "codegen/closures.h"
-#include "parser/parser.h"
-#include "parser/functions.h"
-#include "parser/vars.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/builtins/builtins.h"
+#include "codegen/H/functions/closures.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/functions.h"
+#include "parser/H/declarations/vars.h"
 
 // Call codegen -- its own file since it's used from two places
 // (expr.c's primary(), for calls used as expressions, and parser.c's

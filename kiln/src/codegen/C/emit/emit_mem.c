@@ -1,5 +1,5 @@
 #include <string.h>
-#include "codegen/emit_internal.h"
+#include "codegen/H/emit/emit_internal.h"
 
 void emit_store_mem_disp32(CodeBuf *buf, Reg base, int32_t disp, Reg src) {
     emit_byte(buf, REX_W);

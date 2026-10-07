@@ -1,5 +1,5 @@
-#include "parser/loop_stack.h"
-#include "parser/parser.h"
+#include "parser/H/statements/loop_stack.h"
+#include "parser/H/core/parser.h"
 
 #define MAX_LOOP_NESTING 16
 #define MAX_LOOP_JUMPS 64

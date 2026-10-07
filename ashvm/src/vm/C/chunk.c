@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include "vm/chunk.h"
+#include "vm/H/chunk.h"
 
 void chunk_init(Chunk *c) {
     c->count = 0; c->capacity = 0; c->code = NULL;

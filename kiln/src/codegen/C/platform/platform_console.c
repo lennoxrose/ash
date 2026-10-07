@@ -1,8 +1,8 @@
-#include "codegen/platform_console.h"
-#include "codegen/win_call.h"
-#include "codegen/win_file_call.h"
-#include "parser/vars.h"
-#include "target.h"
+#include "codegen/H/platform/platform_console.h"
+#include "codegen/H/platform/win_call.h"
+#include "codegen/H/platform/win_file_call.h"
+#include "parser/H/declarations/vars.h"
+#include "app/H/target.h"
 
 #define STD_INPUT_HANDLE ((uint64_t)(int64_t)-10)
 #define STD_OUTPUT_HANDLE ((uint64_t)(int64_t)-11)

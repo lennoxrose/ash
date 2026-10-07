@@ -1,9 +1,9 @@
 #ifndef KILN_CODEGEN_EXPR_H
 #define KILN_CODEGEN_EXPR_H
-#include "lexer/lexer.h"
+#include "lexer/H/lexer.h"
 
 // Parses one expression and emits real x86-64 code for it via the
-// shared `code` buffer (see parser/parser.h) -- consumes tokens
+// shared `code` buffer (see parser/H/core/parser.h) -- consumes tokens
 // directly, no AST. Leaves the computed value's (tag, payload) pushed on
 // the (simulated, real CPU) stack.
 void codegen_expression(void);
@@ -21,7 +21,7 @@ void codegen_call(Token id);
 // than a contiguous span of the source text, so there's no single Token
 // to hand codegen_call. Already-fully-qualified name -- resolved via
 // resolve_function (not resolve_function_in_context), since the caller
-// (codegen/expr.c's primary()) has already done the namespace lookup by
+// (codegen/C/expressions/expr.c's primary()) has already done the namespace lookup by
 // building the combined name.
 void codegen_call_named(const char *name, int len);
 

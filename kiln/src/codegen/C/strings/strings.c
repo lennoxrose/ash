@@ -1,13 +1,13 @@
-#include "codegen/strings.h"
-#include "codegen/emit_internal.h"
-#include "codegen/emit_sse.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "codegen/bytes.h"
-#include "codegen/string_alloc.h"
-#include "codegen/errors.h"
-#include "codegen/layout.h"
-#include "parser/parser.h"
+#include "codegen/H/strings/strings.h"
+#include "codegen/H/emit/emit_internal.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/runtime/errors.h"
+#include "codegen/H/emit/layout.h"
+#include "parser/H/core/parser.h"
 
 static void push_number_literal(double v) {
     uint64_t bits;
@@ -60,7 +60,7 @@ void codegen_string_literal(void) {
 
 // Scratch layout (a stable base pointer copied from RSP into RSI, since
 // [rsp+disp] itself needs a SIB byte this project's encoders don't
-// support -- same technique codegen/print_int.c uses):
+// support -- same technique codegen/C/runtime/print_int.c uses):
 //   [0]=a_payload  [8]=b_payload  [16]=length_a  [24]=length_b  [32]=new_block
 void codegen_string_concat(void) {
     emit_sub_reg_imm8(code, REG_RSP, 40);

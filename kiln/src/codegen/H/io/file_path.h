@@ -1,6 +1,6 @@
 #ifndef KILN_FILE_PATH_H
 #define KILN_FILE_PATH_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // Kiln strings are length-prefixed, not null-terminated -- but the raw
 // `open` syscall (like libc's) requires a null-terminated path. Input:

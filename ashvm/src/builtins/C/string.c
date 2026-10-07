@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "builtins/internal.h"
-#include "vm/vm.h"
+#include "builtins/H/internal.h"
+#include "vm/H/vm.h"
 
 VMValue vm_call_builtin_string(int id, VMValue *args, int argc) {
     switch (id) {

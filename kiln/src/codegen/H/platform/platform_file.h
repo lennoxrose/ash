@@ -1,9 +1,9 @@
 #ifndef KILN_PLATFORM_FILE_H
 #define KILN_PLATFORM_FILE_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // Real file I/O, dispatching on kiln_get_target() internally so call
-// sites (codegen/read_file_builtin.c, codegen/write_file_builtins.c)
+// sites (codegen/C/io/read_file_builtin.c, codegen/C/io/write_file_builtins.c)
 // don't need their own target branch. The fd/HANDLE kiln gets back is
 // used the same way on both targets: a signed value, negative means
 // "open failed" (Linux's -1 and Windows' INVALID_HANDLE_VALUE, which is

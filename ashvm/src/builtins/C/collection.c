@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
-#include "builtins/internal.h"
-#include "vm/vm.h"
-#include "value/hashmap.h"
+#include "builtins/H/internal.h"
+#include "vm/H/vm.h"
+#include "value/H/hashmap.h"
 
 VMValue vm_call_builtin_collection(int id, VMValue *args, int argc) {
     switch (id) {

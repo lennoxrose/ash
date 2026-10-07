@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "compiler/internal.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/internal.h"
+#include "diagnostics/H/diagnostics.h"
 
 // Precedence climbing: expression -> logical_or -> logical_and ->
 // comparison -> additive -> term -> unary -> postfix -> primary.

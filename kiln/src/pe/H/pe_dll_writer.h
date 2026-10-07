@@ -1,7 +1,7 @@
 #ifndef KILN_PE_DLL_WRITER_H
 #define KILN_PE_DLL_WRITER_H
-#include "codegen/runtime_import_enum.h"
-#include "pe/pe_writer.h"
+#include "codegen/H/emit/runtime_import_enum.h"
+#include "pe/H/pe_writer.h"
 
 // libkilnrt.dll: same fixed-base, no-ASLR, no-relocations philosophy as
 // every other kiln output (a real DLL would normally get a .reloc
@@ -16,7 +16,7 @@
 // IMAGE_EXPORT_DIRECTORY (40 bytes) + 3 fixed-size arrays (sized only by
 // RUNTIME_IMPORT_COUNT_, never by name length) -- code starts right after,
 // so its address is a compile-time constant kiln_code_base() can use
-// (see codegen/layout.c); the variable-length name strings go in the
+// (see codegen/C/emit/layout.c); the variable-length name strings go in the
 // tail after code, same trick as pe_writer.h's hint/name table.
 #define KILN_PE_DLL_EXPORT_DIR_ADDR (KILN_PE_DLL_IMAGE_BASE + KILN_PE_DLL_SECTION_RVA)
 #define KILN_PE_DLL_EXPORT_DIR_SIZE 40u

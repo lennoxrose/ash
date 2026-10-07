@@ -1,12 +1,12 @@
 #include <stdint.h>
-#include "codegen/file_builtins.h"
-#include "codegen/file_path.h"
-#include "codegen/string_alloc.h"
-#include "codegen/errors.h"
-#include "codegen/value.h"
-#include "codegen/platform_file.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/io/file_builtins.h"
+#include "codegen/H/io/file_path.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/runtime/errors.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/platform/platform_file.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // A single read() call is assumed to fill the whole file in one go (matches
 // ashvm's own single fread call, not a retry loop) -- reasonable for

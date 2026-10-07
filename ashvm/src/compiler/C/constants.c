@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/constants.h"
-#include "compiler/internal.h"
-#include "diagnostics/diagnostics.h"
+#include "compiler/H/constants.h"
+#include "compiler/H/internal.h"
+#include "diagnostics/H/diagnostics.h"
 
 static VMConstant constants[MAX_VM_CONSTS];
 static int constant_count = 0;

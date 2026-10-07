@@ -1,8 +1,8 @@
 #ifndef KILN_ELF_DYNAMIC_H
 #define KILN_ELF_DYNAMIC_H
-#include "codegen/emit.h"
-#include "codegen/runtime_import_enum.h"
-#include "elf/elf_writer.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/runtime_import_enum.h"
+#include "elf/H/elf_writer.h"
 
 // Layout for a --link=shared kiln executable: real dynamic linking, the
 // kernel hands off to the system's actual /lib64/ld-linux-x86-64.so.2 (a

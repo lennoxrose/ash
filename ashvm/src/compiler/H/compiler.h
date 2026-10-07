@@ -1,6 +1,6 @@
 #ifndef ASH_VM_COMPILER_H
 #define ASH_VM_COMPILER_H
-#include "vm/chunk.h"
+#include "vm/H/chunk.h"
 
 #define MAX_VM_FUNCS 64
 #define MAX_VM_LOCALS 128

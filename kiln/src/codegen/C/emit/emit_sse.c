@@ -1,5 +1,5 @@
-#include "codegen/emit_sse.h"
-#include "codegen/emit_internal.h"
+#include "codegen/H/emit/emit_sse.h"
+#include "codegen/H/emit/emit_internal.h"
 
 // ModRM for two xmm operands (or GP<->xmm), register-direct -- same
 // mod=11 shape modrm_reg() builds, xmm register numbers 0-7 encode

@@ -1,6 +1,6 @@
 #ifndef KILN_STRING_ALLOC_H
 #define KILN_STRING_ALLOC_H
-#include "codegen/emit.h"
+#include "codegen/H/emit/emit.h"
 
 // Emitted once, at program start (see parser.c's compile_program) --
 // must run after heap_emit_startup (this calls heap_emit_alloc) and
@@ -15,8 +15,8 @@ int string_alloc_prefixed_routine_offset(void);
 // Allocates a heap block for a new TAG_STRING value's content: input
 // RDX=content length, output RAX=block address with the length prefix
 // already written at [RAX+0] (the payload is RAX+8, same layout
-// codegen/strings.c's literals use). Clobbers RSI, RDI (via
-// codegen/heap.c's heap_emit_alloc) -- RDX itself survives untouched.
+// codegen/C/strings/strings.c's literals use). Clobbers RSI, RDI (via
+// codegen/C/runtime/heap.c's heap_emit_alloc) -- RDX itself survives untouched.
 // Shared by every milestone-10 string builtin that produces a new string
 // (upper/lower/trim/substring/join/replace) so the "+8 for the length
 // prefix" arithmetic exists in exactly one place. Plan B, phase B1: a

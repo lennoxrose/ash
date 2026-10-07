@@ -1,13 +1,13 @@
 #include <stdint.h>
-#include "codegen/string_builtins.h"
-#include "codegen/string_alloc.h"
-#include "codegen/expr.h"
-#include "codegen/bytes.h"
-#include "codegen/emit.h"
-#include "codegen/value.h"
-#include "codegen/heap.h"
-#include "parser/parser.h"
-#include "parser/vars.h"
+#include "codegen/H/strings/string_builtins.h"
+#include "codegen/H/strings/string_alloc.h"
+#include "codegen/H/expressions/expr.h"
+#include "codegen/H/emit/bytes.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/emit/value.h"
+#include "codegen/H/runtime/heap.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/declarations/vars.h"
 
 // Scratch layout: [0]=s_ptr [8]=s_len [16]=delim_ptr [24]=delim_len
 //   [32]=cur [40]=count [48]=out_data_ptr [56]=out_index

@@ -3,7 +3,7 @@
 // between the .so writer (which needs to export these by name) and the
 // executable's codegen (which needs a GOT slot per import) -- same
 // "adding one means adding one line here, nowhere else" reasoning as
-// pe/pe_imports.def.
+// pe/H/pe_imports.def.
 //
 // RUNTIME_EXPORT(enum_suffix, "exported symbol name")
 RUNTIME_EXPORT(HEAP_ALLOC, "kiln_heap_alloc")

@@ -1,18 +1,18 @@
-#include "parser/parser.h"
-#include "parser/parser_internal.h"
-#include "parser/vars.h"
-#include "codegen/emit.h"
-#include "codegen/errors.h"
-#include "codegen/layout.h"
-#include "codegen/runtime_layout.h"
+#include "parser/H/core/parser.h"
+#include "parser/H/core/parser_internal.h"
+#include "parser/H/declarations/vars.h"
+#include "codegen/H/emit/emit.h"
+#include "codegen/H/runtime/errors.h"
+#include "codegen/H/emit/layout.h"
+#include "codegen/H/emit/runtime_layout.h"
 
 // try { A } catch (e) { B }
 //
 // A handler stack living in the fixed globals region (see
-// elf/elf_writer.h) holds, per active try, the (rsp, rbp) to restore and
+// elf/H/elf_writer.h) holds, per active try, the (rsp, rbp) to restore and
 // the (target address, error-variable rbp-offset) to resume at -- kiln's
 // own setjmp/longjmp equivalent, hand-rolled since this is a freestanding
-// binary with no libc to call into (see codegen/errors.c's raise routine
+// binary with no libc to call into (see codegen/C/runtime/errors.c's raise routine
 // for the runtime half of this).
 //
 // The catch variable's slot has to be reserved BEFORE compiling A: its
