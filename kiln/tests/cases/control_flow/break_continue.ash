@@ -1,47 +1,47 @@
-let i = 0;
-while (i < 10) {
+local i = 0;
+during (i < 10) {
     i = i + 1;
-    if (i == 5) { break; }
-    print i;
+    given (i == 5) { stop; }
+    say i;
 }
-print "---";
+say "---";
 
-let j = 0;
-while (j < 5) {
+local j = 0;
+during (j < 5) {
     j = j + 1;
-    if (j == 3) { continue; }
-    print j;
+    given (j == 3) { next; }
+    say j;
 }
-print "---";
+say "---";
 
-for (x in [1,2,3,4,5]) {
-    if (x == 3) { break; }
-    print x;
+each (x in [1,2,3,4,5]) {
+    given (x == 3) { stop; }
+    say x;
 }
-print "---";
+say "---";
 
-for (x in [1,2,3,4,5]) {
-    if (x == 3) { continue; }
-    print x;
+each (x in [1,2,3,4,5]) {
+    given (x == 3) { next; }
+    say x;
 }
-print "---";
+say "---";
 
-// nested loops: break only exits innermost
-for (i in [1,2]) {
-    for (j in [1,2,3]) {
-        if (j == 2) { break; }
-        print i * 10 + j;
+// nested loops: stop only exits innermost
+each (i in [1,2]) {
+    each (j in [1,2,3]) {
+        given (j == 2) { stop; }
+        say i * 10 + j;
     }
 }
-print "---";
+say "---";
 
-// break/continue inside function's own loop, not affecting caller
-fn find_first_even(arr) {
-    for (x in arr) {
-        if (x - floor(x/2)*2 == 0) {
-            return x;
+// stop/next inside function's own loop, not affecting caller
+forge find_first_even(arr) {
+    each (x in arr) {
+        given (x - floor(x/2)*2 == 0) {
+            yield x;
         }
     }
-    return -1;
+    yield -1;
 }
-print find_first_even([1, 3, 5, 4, 7]);
+say find_first_even([1, 3, 5, 4, 7]);

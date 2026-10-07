@@ -3,16 +3,17 @@
 #include "parser/H/core/parser_internal.h"
 #include "parser/H/declarations/vars.h"
 #include "parser/H/declarations/functions.h"
-#include "parser/H/statements/for_loop.h"
+#include "parser/H/statements/each_loop.h"
 #include "parser/H/statements/loop_stack.h"
 #include "codegen/H/expressions/expr.h"
 #include "codegen/H/emit/emit_sse.h"
 #include "codegen/H/emit/value.h"
 
-// Truthiness test for if/while conditions: pop the value (tag discarded,
-// assumed NUMBER -- matches ashvm's own truthy(), which requires a
-// number too) and compare its payload against 0.0 via ucomisd (not GP
-// cmp -- see emit_sse.h). COND_E afterward means "was zero, i.e. falsy".
+// Truthiness test for given/during conditions: pop the value (tag
+// discarded, assumed NUMBER -- matches ashvm's own truthy(), which
+// requires a number too) and compare its payload against 0.0 via ucomisd
+// (not GP cmp -- see emit_sse.h). COND_E afterward means "was zero, i.e.
+// falsy".
 static void pop_and_test_truthy(void) {
     emit_pop_reg(code, REG_RAX); // payload
     emit_pop_reg(code, REG_RBX); // tag (assumed NUMBER)
@@ -21,49 +22,59 @@ static void pop_and_test_truthy(void) {
     emit_ucomisd(code, XMM0, XMM1);
 }
 
+// Conditions may be parenthesized or not (`given (x < n) {` and
+// `given x < n {` both work) -- unlike ashvm, there's no superinstruction
+// fusion here to keep firing either way, so this is just a plain optional
+// token, no caller-side terminator-passing needed.
+static int consume_optional_lparen(void) {
+    if (current.type != TOKEN_LPAREN) return 0;
+    advance_token();
+    return 1;
+}
+
 // The statement kinds involved enough to warrant their own file (mirrors
 // ashvm/src/compiler/stmt_control.c's split from stmt.c for the same
 // reason). Each function assumes statement()'s dispatch in parser.c
 // already consumed the keyword token that identified it.
 
-void if_statement(void) {
+void given_statement(void) {
     advance_token();
-    expect(TOKEN_LPAREN, "expected '(' after 'if'");
+    int parenthesized = consume_optional_lparen();
     codegen_expression();
-    expect(TOKEN_RPAREN, "expected ')' after condition");
+    if (parenthesized) expect(TOKEN_RPAREN, "expected ')' after condition");
     pop_and_test_truthy();
-    int else_jump = emit_jcc_rel32(code, COND_E);
+    int otherwise_jump = emit_jcc_rel32(code, COND_E);
 
     block();
-    if (current.type == TOKEN_ELSE) {
+    if (current.type == TOKEN_OTHERWISE) {
         int end_jump = emit_jmp_rel32(code);
-        emit_patch_jump(code, else_jump);
+        emit_patch_jump(code, otherwise_jump);
         advance_token();
         block();
         emit_patch_jump(code, end_jump);
     } else {
-        emit_patch_jump(code, else_jump);
+        emit_patch_jump(code, otherwise_jump);
     }
 }
 
-void while_statement(void) {
+void during_statement(void) {
     advance_token();
-    expect(TOKEN_LPAREN, "expected '(' after 'while'");
     int loop_start = code->count;
+    int parenthesized = consume_optional_lparen();
     codegen_expression();
-    expect(TOKEN_RPAREN, "expected ')' after condition");
+    if (parenthesized) expect(TOKEN_RPAREN, "expected ')' after condition");
     pop_and_test_truthy();
     int exit_jump = emit_jcc_rel32(code, COND_E);
 
     loop_push();
     block();
-    loop_patch_continues(); // continue lands here, right before the loop-back
+    loop_patch_nexts(); // next lands here, right before the loop-back
     emit_jmp_back(code, loop_start);
     emit_patch_jump(code, exit_jump);
-    loop_pop_and_patch_breaks(); // break lands here, after the loop
+    loop_pop_and_patch_stops(); // stop lands here, after the loop
 }
 
-// fn NAME ( [IDENT (, IDENT)*] ) block
+// forge NAME ( [IDENT (, IDENT)*] ) block
 //
 // Function bodies are compiled inline into the SAME flat CodeBuf as
 // top-level code (unlike ashvm, which gives each function its own Chunk)
@@ -83,15 +94,15 @@ void while_statement(void) {
 // establishes a fresh frame; the FIRST thing the body does is copy each
 // argument's tag AND payload off the caller's pushed stack values into
 // its own local slot, so afterward every variable access -- parameter or
-// `let` -- goes through the exact same var_slot_*_offset() formulas.
+// `local` -- goes through the exact same var_slot_*_offset() formulas.
 // Because the last argument is the last one pushed (closest to the
 // return address), and the first argument is deepest, parameter i's tag
 // sits at [rbp + 16 + 16*(argc-1-i)] and its payload right after that
 // (+16 skips the saved rbp and return address). Return value comes back
-// as RBX=tag, RAX=payload (see parser.c's return_statement).
-void fn_statement(void) {
+// as RBX=tag, RAX=payload (see parser.c's yield_statement).
+void forge_statement(void) {
     advance_token();
-    expect(TOKEN_IDENTIFIER, "expected function name after 'fn'");
+    expect(TOKEN_IDENTIFIER, "expected function name after 'forge'");
     const char *name = previous.start;
     int name_len = previous.length;
     KilnFunction *fn = declare_function_in_context(name, name_len);
@@ -120,9 +131,9 @@ void fn_statement(void) {
     VarScope outer_vars;
     vars_save(&outer_vars);
     vars_clear();
-    int outer_for_depth;
-    for_depth_save(&outer_for_depth);
-    for_depth_reset();
+    int outer_each_depth;
+    each_depth_save(&outer_each_depth);
+    each_depth_reset();
     int outer_loop_depth;
     loop_depth_save(&outer_loop_depth);
     loop_depth_reset();
@@ -150,9 +161,9 @@ void fn_statement(void) {
 
     block();
 
-    // Implicit `return 0;` if the body falls through without one --
+    // Implicit `yield 0;` if the body falls through without one --
     // dead code on any path that already returned explicitly, harmless
-    // (matches ashvm's compile_fn_decl, which does the same
+    // (matches ashvm's compile_forge_decl, which does the same
     // unconditionally after compiling the body).
     emit_mov_reg_imm64(code, REG_RAX, 0); // 0.0's bits are all zero
     emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
@@ -161,7 +172,7 @@ void fn_statement(void) {
     emit_ret(code);
 
     vars_restore(&outer_vars);
-    for_depth_restore(outer_for_depth);
+    each_depth_restore(outer_each_depth);
     loop_depth_restore(outer_loop_depth);
     emit_patch_jump(code, skip_jump);
 }

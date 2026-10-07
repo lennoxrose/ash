@@ -1,22 +1,22 @@
-try {
-    throw "custom error!";
-} catch (e) {
-    print "caught: " + e;
+attempt {
+    raise "custom error!";
+} handle (e) {
+    say "caught: " + e;
 }
-print "after";
+say "after";
 
-fn validate(x) {
-    if (x < 0) {
-        throw "negative value: " + str(x);
+forge validate(x) {
+    given (x < 0) {
+        raise "negative value: " + str(x);
     }
-    return x;
+    yield x;
 }
 
-try {
-    print validate(5);
-    print validate(-3);
-    print "unreachable";
-} catch (e) {
-    print "caught: " + e;
+attempt {
+    say validate(5);
+    say validate(-3);
+    say "unreachable";
+} handle (e) {
+    say "caught: " + e;
 }
-print "done";
+say "done";

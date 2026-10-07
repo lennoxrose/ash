@@ -1,13 +1,13 @@
-let m = {};
-let i = 0;
-while (i < 50000) {
+local m = {};
+local i = 0;
+during (i < 50000) {
     m[str(i)] = i * 2;
-    let i = i + 1;
+    local i = i + 1;
 }
-let j = 0;
-let total = 0;
-while (j < 50000) {
-    let total = total + m[str(j)];
-    let j = j + 1;
+local j = 0;
+local total = 0;
+during (j < 50000) {
+    local total = total + m[str(j)];
+    local j = j + 1;
 }
-print total;
+say total;

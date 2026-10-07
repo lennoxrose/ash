@@ -140,23 +140,29 @@ static Token identifier(void) {
     while (isalnum(peek()) || peek() == '_') advance();
 
     int length = (int)(lex_current - lex_start);
-    if (length == 5 && strncmp(lex_start, "print", 5) == 0) return make_token(TOKEN_PRINT);
-    if (length == 3 && strncmp(lex_start, "let", 3) == 0) return make_token(TOKEN_LET);
-    if (length == 2 && strncmp(lex_start, "if", 2) == 0) return make_token(TOKEN_IF);
-    if (length == 4 && strncmp(lex_start, "else", 4) == 0) return make_token(TOKEN_ELSE);
-    if (length == 5 && strncmp(lex_start, "while", 5) == 0) return make_token(TOKEN_WHILE);
-    if (length == 3 && strncmp(lex_start, "for", 3) == 0) return make_token(TOKEN_FOR);
+    if (length == 3 && strncmp(lex_start, "say", 3) == 0) return make_token(TOKEN_SAY);
+    if (length == 5 && strncmp(lex_start, "local", 5) == 0) return make_token(TOKEN_LOCAL);
+    if (length == 5 && strncmp(lex_start, "given", 5) == 0) return make_token(TOKEN_GIVEN);
+    if (length == 9 && strncmp(lex_start, "otherwise", 9) == 0) return make_token(TOKEN_OTHERWISE);
+    if (length == 6 && strncmp(lex_start, "during", 6) == 0) return make_token(TOKEN_DURING);
+    if (length == 4 && strncmp(lex_start, "each", 4) == 0) return make_token(TOKEN_EACH);
     if (length == 2 && strncmp(lex_start, "in", 2) == 0) return make_token(TOKEN_IN);
-    if (length == 2 && strncmp(lex_start, "fn", 2) == 0) return make_token(TOKEN_FN);
-    if (length == 6 && strncmp(lex_start, "return", 6) == 0) return make_token(TOKEN_RETURN);
-    if (length == 3 && strncmp(lex_start, "try", 3) == 0) return make_token(TOKEN_TRY);
-    if (length == 5 && strncmp(lex_start, "catch", 5) == 0) return make_token(TOKEN_CATCH);
-    if (length == 5 && strncmp(lex_start, "throw", 5) == 0) return make_token(TOKEN_THROW);
-    if (length == 5 && strncmp(lex_start, "break", 5) == 0) return make_token(TOKEN_BREAK);
-    if (length == 8 && strncmp(lex_start, "continue", 8) == 0) return make_token(TOKEN_CONTINUE);
-    if (length == 4 && strncmp(lex_start, "true", 4) == 0) return make_token(TOKEN_TRUE);
-    if (length == 5 && strncmp(lex_start, "false", 5) == 0) return make_token(TOKEN_FALSE);
-    if (length == 3 && strncmp(lex_start, "nil", 3) == 0) return make_token(TOKEN_NIL);
+    if (length == 5 && strncmp(lex_start, "forge", 5) == 0) return make_token(TOKEN_FORGE);
+    if (length == 5 && strncmp(lex_start, "yield", 5) == 0) return make_token(TOKEN_YIELD);
+    if (length == 7 && strncmp(lex_start, "attempt", 7) == 0) return make_token(TOKEN_ATTEMPT);
+    if (length == 6 && strncmp(lex_start, "handle", 6) == 0) return make_token(TOKEN_HANDLE);
+    if (length == 5 && strncmp(lex_start, "raise", 5) == 0) return make_token(TOKEN_RAISE);
+    if (length == 4 && strncmp(lex_start, "stop", 4) == 0) return make_token(TOKEN_STOP);
+    if (length == 4 && strncmp(lex_start, "next", 4) == 0) return make_token(TOKEN_NEXT);
+    if (length == 3 && strncmp(lex_start, "yes", 3) == 0) return make_token(TOKEN_YES);
+    if (length == 2 && strncmp(lex_start, "no", 2) == 0) return make_token(TOKEN_NO);
+    if (length == 4 && strncmp(lex_start, "none", 4) == 0) return make_token(TOKEN_NONE);
+    if (length == 3 && strncmp(lex_start, "and", 3) == 0) return make_token(TOKEN_AND);
+    if (length == 2 && strncmp(lex_start, "or", 2) == 0) return make_token(TOKEN_OR);
+    // "not" reuses TOKEN_BANG (unary logical negation) -- same meaning as
+    // the symbol it replaces, so unary()'s existing TOKEN_BANG handling in
+    // codegen/C/expressions/expr.c needs no change at all.
+    if (length == 3 && strncmp(lex_start, "not", 3) == 0) return make_token(TOKEN_BANG);
 
     return make_token(TOKEN_IDENTIFIER);
 }
@@ -196,19 +202,26 @@ Token lexer_next_token(void) {
         case '[': return make_token(TOKEN_LBRACKET);
         case ']': return make_token(TOKEN_RBRACKET);
         case '=': return make_token(match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
-        case '!': return make_token(match('=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
+        // Bare '!' is no longer valid on its own -- logical negation is the
+        // 'not' keyword now (see identifier()). '!=' (inequality) stays
+        // symbolic either way.
+        case '!':
+            if (match('=')) return make_token(TOKEN_BANG_EQUAL);
+            return error_token("unexpected character");
         case '<':
             if (match('<')) return make_token(TOKEN_SHL);
             return make_token(match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
         case '>':
             if (match('>')) return make_token(TOKEN_SHR);
             return make_token(match('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
-        case '&':
-            if (match('&')) return make_token(TOKEN_AND);
-            return make_token(TOKEN_AMP);
-        case '|':
-            if (match('|')) return make_token(TOKEN_OR);
-            return make_token(TOKEN_PIPE);
+        // '&'/'|' are always the bitwise operators now -- 'and'/'or' are
+        // the only way to write the logical versions (see identifier()).
+        // This also means a literal '&&'/'||' in old-syntax source now
+        // lexes as two separate AMP/PIPE tokens rather than one fused one,
+        // consistent with the rest of today's renames replacing their old
+        // symbol outright rather than keeping it as an alias.
+        case '&': return make_token(TOKEN_AMP);
+        case '|': return make_token(TOKEN_PIPE);
         case '^': return make_token(TOKEN_CARET);
         case '~': return make_token(TOKEN_TILDE);
         case '@':

@@ -1,6 +1,6 @@
-let args = argv();
-print len(args);
-print args[0];
-for (a in args) {
-    print a;
+local args = argv();
+say len(args);
+say args[0];
+each (a in args) {
+    say a;
 }

@@ -32,7 +32,7 @@ KilnFunction *resolve_function(const char *name, int len);
 KilnFunction *declare_function(const char *name, int len);
 
 // --- Import namespace context (parser/C/imports/imports.c sets/restores this around
-// each recursively-parsed imported file; parser_control.c's fn_statement
+// each recursively-parsed imported file; parser_control.c's forge_statement
 // and codegen/C/expressions/expr.c + expr_call.c's call-site resolution consult it) ---
 
 // Sets the namespace prefix every subsequent declare_function_in_context/
@@ -45,7 +45,7 @@ void set_import_namespace(const char *ns, int len);
 void get_import_namespace(const char **out_ns, int *out_len);
 
 // Declares NAME under "ns.NAME" if a namespace is currently set, else
-// under the bare NAME -- the single call site fn_statement() uses,
+// under the bare NAME -- the single call site forge_statement() uses,
 // replacing a direct declare_function() call.
 KilnFunction *declare_function_in_context(const char *name, int len);
 

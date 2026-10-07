@@ -1,49 +1,49 @@
-// basic catch of an out-of-bounds array error, execution continues after
-let a = [1, 2, 3];
-try {
-    print a[10];
-} catch (e) {
-    print "caught 1";
+// basic handle of an out-of-bounds array error, execution continues after
+local a = [1, 2, 3];
+attempt {
+    say a[10];
+} handle (e) {
+    say "caught 1";
 }
-print "after 1";
+say "after 1";
 
-// catch of a missing-map-key error
-let m = {"x": 1};
-try {
-    print m["missing"];
-} catch (e) {
-    print "caught 2";
+// handle of a missing-map-key error
+local m = {"x": 1};
+attempt {
+    say m["missing"];
+} handle (e) {
+    say "caught 2";
 }
-print "after 2";
+say "after 2";
 
-// no error raised -- the try body's own value still prints, catch is skipped
-try {
-    print 42;
-} catch (e) {
-    print "should not print";
+// no error raised -- the attempt body's own value still prints, handle is skipped
+attempt {
+    say 42;
+} handle (e) {
+    say "should not print";
 }
 
-// nested try/catch: inner catches its own error, outer never sees it
-try {
-    try {
-        print a[99];
-    } catch (e) {
-        print "inner caught";
+// nested attempt/handle: inner catches its own error, outer never sees it
+attempt {
+    attempt {
+        say a[99];
+    } handle (e) {
+        say "inner caught";
     }
-    print "after inner";
-} catch (e) {
-    print "outer should not run";
+    say "after inner";
+} handle (e) {
+    say "outer should not run";
 }
 
-// error raised inside a function called from within a try -- unwinds
+// error raised inside a function called from within a attempt -- unwinds
 // through the call
-fn boom() {
-    let z = [1];
-    return z[5];
+forge boom() {
+    local z = [1];
+    yield z[5];
 }
-try {
+attempt {
     boom();
-} catch (e) {
-    print "caught from function";
+} handle (e) {
+    say "caught from function";
 }
-print "done";
+say "done";

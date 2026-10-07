@@ -2,7 +2,7 @@
 #define ASH_VM_VALUE_H
 #include <stdint.h>
 
-typedef enum { VM_NUM, VM_STR, VM_ARRAY, VM_MAP, VM_FUNCTION, VM_CLOSURE } VMType;
+typedef enum { VM_NUM, VM_STR, VM_ARRAY, VM_MAP, VM_FUNCTION, VM_CLOSURE, VM_NIL } VMType;
 
 typedef struct VMArray {
     struct VMValue *items;
@@ -28,6 +28,7 @@ typedef struct VMValue {
 } VMValue;
 
 VMValue vm_num(double n);
+VMValue vm_nil(void);
 VMValue vm_str(char *s);
 VMValue vm_array_val(VMArray *a);
 VMValue vm_map_val(VMMap *m);

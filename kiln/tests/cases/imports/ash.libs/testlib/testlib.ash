@@ -1,5 +1,5 @@
-let VERSION = "1.0";
+local VERSION = "1.0";
 
-fn square(x) {
-    return x * x;
+forge square(x) {
+    yield x * x;
 }

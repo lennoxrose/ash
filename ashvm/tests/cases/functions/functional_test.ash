@@ -1,20 +1,20 @@
-fn double(x) { return x * 2; }
-fn is_even(x) { return x % 2 == 0; }
+forge double(x) { yield x * 2; }
+forge is_even(x) { yield x % 2 == 0; }
 
-let nums = [1, 2, 3, 4, 5, 6];
+local nums = [1, 2, 3, 4, 5, 6];
 
-let doubled = map(nums, double);
-print doubled;
+local doubled = map(nums, double);
+say doubled;
 
-let evens = filter(nums, is_even);
-print evens;
+local evens = filter(nums, is_even);
+say evens;
 
-let total = reduce(nums, fn(acc, x) { return acc + x; }, 0);
-print total;
+local total = reduce(nums, forge(acc, x) { yield acc + x; }, 0);
+say total;
 
-let squareLambda = fn(x) { return x * x; };
-let squares = map(nums, squareLambda);
-print squares;
+local squareLambda = forge(x) { yield x * x; };
+local squares = map(nums, squareLambda);
+say squares;
 
-let f = double;
-print f(21);
+local f = double;
+say f(21);

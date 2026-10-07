@@ -26,7 +26,7 @@ KilnConstant *declare_number_constant(const char *name, int len, double value);
 
 // Same, for a string constant. str_bytes/str_len are the RAW (unescaped)
 // source token bytes -- constants.c does not own or copy this pointer
-// beyond storing it; the caller (parser.c's let_statement) must pass
+// beyond storing it; the caller (parser.c's local_statement) must pass
 // bytes from a buffer that outlives the whole compile (the imported
 // file's source buffer, which imports.c already never frees -- see
 // imports.c's read_import_file comment).

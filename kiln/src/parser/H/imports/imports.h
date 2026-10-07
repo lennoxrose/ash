@@ -9,7 +9,7 @@ void imports_init(const char *entry_file_path);
 
 // Parses one `@import <path>;` statement. Assumes statement()'s
 // dispatcher has NOT yet consumed the TOKEN_IMPORT (this function does
-// that itself, matching let_statement()'s own convention).
+// that itself, matching local_statement()'s own convention).
 void import_statement(void);
 
 // Called by statement() on every non-import statement dispatch. No-op

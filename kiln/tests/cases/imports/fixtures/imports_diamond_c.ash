@@ -1,5 +1,5 @@
 @import <./imports_diamond_d.ash>;
 
-fn fromC() {
-    return imports_diamond_d.base() + 2;
+forge fromC() {
+    yield imports_diamond_d.base() + 2;
 }

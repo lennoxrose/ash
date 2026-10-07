@@ -1,28 +1,28 @@
-let a = [1, 2, 3];
-print a[0];
-print a[1];
-print a[2];
-print len(a);
+local a = [1, 2, 3];
+say a[0];
+say a[1];
+say a[2];
+say len(a);
 
 a[0] = 99;
-print a[0];
+say a[0];
 
-let b = ["x", "y", "z"];
-print b[1];
+local b = ["x", "y", "z"];
+say b[1];
 
-let c = [1];
+local c = [1];
 push(c, 2);
 push(c, 3);
-print len(c);
-print c[0];
-print c[1];
-print c[2];
+say len(c);
+say c[0];
+say c[1];
+say c[2];
 
-let d = [];
-let i = 0;
-while (i < 10) {
+local d = [];
+local i = 0;
+during (i < 10) {
     push(d, i);
     i = i + 1;
 }
-print len(d);
-print d[9];
+say len(d);
+say d[9];

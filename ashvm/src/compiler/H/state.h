@@ -36,8 +36,8 @@ void get_import_namespace(const char **out_ns, int *out_len);
 
 // Declares a NEW vm_functions[] entry under "ns.NAME" if a namespace is
 // currently set, else under the bare NAME. Returns the new entry's index
-// (mirrors compile_fn_decl's own prior inline logic, now centralized so
-// imports.c-equivalent code and compile_fn_decl share it). Exits via
+// (mirrors compile_forge_decl's own prior inline logic, now centralized so
+// imports.c-equivalent code and compile_forge_decl share it). Exits via
 // diagnostics_report + exit(1) on table-full or name-too-long, matching
 // every other error path in this file.
 int declare_function_in_context(const char *name, int len);

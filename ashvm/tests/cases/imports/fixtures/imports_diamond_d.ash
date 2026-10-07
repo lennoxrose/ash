@@ -1,3 +1,3 @@
-fn base() {
-    return 100;
+forge base() {
+    yield 100;
 }

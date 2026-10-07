@@ -1,7 +1,7 @@
-fn helper(x) {
-    return x * 2;
+forge helper(x) {
+    yield x * 2;
 }
 
-fn add(a, b) {
-    return a + b + helper(1);
+forge add(a, b) {
+    yield a + b + helper(1);
 }

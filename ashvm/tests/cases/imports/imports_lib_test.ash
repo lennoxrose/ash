@@ -1,4 +1,4 @@
 @import <testlib>;
 
-print testlib.VERSION;
-print testlib.square(6);
+say testlib.VERSION;
+say testlib.square(6);

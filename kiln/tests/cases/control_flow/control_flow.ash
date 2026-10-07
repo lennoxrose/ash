@@ -1,20 +1,20 @@
-let x = 5;
+local x = 5;
 x = x + 1;
-print x;
+say x;
 
-if (x > 5) {
-    print 1;
-} else {
-    print 0;
+given (x > 5) {
+    say 1;
+} otherwise {
+    say 0;
 }
 
-let i = 0;
-while (i < 3) {
-    print i;
+local i = 0;
+during (i < 3) {
+    say i;
     i = i + 1;
 }
 
-print 1 == 1;
-print 1 != 1;
-print (1 < 2) && (3 > 2);
-print (1 > 2) || (3 < 2);
+say 1 == 1;
+say 1 != 1;
+say (1 < 2) and (3 > 2);
+say (1 > 2) or (3 < 2);

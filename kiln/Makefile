@@ -14,13 +14,14 @@ KILN_SRC = \
     src/parser/C/declarations/vars.c \
     src/parser/C/imports/import_paths.c \
     src/parser/C/imports/imports.c \
-    src/parser/C/statements/for_loop.c \
+    src/parser/C/statements/each_loop.c \
     src/parser/C/statements/loop_stack.c \
     src/parser/C/statements/parser_control.c \
-    src/parser/C/statements/try_catch.c \
+    src/parser/C/statements/attempt_handle.c \
     src/codegen/C/builtins/builtins.c \
     src/codegen/C/builtins/filter_builtin.c \
     src/codegen/C/builtins/map_builtin.c \
+    src/codegen/C/builtins/type_builtin.c \
     src/codegen/C/builtins/math_builtins.c \
     src/codegen/C/builtins/num_builtin.c \
     src/codegen/C/builtins/reduce_builtin.c \
@@ -132,4 +133,6 @@ $(KILNRT_DLL): $(BIN)
 
 runtime-dll: $(KILNRT_DLL)
 
-.PHONY: all clean install-runtime runtime-dll
+.PHONY: all clean rebuild install-runtime runtime-dll
+
+rebuild: clean all

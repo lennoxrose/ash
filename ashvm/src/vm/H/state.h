@@ -35,6 +35,14 @@ extern TryHandler try_handlers[MAX_TRY_DEPTH];
 extern int try_depth;
 extern char error_message[512];
 
+// Set by vm_raise_value() right before it longjmps, consumed (and cleared)
+// by do_TRY_PUSH's recovery branch in dispatch.c -- lets a caught `raise`
+// hand back the exact VMValue the program raised instead of being forced
+// through the fixed-size error_message C-string buffer every other runtime
+// error uses.
+extern VMValue raised_value;
+extern int has_raised_value;
+
 extern jmp_buf *repl_recovery_jmp;
 extern int repl_saved_frame_count;
 extern VMValue *repl_saved_stack_top;

@@ -1,21 +1,21 @@
-let m = {"a": 1, "b": 2};
-print m["a"];
-print m["b"];
+local m = {"a": 1, "b": 2};
+say m["a"];
+say m["b"];
 
 m["c"] = 3;
-print m["c"];
+say m["c"];
 
 m["a"] = 99;
-print m["a"];
+say m["a"];
 
-print has(m, "b");
-print has(m, "z");
+say has(m, "b");
+say has(m, "z");
 
 delete(m, "b");
-print has(m, "b");
-print m["c"];
+say has(m, "b");
+say m["c"];
 
-let g = {};
+local g = {};
 g["a"] = 1;
 g["b"] = 2;
 g["c"] = 3;
@@ -26,6 +26,6 @@ g["g"] = 7;
 g["h"] = 8;
 g["i"] = 9;
 g["j"] = 10;
-print g["a"];
-print g["e"];
-print g["j"];
+say g["a"];
+say g["e"];
+say g["j"];

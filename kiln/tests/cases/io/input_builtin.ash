@@ -1,4 +1,4 @@
-let name = input();
-print "hello, " + name + "!";
-let x = num(input());
-print x + 1;
+local name = input();
+say "hello, " + name + "!";
+local x = num(input());
+say x + 1;

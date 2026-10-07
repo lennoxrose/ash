@@ -2,6 +2,10 @@
 *.o
 /bin/
 
+# forgepack-installed dependencies (see ideas/ash_modules.md) -- fetched,
+# never hand-edited, same spirit as node_modules/
+@ash-modules/
+
 # Compiled benchmark binaries (keep the .cpp sources, ignore the built outputs)
 ashvm/benchmarks/fib_cpp
 ashvm/benchmarks/loop_cpp
@@ -25,3 +29,4 @@ skills-lock.json
 goals.md
 rundown.md
 missing.md
+test.ash

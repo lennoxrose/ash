@@ -62,7 +62,7 @@ static int has_prefix(const char *message, const char *prefix) {
 }
 
 static const char *lookup_hint(const char *message) {
-    if (has_prefix(message, "undefined variable")) return "did you forget to declare it with `let`?";
+    if (has_prefix(message, "undefined variable")) return "did you forget to declare it with `local`?";
     if (has_prefix(message, "undefined function")) return "check the function name is spelled correctly";
     if (has_prefix(message, "index out of bounds")) return "check the array's length before indexing";
     if (has_prefix(message, "key not found")) return "use `has(map, key)` to check before accessing";

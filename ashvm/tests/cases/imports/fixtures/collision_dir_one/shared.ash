@@ -1,3 +1,3 @@
-fn fromOne() {
-    return 1;
+forge fromOne() {
+    yield 1;
 }

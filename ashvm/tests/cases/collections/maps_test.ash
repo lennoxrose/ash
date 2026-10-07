@@ -1,22 +1,22 @@
-let person = {"name": "Lennox", "age": 20};
-print person;
-print person["name"];
-print person["age"];
+local person = {"name": "Lennox", "age": 20};
+say person;
+say person["name"];
+say person["age"];
 
 person["age"] = 21;
-print person["age"];
+say person["age"];
 
 person["city"] = "Luebeck";
-print person;
+say person;
 
-print keys(person);
-print values(person);
-print has(person, "name");
-print has(person, "zip");
+say keys(person);
+say values(person);
+say has(person, "name");
+say has(person, "zip");
 
 delete(person, "city");
-print person;
+say person;
 
-let empty = {};
-print empty;
-print len(person);
+local empty = {};
+say empty;
+say len(person);

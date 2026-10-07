@@ -1,9 +1,9 @@
-print "line one\nline two";
-print "tab\there";
-print "quote: \"hello\"";
-print "backslash: \\";
+say "line one\nline two";
+say "tab\there";
+say "quote: \"hello\"";
+say "backslash: \\";
 write_file("/tmp/ash_escape_test.txt", "Hello from Ash!\n");
-let content = read_file("/tmp/ash_escape_test.txt");
-print content;
+local content = read_file("/tmp/ash_escape_test.txt");
+say content;
 append_file("/tmp/ash_escape_test.txt", "Second line\n");
-print read_file("/tmp/ash_escape_test.txt");
+say read_file("/tmp/ash_escape_test.txt");

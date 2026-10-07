@@ -189,10 +189,23 @@ void codegen_builtin_push(void) {
     emit_push_reg(code, REG_RSI); // push() returns the array itself, matching ashvm
 }
 
+// Bug fix (found by a cross-engine ashvm/kiln parity audit): this used to
+// unconditionally read offset +8 as "count", which is correct for ARRAY
+// and MAP (both share the same capacity/count/data-or-entries-ptr object
+// shape, see emit/value.h) but wrong for STRING -- a string's length lives
+// at offset -8 from its payload (the length prefix), not +8. Calling
+// len() on a string used to read whatever garbage happened to sit 8 bytes
+// into the string's own byte content.
 void codegen_builtin_len(void) {
-    emit_pop_reg(code, REG_RAX); // payload (array object address)
-    emit_pop_reg(code, REG_RBX); // tag (ignored, assumed ARRAY)
-    emit_load_mem_disp32(code, REG_RAX, REG_RAX, 8); // count
+    emit_pop_reg(code, REG_RAX); // payload
+    emit_pop_reg(code, REG_RBX); // tag
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_STRING);
+    int not_string = emit_jcc_rel32(code, COND_NE);
+    emit_load_mem_disp32(code, REG_RAX, REG_RAX, -8); // string length prefix
+    int done = emit_jmp_rel32(code);
+    emit_patch_jump(code, not_string);
+    emit_load_mem_disp32(code, REG_RAX, REG_RAX, 8); // array/map count
+    emit_patch_jump(code, done);
     emit_cvtsi2sd(code, XMM0, REG_RAX);
     emit_movq_reg_from_xmm(code, REG_RAX, XMM0);
     emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);

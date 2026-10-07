@@ -1,44 +1,44 @@
-let nums = [10, 20, 30];
-for (x in nums) {
-    print x;
+local nums = [10, 20, 30];
+each (x in nums) {
+    say x;
 }
 
-// nested for loops
-let a = [1, 2];
-let b = [10, 20];
-for (i in a) {
-    for (j in b) {
-        print i * j;
+// nested each loops
+local a = [1, 2];
+local b = [10, 20];
+each (i in a) {
+    each (j in b) {
+        say i * j;
     }
 }
 
-// for loop calling a higher-order builtin in its body
-fn double(x) { return x * 2; }
-for (x in nums) {
-    let d = map([x], double);
-    print d[0];
+// each loop calling a higher-order builtin in its body
+forge double(x) { yield x * 2; }
+each (x in nums) {
+    local d = map([x], double);
+    say d[0];
 }
 
 // empty array
-let empty = [];
-for (x in empty) {
-    print "should not print";
+local empty = [];
+each (x in empty) {
+    say "should not print";
 }
-print "after empty loop";
+say "after empty loop";
 
-// for loop inside a function, recursion-safe check
-fn sum_array(arr) {
-    let total = 0;
-    for (v in arr) {
+// each loop inside a function, recursion-safe check
+forge sum_array(arr) {
+    local total = 0;
+    each (v in arr) {
         total = total + v;
     }
-    return total;
+    yield total;
 }
-print sum_array(nums);
-print sum_array([1, 2, 3, 4, 5]);
+say sum_array(nums);
+say sum_array([1, 2, 3, 4, 5]);
 
 // loop variable reused/reassignable, doesn't affect iteration
-for (x in nums) {
+each (x in nums) {
     x = x + 1000;
-    print x;
+    say x;
 }

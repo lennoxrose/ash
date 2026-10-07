@@ -1,26 +1,26 @@
-let nums = [1, 2, 3, 4, 5];
+local nums = [1, 2, 3, 4, 5];
 
-fn double(x) { return x * 2; }
-let doubled = map(nums, double);
-print doubled[0];
-print doubled[1];
-print doubled[4];
-print len(doubled);
+forge double(x) { yield x * 2; }
+local doubled = map(nums, double);
+say doubled[0];
+say doubled[1];
+say doubled[4];
+say len(doubled);
 
-fn is_even(x) { return x - floor(x / 2) * 2 == 0; }
-let evens = filter(nums, is_even);
-print len(evens);
-print evens[0];
-print evens[1];
+forge is_even(x) { yield x - floor(x / 2) * 2 == 0; }
+local evens = filter(nums, is_even);
+say len(evens);
+say evens[0];
+say evens[1];
 
-fn add(a, b) { return a + b; }
-print reduce(nums, add, 0);
-print reduce(nums, add, 100);
+forge add(a, b) { yield a + b; }
+say reduce(nums, add, 0);
+say reduce(nums, add, 100);
 
-let squares = map(nums, fn(x) { return x * x; });
-print squares[2];
-print squares[4];
+local squares = map(nums, forge(x) { yield x * x; });
+say squares[2];
+say squares[4];
 
-let empty = [];
-let mapped_empty = map(empty, double);
-print len(mapped_empty);
+local empty = [];
+local mapped_empty = map(empty, double);
+say len(mapped_empty);

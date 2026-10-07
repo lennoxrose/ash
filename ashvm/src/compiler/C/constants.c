@@ -45,7 +45,7 @@ int try_declare_import_constant(const char *name, int len) {
         value = vm_str(vm_copy_string_escaped(current.start, current.length));
         advance_token();
     } else {
-        diagnostics_report("error", "imported top-level 'let' must be a literal number or string constant", current.start, current.length);
+        diagnostics_report("error", "imported top-level 'local' must be a literal number or string constant", current.start, current.length);
         exit(1);
     }
     declare_constant(combined, combined_len, value);

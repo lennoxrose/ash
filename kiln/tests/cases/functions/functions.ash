@@ -1,30 +1,30 @@
-fn add(a, b) {
-    return a + b;
+forge add(a, b) {
+    yield a + b;
 }
-print add(2, 3);
+say add(2, 3);
 
-fn fact(n) {
-    if (n <= 1) {
-        return 1;
+forge fact(n) {
+    given (n <= 1) {
+        yield 1;
     }
-    return n * fact(n - 1);
+    yield n * fact(n - 1);
 }
-print fact(5);
+say fact(5);
 
-fn fib(n) {
-    if (n < 2) {
-        return n;
+forge fib(n) {
+    given (n < 2) {
+        yield n;
     }
-    return fib(n - 1) + fib(n - 2);
+    yield fib(n - 1) + fib(n - 2);
 }
-print fib(10);
+say fib(10);
 
-fn noop() {
+forge noop() {
 }
-print noop();
+say noop();
 
-fn square(x) {
-    return x * x;
+forge square(x) {
+    yield x * x;
 }
-let y = 5;
-print square(y) + square(y + 1);
+local y = 5;
+say square(y) + square(y + 1);

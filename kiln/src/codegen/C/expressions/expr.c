@@ -68,12 +68,12 @@ static void primary(void) {
         codegen_string_literal();
         return;
     }
-    if (current.type == TOKEN_FN) {
+    if (current.type == TOKEN_FORGE) {
         codegen_lambda_expr();
         return;
     }
-    if (current.type == TOKEN_TRUE || current.type == TOKEN_FALSE) {
-        double v = current.type == TOKEN_TRUE ? 1.0 : 0.0;
+    if (current.type == TOKEN_YES || current.type == TOKEN_NO) {
+        double v = current.type == TOKEN_YES ? 1.0 : 0.0;
         advance_token();
         uint64_t bits;
         memcpy(&bits, &v, sizeof(bits));
@@ -83,7 +83,7 @@ static void primary(void) {
         emit_push_reg(code, REG_RAX);
         return;
     }
-    if (current.type == TOKEN_NIL) {
+    if (current.type == TOKEN_NONE) {
         advance_token();
         emit_mov_reg_imm64(code, REG_RBX, TAG_NIL);
         emit_push_reg(code, REG_RBX);
@@ -139,7 +139,7 @@ static void primary(void) {
         }
         // Not a function either -- if we're compiling inside an imported
         // file's own namespace context, a bare reference may be that same
-        // file's own top-level constant: let_statement always registers
+        // file's own top-level constant: local_statement always registers
         // imported `let`s under their namespaced name (e.g. "lib.PI"),
         // even for references from within lib.ash itself, so a bare "PI"
         // used inside lib.ash needs this same "in context" namespacing
@@ -353,7 +353,7 @@ static void power(void) {
 
 static void term(void) {
     unary();
-    while (current.type == TOKEN_STAR || current.type == TOKEN_SLASH) {
+    while (current.type == TOKEN_STAR || current.type == TOKEN_SLASH || current.type == TOKEN_PERCENT) {
         TokenType op = current.type;
         advance_token();
         unary();
@@ -363,8 +363,23 @@ static void term(void) {
         emit_pop_reg(code, REG_RBX); // a tag (assumed NUMBER)
         emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
         emit_movq_xmm_from_reg(code, XMM1, REG_RCX);
-        if (op == TOKEN_STAR) emit_mulsd(code, XMM0, XMM1);
-        else emit_divsd(code, XMM0, XMM1);
+        if (op == TOKEN_STAR) {
+            emit_mulsd(code, XMM0, XMM1);
+        } else if (op == TOKEN_SLASH) {
+            emit_divsd(code, XMM0, XMM1);
+        } else {
+            // a % b = a - trunc(a / b) * b (matches ashvm's C fmod(): result
+            // takes the dividend's sign, truncating toward zero rather than
+            // flooring -- e.g. -7 % 3 == -1, not 2).
+            emit_movsd_xmm_xmm(code, XMM2, XMM0);  // XMM2 = a
+            emit_divsd(code, XMM0, XMM1);          // XMM0 = a / b
+            emit_cvttsd2si(code, REG_RAX, XMM0);   // truncate toward zero
+            emit_cvtsi2sd(code, XMM0, REG_RAX);    // XMM0 = trunc(a / b)
+            emit_mulsd(code, XMM0, XMM1);          // XMM0 = trunc(a / b) * b
+            emit_movsd_xmm_xmm(code, XMM1, XMM0);  // XMM1 = trunc(a / b) * b
+            emit_movsd_xmm_xmm(code, XMM0, XMM2);  // XMM0 = a
+            emit_subsd(code, XMM0, XMM1);          // XMM0 = a - trunc(a / b) * b
+        }
         emit_movq_reg_from_xmm(code, REG_RAX, XMM0);
         emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
         emit_push_reg(code, REG_RBX);

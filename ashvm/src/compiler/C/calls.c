@@ -4,6 +4,7 @@
 #include "compiler/H/internal.h"
 #include "builtins/H/builtins.h"
 #include "diagnostics/H/diagnostics.h"
+#include "compiler/H/loop_stack.h"
 
 void emit_call(Token id) {
     int builtin_id = vm_builtin_lookup(id.start, id.length);
@@ -75,15 +76,15 @@ void emit_call_named(const char *name, int len) {
     emit((uint8_t)argc);
 }
 
-// fn(params) { body } as an expression. Captures the ENTIRE enclosing scope's
-// locals by value at creation time (same rule as ashc's closures used to
-// have). The captured variables get their own reserved local slots in the
-// lambda's own chunk, placed right after its parameters, so the compiled
-// body can reference them via the normal resolve_local() mechanism just
-// like any other local.
+// forge(params) { body } as an expression. Captures the ENTIRE enclosing
+// scope's locals by value at creation time (same rule as ashc's closures
+// used to have). The captured variables get their own reserved local slots
+// in the lambda's own chunk, placed right after its parameters, so the
+// compiled body can reference them via the normal resolve_local()
+// mechanism just like any other local.
 void lambda_literal(void) {
     advance_token();
-    expect(TOKEN_LPAREN, "expected '(' after 'fn'");
+    expect(TOKEN_LPAREN, "expected '(' after 'forge'");
 
     char namebuf[32];
     int namelen = snprintf(namebuf, sizeof(namebuf), "__lambda_%d", lambda_counter++);
@@ -123,6 +124,9 @@ void lambda_literal(void) {
     char outer_locals[MAX_VM_LOCALS][64];
     int outer_local_count = local_count;
     memcpy(outer_locals, local_names, sizeof(local_names));
+    int outer_loop_depth;
+    loop_depth_save(&outer_loop_depth);
+    loop_depth_reset();
 
     chunk = &vm_functions[fn_idx].chunk;
     local_count = 0;
@@ -136,6 +140,7 @@ void lambda_literal(void) {
     chunk = outer_chunk;
     local_count = outer_local_count;
     memcpy(local_names, outer_locals, sizeof(local_names));
+    loop_depth_restore(outer_loop_depth);
 
     emit_op(OP_MAKE_CLOSURE);
     emit((uint8_t)fn_idx);
@@ -147,7 +152,7 @@ void lambda_literal(void) {
 // offset to patch_jump() once the branch target is known, or -1 if the
 // condition didn't match the fusable shape (caller falls back to a plain
 // expression() + OP_JUMP_IF_FALSE).
-int try_fuse_condition(void) {
+int try_fuse_condition(TokenType terminator) {
     if (current.type != TOKEN_IDENTIFIER) return -1;
     Token save = current;
     Token id = current;
@@ -185,7 +190,7 @@ int try_fuse_condition(void) {
         lexer_init(save.start + save.length); current = save; return -1;
     }
 
-    if (current.type != TOKEN_RPAREN) {
+    if (current.type != terminator) {
         lexer_init(save.start + save.length); current = save; return -1;
     }
 

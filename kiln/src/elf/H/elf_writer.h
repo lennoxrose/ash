@@ -15,8 +15,8 @@
 #define KILN_PHDR_SIZE 56
 
 // Milestone 9: the globals region also holds kiln's own hand-rolled
-// setjmp/longjmp equivalent for try/catch (see codegen/C/runtime/errors.c's raise
-// routine and parser/C/statements/try_catch.c) -- a fixed-depth stack of "handler"
+// setjmp/longjmp equivalent for attempt/handle (see codegen/C/runtime/errors.c's raise
+// routine and parser/C/statements/attempt_handle.c) -- a fixed-depth stack of "handler"
 // records, since this is a freestanding binary with no libc setjmp to
 // call. Each handler is {saved_rsp, saved_rbp, target_addr,
 // error_slot_rbp_offset}, 4 x int64. Bounded the same way every other

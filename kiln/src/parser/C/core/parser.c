@@ -40,10 +40,11 @@ void expect(TokenType type, const char *message) {
 
 // statement() is shared between top-level parsing (compile_program's own
 // loop, and imports.c's parse_imported_file_body()) and here, inside a
-// fn/if/while/for/try body -- block_depth distinguishes the two so the
-// "only fn/let at an imported file's top level" guard in statement()
-// only fires for genuinely top-level statements, never for an ordinary
-// `return`/`if`/etc. nested inside an imported function's own body.
+// forge/given/during/each/attempt body -- block_depth distinguishes the
+// two so the "only forge/local at an imported file's top level" guard in
+// statement() only fires for genuinely top-level statements, never for an
+// ordinary `yield`/`given`/etc. nested inside an imported function's own
+// body.
 static int block_depth = 0;
 
 void block(void) {
@@ -56,19 +57,26 @@ void block(void) {
     vars_scope_end(saved_scope);
 }
 
-// let IDENT = expr ;  -- reassigns the existing slot if `name` is already
-// declared instead of erroring, matching ashvm's own let-statement
-// behavior exactly (ashvm/src/compiler/stmt.c's let_statement).
-static void let_statement(void) {
+// local IDENT = expr ;  -- reassigns the existing slot if `name` is already
+// declared instead of erroring, matching ashvm's own local-statement
+// behavior exactly (ashvm/src/compiler/stmt.c's local_statement).
+static void local_statement(void) {
     advance_token();
-    expect(TOKEN_IDENTIFIER, "expected variable name after 'let'");
+    expect(TOKEN_IDENTIFIER, "expected variable name after 'local'");
     const char *name = previous.start;
     int len = previous.length;
     expect(TOKEN_EQUAL, "expected '=' after variable name");
 
     const char *ns; int ns_len;
     get_import_namespace(&ns, &ns_len);
-    if (ns_len > 0) {
+    // Bug (found while writing the first real forgepack module, a JSON
+    // codec -- any imported function with a `local` inside a loop failed
+    // to compile, mirrored from the identical ashvm bug): this only
+    // makes sense at block_depth == 0 (a genuinely top-level `local` in
+    // the imported file), not for an ordinary local deep inside one of
+    // that file's own functions -- the sibling guard further down in
+    // statement() already gets this right, this one didn't.
+    if (ns_len > 0 && block_depth == 0) {
         char combined[96];
         int combined_len = snprintf(combined, sizeof(combined), "%.*s.%.*s", ns_len, ns, len, name);
         if (current.type == TOKEN_NUMBER) {
@@ -86,7 +94,7 @@ static void let_statement(void) {
             declare_string_constant(combined, combined_len, current.start, current.length);
             advance_token();
         } else {
-            parse_error("imported top-level 'let' must be a literal number or string constant");
+            parse_error("imported top-level 'local' must be a literal number or string constant");
         }
         expect(TOKEN_SEMICOLON, "expected ';' after statement");
         return;
@@ -241,6 +249,26 @@ static void incdec_statement(Token id, TokenType op) {
 static void assignment_statement(void) {
     Token id = current;
     advance_token();
+    // A namespaced call used as its OWN statement (`json.save(...);`,
+    // discarding the result) rather than nested in an expression
+    // (`local x = json.load(...);`, where codegen/C/expressions/expr.c's
+    // primary() already handles this same `ident.member(...)` shape) --
+    // mirrors the identical ashvm fix, found missing the same way (the
+    // first real forgepack module's whole point is exactly this shape).
+    if (current.type == TOKEN_DOT) {
+        advance_token();
+        expect(TOKEN_IDENTIFIER, "expected name after '.'");
+        Token member = previous;
+        char combined[128];
+        int combined_len = snprintf(combined, sizeof(combined), "%.*s.%.*s",
+                                      id.length, id.start, member.length, member.start);
+        expect(TOKEN_LPAREN, "expected '(' after namespaced function name");
+        codegen_call_named(combined, combined_len);
+        expect(TOKEN_SEMICOLON, "expected ';' after call");
+        emit_pop_reg(code, REG_RAX); // discard the (unused) return value
+        emit_pop_reg(code, REG_RBX);
+        return;
+    }
     if (current.type == TOKEN_LBRACKET) { index_assignment_statement(id); return; }
     if (current.type == TOKEN_LPAREN) { call_statement(id); return; }
     if (current.type == TOKEN_PLUS_EQUAL || current.type == TOKEN_MINUS_EQUAL ||
@@ -263,14 +291,14 @@ static void assignment_statement(void) {
     emit_store_mem_disp32(code, REG_RBP, var_slot_payload_offset(slot), REG_RAX);
 }
 
-// return [expr] ;  -- bare `return;` returns 0, matching ashc/ashvm.
+// yield [expr] ;  -- bare `yield;` returns 0, matching ashc/ashvm.
 // Return value comes back as RBX=tag, RAX=payload (see codegen/C/expressions/expr.c's
 // call-site handling).
-static void return_statement(void) {
+static void yield_statement(void) {
     advance_token();
     if (current.type != TOKEN_SEMICOLON) {
         codegen_expression();
-        expect(TOKEN_SEMICOLON, "expected ';' after return");
+        expect(TOKEN_SEMICOLON, "expected ';' after yield");
         emit_pop_reg(code, REG_RAX); // payload
         emit_pop_reg(code, REG_RBX); // tag
     } else {
@@ -283,16 +311,18 @@ static void return_statement(void) {
     emit_ret(code);
 }
 
-// throw expr ;  -- expr must be a STRING (matches try/catch's own
-// convention: every caught error, built-in or user-thrown, is a plain
-// string). Reuses codegen/C/runtime/errors.c's raise routine directly -- the exact
-// same catch/unwind mechanism M9's built-in errors (array bounds, missing
-// map key) already go through, just with a runtime message instead of a
-// compile-time-constant one.
-static void throw_statement(void) {
+// raise expr ;  -- expr must be a STRING (matches attempt/handle's own
+// convention: every caught error, built-in or user-raised, is a plain
+// string). Reuses codegen/C/runtime/errors.c's raise routine directly --
+// the exact same handle/unwind mechanism M9's built-in errors (array
+// bounds, missing map key) already go through, just with a runtime
+// message instead of a compile-time-constant one. (The runtime "raise
+// routine" this calls into was already named that before the `throw`
+// keyword became `raise` -- a coincidental match, not a rename.)
+static void raise_statement(void) {
     advance_token();
     codegen_expression();
-    expect(TOKEN_SEMICOLON, "expected ';' after 'throw'");
+    expect(TOKEN_SEMICOLON, "expected ';' after 'raise'");
 
     emit_pop_reg(code, REG_RSI); // message payload (assumed STRING)
     emit_pop_reg(code, REG_RBX); // message tag (ignored)
@@ -300,64 +330,65 @@ static void throw_statement(void) {
     errors_emit_die_dynamic(code);
 }
 
-// break ;  -- jumps past the innermost loop; the jump is recorded, not
+// stop ;  -- jumps past the innermost loop; the jump is recorded, not
 // resolved here, since the innermost loop's own codegen (parser_control.c's
-// while_statement / parser/C/statements/for_loop.c's for_statement) hasn't emitted the
+// during_statement / parser/C/statements/each_loop.c's each_statement) hasn't emitted the
 // "after the loop" landing point yet.
-static void break_statement(void) {
+static void stop_statement(void) {
     advance_token();
-    expect(TOKEN_SEMICOLON, "expected ';' after 'break'");
-    loop_record_break(emit_jmp_rel32(code));
+    expect(TOKEN_SEMICOLON, "expected ';' after 'stop'");
+    loop_record_stop(emit_jmp_rel32(code));
 }
 
-// continue ;  -- jumps to the innermost loop's per-iteration advance
-// step (a for-loop's index increment, or straight back to the condition
-// for a while loop) -- also recorded, not resolved here, for the same
-// reason as break above.
-static void continue_statement(void) {
+// next ;  -- jumps to the innermost loop's per-iteration advance
+// step (an each-loop's index increment, or straight back to the condition
+// for a during loop) -- also recorded, not resolved here, for the same
+// reason as stop above.
+static void next_statement(void) {
     advance_token();
-    expect(TOKEN_SEMICOLON, "expected ';' after 'continue'");
-    loop_record_continue(emit_jmp_rel32(code));
+    expect(TOKEN_SEMICOLON, "expected ';' after 'next'");
+    loop_record_next(emit_jmp_rel32(code));
 }
 
-// statement := "print" expr ";"
-//            | "let" IDENT "=" expr ";"
+// statement := "say" expr ";"
+//            | "local" IDENT "=" expr ";"
 //            | IDENT "=" expr ";"
-//            | "if" "(" expr ")" block ["else" block]
-//            | "while" "(" expr ")" block
-//            | "fn" IDENT "(" params ")" block
-//            | "return" [expr] ";"
-// (milestone 5's entire statement grammar -- anything else is a parse
-// error, per the project rule that malformed input always fails cleanly)
+//            | "given" ["("] expr [")"] block ["otherwise" block]
+//            | "during" ["("] expr [")"] block
+//            | "forge" IDENT "(" params ")" block
+//            | "yield" [expr] ";"
+// (milestone 5's entire statement grammar, since renamed and given optional
+// condition parens -- anything else is a parse error, per the project rule
+// that malformed input always fails cleanly)
 void statement(void) {
     if (current.type == TOKEN_IMPORT) { import_statement(); return; }
     imports_close_block();
 
     const char *ns; int ns_len;
     get_import_namespace(&ns, &ns_len);
-    if (ns_len > 0 && block_depth == 0 && current.type != TOKEN_FN && current.type != TOKEN_LET) {
-        parse_error("only 'fn' and constant 'let' declarations are allowed at an imported file's top level");
+    if (ns_len > 0 && block_depth == 0 && current.type != TOKEN_FORGE && current.type != TOKEN_LOCAL) {
+        parse_error("only 'forge' and constant 'local' declarations are allowed at an imported file's top level");
     }
 
-    if (current.type == TOKEN_PRINT) {
+    if (current.type == TOKEN_SAY) {
         advance_token();
         codegen_expression();
-        expect(TOKEN_SEMICOLON, "expected ';' after print statement");
+        expect(TOKEN_SEMICOLON, "expected ';' after say statement");
         codegen_print_top(code);
         return;
     }
-    if (current.type == TOKEN_LET) { let_statement(); return; }
-    if (current.type == TOKEN_IF) { if_statement(); return; }
-    if (current.type == TOKEN_WHILE) { while_statement(); return; }
-    if (current.type == TOKEN_FN) { fn_statement(); return; }
-    if (current.type == TOKEN_RETURN) { return_statement(); return; }
-    if (current.type == TOKEN_TRY) { try_statement(); return; }
-    if (current.type == TOKEN_FOR) { for_statement(); return; }
-    if (current.type == TOKEN_BREAK) { break_statement(); return; }
-    if (current.type == TOKEN_CONTINUE) { continue_statement(); return; }
-    if (current.type == TOKEN_THROW) { throw_statement(); return; }
+    if (current.type == TOKEN_LOCAL) { local_statement(); return; }
+    if (current.type == TOKEN_GIVEN) { given_statement(); return; }
+    if (current.type == TOKEN_DURING) { during_statement(); return; }
+    if (current.type == TOKEN_FORGE) { forge_statement(); return; }
+    if (current.type == TOKEN_YIELD) { yield_statement(); return; }
+    if (current.type == TOKEN_ATTEMPT) { attempt_statement(); return; }
+    if (current.type == TOKEN_EACH) { each_statement(); return; }
+    if (current.type == TOKEN_STOP) { stop_statement(); return; }
+    if (current.type == TOKEN_NEXT) { next_statement(); return; }
+    if (current.type == TOKEN_RAISE) { raise_statement(); return; }
     if (current.type == TOKEN_IDENTIFIER) { assignment_statement(); return; }
-    parse_error("expected 'print', 'let', 'if', 'while', 'fn', 'return', 'try', 'for', 'break', 'continue', 'throw', '@import', or an assignment");
+    parse_error("expected 'say', 'local', 'given', 'during', 'forge', 'yield', 'attempt', 'each', 'stop', 'next', 'raise', '@import', or an assignment");
 }
 
 void compile_program(const char *source, const char *source_path, CodeBuf *out) {
@@ -384,8 +415,8 @@ void compile_program(const char *source, const char *source_path, CodeBuf *out) 
     // Frame prologue: RBP anchors the top-level program's own variable
     // slots. RSP drifts during expression push/pop; RBP never does. Each
     // function call below establishes and tears down its own separate
-    // frame (see parser_control.c's fn_statement/parser.c's
-    // return_statement) without disturbing this one -- the callee always
+    // frame (see parser_control.c's forge_statement/parser.c's
+    // yield_statement) without disturbing this one -- the callee always
     // restores RBP before returning. Milestone 5: each slot is now 16
     // bytes (tag + payload, see codegen/H/emit/value.h), not 8.
     emit_mov_reg_reg(code, REG_RBP, REG_RSP);

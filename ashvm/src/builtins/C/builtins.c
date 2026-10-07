@@ -7,7 +7,8 @@ static const char *builtin_names[] = {
     "len", "push", "input", "str", "num", "sqrt", "abs", "floor",
     "map", "filter", "reduce", "keys", "values", "has", "delete",
     "split", "join", "substring", "indexOf", "replace", "upper", "lower", "trim",
-    "read_file", "write_file", "append_file", "file_exists"
+    "read_file", "write_file", "append_file", "file_exists",
+    "type"
 };
 #define NUM_BUILTINS (int)(sizeof(builtin_names) / sizeof(builtin_names[0]))
 
@@ -23,5 +24,6 @@ VMValue vm_call_builtin(int id, VMValue *args, int argc) {
     if (id >= 8 && id <= 14) return vm_call_builtin_collection(id, args, argc);
     if (id >= 15 && id <= 22) return vm_call_builtin_string(id, args, argc);
     if (id >= 23 && id <= 26) return vm_call_builtin_file(id, args, argc);
+    if (id == 27) return vm_call_builtin_core(id, args, argc); // type
     vm_runtime_error("unknown builtin id: %d\n", id);
 }

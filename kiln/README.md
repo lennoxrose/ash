@@ -13,7 +13,7 @@ directly, the same "every line hand-written" rule that built `ashc` and
 
 ## Status: milestone 1 done (Linux only)
 
-`kiln file.ash -o out` compiles `print <expr>;` programs (integer literals,
+`kiln file.ash -o out` compiles `say <expr>;` programs (integer literals,
 `+ - * /`, unary `-`, parens, multiple statements) straight to a real,
 standalone, freestanding ELF64 executable - no libc, raw syscalls only.
 
@@ -25,7 +25,7 @@ cd kiln && make          # builds ../bin/kiln
 
 ## What's deliberately not built yet
 
-- Everything beyond numeric `print` statements - variables, functions,
+- Everything beyond numeric `say` statements - variables, functions,
   strings, arrays, control flow, closures
 - Multi-object linking (the whole program is one self-contained object
   right now; there's no symbol-resolution step yet)
@@ -46,7 +46,7 @@ kiln/
     lexer/                 tokenizer (own copy, same shape as ashvm's)
     parser/C/ H/ D/ O/
       core/                  parser entry, shared parser state
-      statements/            control flow, for loops, try/catch, loop stack
+      statements/            control flow, each loops, attempt/handle, loop stack
       declarations/          variables, functions, constants
       imports/               import resolution
     codegen/C/ H/ D/ O/    (same feature folders in each tree)

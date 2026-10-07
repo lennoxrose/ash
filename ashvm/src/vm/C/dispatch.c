@@ -31,7 +31,10 @@ void vm_execute(int stop_at_frame_count) {
         &&do_ARRAY, &&do_INDEX_GET, &&do_INDEX_SET,
         &&do_MAP, &&do_CALL_VALUE, &&do_CALL_BUILTIN,
         &&do_MAKE_CLOSURE,
-        &&do_TRY_PUSH, &&do_TRY_POP
+        &&do_TRY_PUSH, &&do_TRY_POP,
+        &&do_RAISE,
+        &&do_BAND, &&do_BOR, &&do_BXOR, &&do_BNOT, &&do_SHL, &&do_SHR,
+        &&do_TRUNC_LOCALS
     };
 
     #define DISPATCH() \
@@ -64,6 +67,7 @@ void vm_execute(int stop_at_frame_count) {
         int eq;
         if (a->type == VM_STR && b.type == VM_STR) eq = strcmp(a->str, b.str) == 0;
         else if (a->type == VM_NUM && b.type == VM_NUM) eq = a->number == b.number;
+        else if (a->type == VM_NIL && b.type == VM_NIL) eq = 1;
         else eq = 0;
         *a = vm_num(eq);
         DISPATCH();
@@ -73,6 +77,7 @@ void vm_execute(int stop_at_frame_count) {
         int eq;
         if (a->type == VM_STR && b.type == VM_STR) eq = strcmp(a->str, b.str) == 0;
         else if (a->type == VM_NUM && b.type == VM_NUM) eq = a->number == b.number;
+        else if (a->type == VM_NIL && b.type == VM_NIL) eq = 1;
         else eq = 0;
         *a = vm_num(!eq);
         DISPATCH();
@@ -183,6 +188,7 @@ void vm_execute(int stop_at_frame_count) {
             int eq;
             if (a.type == VM_STR && b.type == VM_STR) eq = strcmp(a.str, b.str) == 0;
             else if (a.type == VM_NUM && b.type == VM_NUM) eq = a.number == b.number;
+            else if (a.type == VM_NIL && b.type == VM_NIL) eq = 1;
             else eq = 0;
             taken = (cmp_code == 4) ? eq : !eq;
         } else {
@@ -282,9 +288,14 @@ void vm_execute(int stop_at_frame_count) {
             stack_top = h->saved_stack_top;
             frame = h->target_frame;
             frame->ip = h->target_ip;
-            char *msg_copy = malloc(strlen(error_message) + 1);
-            strcpy(msg_copy, error_message);
-            *stack_top++ = vm_str(msg_copy);
+            if (has_raised_value) {
+                *stack_top++ = raised_value;
+                has_raised_value = 0;
+            } else {
+                char *msg_copy = malloc(strlen(error_message) + 1);
+                strcpy(msg_copy, error_message);
+                *stack_top++ = vm_str(msg_copy);
+            }
             DISPATCH();
         }
     }
@@ -292,4 +303,27 @@ void vm_execute(int stop_at_frame_count) {
         try_depth--;
         DISPATCH();
     }
+    do_RAISE: {
+        VMValue msg = *--stack_top;
+        vm_raise_value(msg); // noreturn -- longjmps to a handler, or exits
+    }
+    // Bitwise ops truncate to int64 (matching kiln's cvttsd2si approach)
+    // then convert back -- same "assume NUMBER" scope limit as -, *, /,
+    // and the comparison operators.
+    do_BAND: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num((double)((int64_t)require_num(*a, "'&'") & (int64_t)require_num(b, "'&'"))); DISPATCH(); }
+    do_BOR:  { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num((double)((int64_t)require_num(*a, "'|'") | (int64_t)require_num(b, "'|'"))); DISPATCH(); }
+    do_BXOR: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num((double)((int64_t)require_num(*a, "'^'") ^ (int64_t)require_num(b, "'^'"))); DISPATCH(); }
+    do_BNOT: { stack_top[-1] = vm_num((double)(~(int64_t)require_num(stack_top[-1], "'~'"))); DISPATCH(); }
+    do_SHL:  { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num((double)((int64_t)require_num(*a, "'<<'") << (int64_t)require_num(b, "'<<'"))); DISPATCH(); }
+    do_SHR:  { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num((double)((int64_t)require_num(*a, "'>>'") >> (int64_t)require_num(b, "'>>'"))); DISPATCH(); }
+    // Resets the stack to exactly `frame->slots + n` -- an absolute reset,
+    // not N pops. A re-executed block (loop body, given/otherwise branch)
+    // may declare a variable number of fresh locals depending on which
+    // internal path it took (early `next`, nested given, ...), so "pop
+    // however many were declared on a typical pass" can under- or
+    // over-pop. Since every local is a stack slot and slot layout is
+    // static per chunk, "what the stack should look like once this block
+    // is done" is just "n slots past frame->slots" -- always correct
+    // regardless of the path taken through the block this time.
+    do_TRUNC_LOCALS: { uint8_t n = *frame->ip++; stack_top = frame->slots + n; DISPATCH(); }
 }

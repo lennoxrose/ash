@@ -109,8 +109,8 @@ void emit_call_indirect(CodeBuf *buf, Reg target);
 
 // JMP r/m64 (opcode FF /4) -- indirect jump through a register holding an
 // absolute runtime address, no return address pushed (unlike
-// emit_call_indirect). Used by try/catch's raise routine to resume at a
-// catch block once RSP/RBP have already been unwound to the handler's
+// emit_call_indirect). Used by attempt/handle's raise routine to resume at a
+// handle block once RSP/RBP have already been unwound to the handler's
 // saved values -- this is a resumption, not a call, so nothing should be
 // pushed.
 void emit_jmp_indirect(CodeBuf *buf, Reg target);

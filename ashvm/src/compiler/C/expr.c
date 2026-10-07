@@ -7,7 +7,7 @@
 // comparison -> additive -> term -> unary -> postfix -> primary.
 
 static void primary(void) {
-    if (current.type == TOKEN_FN) { lambda_literal(); return; }
+    if (current.type == TOKEN_FORGE) { lambda_literal(); return; }
     if (current.type == TOKEN_NUMBER) {
         double v = strtod(current.start, NULL);
         advance_token();
@@ -18,6 +18,17 @@ static void primary(void) {
         char *s = vm_copy_string_escaped(current.start, current.length);
         advance_token();
         emit_constant(vm_str(s));
+        return;
+    }
+    if (current.type == TOKEN_YES || current.type == TOKEN_NO) {
+        double v = current.type == TOKEN_YES ? 1.0 : 0.0;
+        advance_token();
+        emit_constant(vm_num(v));
+        return;
+    }
+    if (current.type == TOKEN_NONE) {
+        advance_token();
+        emit_constant(vm_nil());
         return;
     }
     if (current.type == TOKEN_LBRACKET) {
@@ -129,6 +140,7 @@ static void postfix(void) {
 static void unary(void) {
     if (current.type == TOKEN_BANG) { advance_token(); unary(); emit_op(OP_NOT); return; }
     if (current.type == TOKEN_MINUS) { advance_token(); unary(); emit_op(OP_NEG); return; }
+    if (current.type == TOKEN_TILDE) { advance_token(); unary(); emit_op(OP_BNOT); return; }
     postfix();
 }
 
@@ -172,12 +184,55 @@ static void comparison(void) {
     }
 }
 
-static void logical_and(void) {
+// Bitwise operators (& | ^ << >>), one flat precedence level (left to
+// right) sitting between comparison and logical_and -- not real C
+// precedence (which splits shift/bitand/bitxor/bitor into four separate
+// levels), a deliberate simplification matching kiln's own choice here.
+// Operands are truncated to int64 in the VM (do_BAND etc. in
+// vm/C/dispatch.c), same "assume NUMBER" scope limit as -, *, /, and the
+// comparison operators.
+static void bitwise(void) {
     comparison();
-    while (current.type == TOKEN_AND) { advance_token(); comparison(); emit_op(OP_AND); }
+    while (current.type == TOKEN_AMP || current.type == TOKEN_PIPE ||
+           current.type == TOKEN_CARET || current.type == TOKEN_SHL || current.type == TOKEN_SHR) {
+        TokenType op = current.type;
+        advance_token();
+        comparison();
+        switch (op) {
+            case TOKEN_AMP: emit_op(OP_BAND); break;
+            case TOKEN_PIPE: emit_op(OP_BOR); break;
+            case TOKEN_CARET: emit_op(OP_BXOR); break;
+            case TOKEN_SHL: emit_op(OP_SHL); break;
+            default: emit_op(OP_SHR); break;
+        }
+    }
+}
+
+static void logical_and(void) {
+    bitwise();
+    while (current.type == TOKEN_AND) { advance_token(); bitwise(); emit_op(OP_AND); }
 }
 static void logical_or(void) {
     logical_and();
     while (current.type == TOKEN_OR) { advance_token(); logical_and(); emit_op(OP_OR); }
 }
-void expression(void) { logical_or(); }
+
+// a ? b : c  --  lowest precedence, sits above logical_or. Right-associative
+// via the recursive expression() calls for both branches (so
+// `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`), same jump-patch
+// shape as given/during's own truthy-test-then-jump pattern, just as an
+// expression instead of a statement. OP_JUMP_IF_FALSE pops the condition
+// itself, matching how compile_given_stmt already uses it.
+void expression(void) {
+    logical_or();
+    if (current.type == TOKEN_QUESTION) {
+        advance_token();
+        int else_jump = emit_jump(OP_JUMP_IF_FALSE);
+        expression(); // true branch
+        int end_jump = emit_jump(OP_JUMP);
+        expect(TOKEN_COLON, "expected ':' in ternary expression");
+        patch_jump(else_jump);
+        expression(); // false branch
+        patch_jump(end_jump);
+    }
+}

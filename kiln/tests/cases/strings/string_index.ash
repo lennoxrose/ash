@@ -1,17 +1,17 @@
-let s = "hello";
-print s[0];
-print s[4];
-print s[1] + s[2];
+local s = "hello";
+say s[0];
+say s[4];
+say s[1] + s[2];
 
-try {
-    print s[10];
-} catch (e) {
-    print "caught: " + e;
+attempt {
+    say s[10];
+} handle (e) {
+    say "caught: " + e;
 }
 
-try {
+attempt {
     s[0] = "H";
-} catch (e) {
-    print "caught: " + e;
+} handle (e) {
+    say "caught: " + e;
 }
-print "done";
+say "done";

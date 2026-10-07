@@ -52,6 +52,26 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc) {
             if (argc != 1 || args[0].type != VM_NUM) { vm_runtime_error("floor() expects a number\n"); }
             return vm_num(floor(args[0].number));
         }
+        case 27: { // type -- introspection, needed for anything that has to
+                   // branch on a value's own type at runtime (json's
+                   // stringify is the motivating case: it can't decide
+                   // "format this as an array vs. a map vs. a string"
+                   // from pure Ash without some way to ask a value what
+                   // it is).
+            if (argc != 1) { vm_runtime_error("type() expects 1 argument\n"); }
+            const char *name;
+            switch (args[0].type) {
+                case VM_NUM: name = "number"; break;
+                case VM_STR: name = "string"; break;
+                case VM_ARRAY: name = "array"; break;
+                case VM_MAP: name = "map"; break;
+                case VM_FUNCTION: case VM_CLOSURE: name = "function"; break;
+                case VM_NIL: name = "none"; break;
+                default: name = "unknown"; break;
+            }
+            char *copy = malloc(strlen(name) + 1); strcpy(copy, name);
+            return vm_str(copy);
+        }
     }
     vm_runtime_error("unknown builtin id: %d\n", id);
 }

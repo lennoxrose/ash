@@ -11,6 +11,7 @@
 #include "codegen/H/io/file_builtins.h"
 #include "codegen/H/io/input_builtin.h"
 #include "codegen/H/io/argv_builtin.h"
+#include "codegen/H/builtins/type_builtin.h"
 #include "parser/H/core/parser.h"
 
 int codegen_try_builtin_call(const char *name, int len) {
@@ -164,6 +165,12 @@ int codegen_try_builtin_call(const char *name, int len) {
         codegen_expression();
         expect(TOKEN_RPAREN, "expected ')' after arguments");
         codegen_builtin_delete();
+        return 1;
+    }
+    if (len == 4 && strncmp(name, "type", 4) == 0) {
+        codegen_expression();
+        expect(TOKEN_RPAREN, "expected ')' after argument");
+        codegen_builtin_type();
         return 1;
     }
     return 0;

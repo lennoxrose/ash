@@ -2,15 +2,15 @@
 #define KILN_PARSER_INTERNAL_H
 
 // Cross-file link between parser.c (state, simple statements, the
-// statement() dispatcher) and parser_control.c (if/while/fn -- the
+// statement() dispatcher) and parser_control.c (given/during/forge -- the
 // statement kinds involved enough to warrant their own file), not part of
 // the public API (parser.h).
 void block(void);
-void if_statement(void);
-void while_statement(void);
-void fn_statement(void);
-void try_statement(void);
-void for_statement(void);
+void given_statement(void);
+void during_statement(void);
+void forge_statement(void);
+void attempt_statement(void);
+void each_statement(void);
 
 // statement() itself (parser.c's dispatcher) also needs to be callable
 // from imports.c's parse_imported_file_body(), which drives the same

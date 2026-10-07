@@ -1,7 +1,7 @@
-print !false;
-print !true;
-print !0;
-print !5;
-print !nil;
-print !!5;
-if (!false) { print "works"; }
+say not no;
+say not yes;
+say not 0;
+say not 5;
+say not none;
+say not not 5;
+given (not no) { say "works"; }

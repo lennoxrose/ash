@@ -9,19 +9,19 @@
 #include "parser/H/core/parser_internal.h"
 #include "parser/H/declarations/vars.h"
 #include "parser/H/declarations/functions.h"
-#include "parser/H/statements/for_loop.h"
+#include "parser/H/statements/each_loop.h"
 #include "parser/H/statements/loop_stack.h"
 
-// `fn (params) { body }` as an expression. The closure-object creation
+// `forge (params) { body }` as an expression. The closure-object creation
 // code (which runs in the OUTER frame, snapshotting captures by value)
 // is emitted first, then a jump-over, then the body -- same shape as
-// parser_control.c's fn_statement, generalized with a capture region
+// parser_control.c's forge_statement, generalized with a capture region
 // ahead of the parameter region. The object's code address isn't known
 // until after the body compiles, so it's written via a patchable imm64
 // (see emit_mov_reg_imm64_patchable) and patched once the body's end is
 // reached.
 void codegen_lambda_expr(void) {
-    advance_token(); // consume 'fn'
+    advance_token(); // consume 'forge'
 
     VarScope outer_vars;
     vars_save(&outer_vars);
@@ -43,9 +43,9 @@ void codegen_lambda_expr(void) {
     int lambda_code_offset = code->count;
 
     vars_clear();
-    int outer_for_depth;
-    for_depth_save(&outer_for_depth);
-    for_depth_reset();
+    int outer_each_depth;
+    each_depth_save(&outer_each_depth);
+    each_depth_reset();
     int outer_loop_depth;
     loop_depth_save(&outer_loop_depth);
     loop_depth_reset();
@@ -53,7 +53,7 @@ void codegen_lambda_expr(void) {
         declare_var(outer_vars.names[i], (int)strlen(outer_vars.names[i]));
     }
 
-    expect(TOKEN_LPAREN, "expected '(' after 'fn'");
+    expect(TOKEN_LPAREN, "expected '(' after 'forge'");
     char param_names[MAX_KILN_PARAMS][64];
     int param_lens[MAX_KILN_PARAMS];
     int argc = 0;
@@ -102,7 +102,7 @@ void codegen_lambda_expr(void) {
     emit_ret(code);
 
     vars_restore(&outer_vars);
-    for_depth_restore(outer_for_depth);
+    each_depth_restore(outer_each_depth);
     loop_depth_restore(outer_loop_depth);
     emit_patch_jump(code, skip_jump);
 

@@ -1,23 +1,23 @@
-let nums = [1, 2, 3, 4, 5];
-print nums;
-print nums[0];
-print nums[4];
+local nums = [1, 2, 3, 4, 5];
+say nums;
+say nums[0];
+say nums[4];
 
 nums[0] = 99;
-print nums;
+say nums;
 
-let sum = 0;
-let i = 0;
-while (i < 5) {
-    let sum = sum + nums[i];
-    let i = i + 1;
+local sum = 0;
+local i = 0;
+during (i < 5) {
+    local sum = sum + nums[i];
+    local i = i + 1;
 }
-print sum;
+say sum;
 
-fn first(arr) {
-    return arr[0];
+forge first(arr) {
+    yield arr[0];
 }
-print first(nums);
+say first(nums);
 
-let names = ["Ash", "Sonnet"];
-print names[1];
+local names = ["Ash", "Sonnet"];
+say names[1];

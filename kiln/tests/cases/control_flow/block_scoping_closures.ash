@@ -1,50 +1,50 @@
-// closure created and returned from inside an if-block, capturing a
+// closure created and returned from inside an given-block, capturing a
 // block-scoped variable; call it after the block, once its slot has
 // been reused by a later declaration
-fn make_from_if() {
-    let f = 0;
-    if (true) {
-        let x = 42;
-        f = fn() { return x; };
+forge make_from_if() {
+    local f = 0;
+    given (yes) {
+        local x = 42;
+        f = forge() { yield x; };
     }
-    let after = 999; // reuses x's old slot
-    return f;
+    local after = 999; // reuses x's old slot
+    yield f;
 }
-let cf = make_from_if();
-print cf();
+local cf = make_from_if();
+say cf();
 
 // closure capturing a variable that shadows an outer same-named one --
 // the closure must see the INNER value; the outer variable must be
 // untouched afterward
-fn make_shadow() {
-    let x = 1;
-    let f = 0;
-    if (true) {
-        let x = 2;
-        f = fn() { return x; };
+forge make_shadow() {
+    local x = 1;
+    local f = 0;
+    given (yes) {
+        local x = 2;
+        f = forge() { yield x; };
     }
-    return [x, f()];
+    yield [x, f()];
 }
-let r = make_shadow();
-print r[0];
-print r[1];
+local r = make_shadow();
+say r[0];
+say r[1];
 
-// closures created inside a while body (compiled once, run 3 times),
+// closures created inside a during body (compiled once, run 3 times),
 // each capturing that iteration's own block-scoped value
-fn make_list() {
-    let fns = [];
-    let i = 0;
-    while (i < 3) {
-        let captured = i;
-        push(fns, fn() { return captured; });
+forge make_list() {
+    local fns = [];
+    local i = 0;
+    during (i < 3) {
+        local captured = i;
+        push(fns, forge() { yield captured; });
         i = i + 1;
     }
-    return fns;
+    yield fns;
 }
-let list = make_list();
-let l0 = list[0];
-let l1 = list[1];
-let l2 = list[2];
-print l0();
-print l1();
-print l2();
+local list = make_list();
+local l0 = list[0];
+local l1 = list[1];
+local l2 = list[2];
+say l0();
+say l1();
+say l2();

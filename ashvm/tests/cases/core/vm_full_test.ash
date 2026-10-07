@@ -1,39 +1,39 @@
-let person = {"name": "Ash", "version": 2};
-print person;
-print person["name"];
+local person = {"name": "Ash", "version": 2};
+say person;
+say person["name"];
 person["version"] = 3;
-print person;
-print keys(person);
-print values(person);
-print has(person, "name");
+say person;
+say keys(person);
+say values(person);
+say has(person, "name");
 delete(person, "version");
-print person;
+say person;
 
-fn double(x) { return x * 2; }
-let f = double;
-print f(21);
+forge double(x) { yield x * 2; }
+local f = double;
+say f(21);
 
-let nums = [1, 2, 3, 4, 5];
-let doubled = map(nums, double);
-print doubled;
+local nums = [1, 2, 3, 4, 5];
+local doubled = map(nums, double);
+say doubled;
 
-fn isEven(x) { return x % 2 == 0; }
-let evens = filter(nums, isEven);
-print evens;
+forge isEven(x) { yield x % 2 == 0; }
+local evens = filter(nums, isEven);
+say evens;
 
-fn add(a, b) { return a + b; }
-let total = reduce(nums, add, 0);
-print total;
+forge add(a, b) { yield a + b; }
+local total = reduce(nums, add, 0);
+say total;
 
-print upper("hello");
-print lower("WORLD");
-print trim("  spaced  ");
-print split("a,b,c", ",");
-print join(["x", "y", "z"], "-");
-print substring("hello world", 0, 5);
-print indexOf("hello world", "world");
-print replace("foo bar foo", "foo", "baz");
+say upper("hello");
+say lower("WORLD");
+say trim("  spaced  ");
+say split("a,b,c", ",");
+say join(["x", "y", "z"], "-");
+say substring("hello world", 0, 5);
+say indexOf("hello world", "world");
+say replace("foo bar foo", "foo", "baz");
 
 write_file("/tmp/ashvm_test.txt", "vm file test\n");
-print file_exists("/tmp/ashvm_test.txt");
-print read_file("/tmp/ashvm_test.txt");
+say file_exists("/tmp/ashvm_test.txt");
+say read_file("/tmp/ashvm_test.txt");

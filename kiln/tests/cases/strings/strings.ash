@@ -1,37 +1,37 @@
-print "hello";
-print "hello, " + "ash!";
+say "hello";
+say "hello, " + "ash!";
 
-let s = "x";
-print s == "x";
-print s == "y";
-print s != "x";
+local s = "x";
+say s == "x";
+say s == "y";
+say s != "x";
 
-let a = "foo";
-let b = "bar";
-print a + b;
+local a = "foo";
+local b = "bar";
+say a + b;
 
-print "line1\nline2";
-print "quote: \"hi\"";
+say "line1\nline2";
+say "quote: \"hi\"";
 
-fn greet(name) {
-    return "hello, " + name;
+forge greet(name) {
+    yield "hello, " + name;
 }
-print greet("world");
+say greet("world");
 
-let x = "a";
+local x = "a";
 x = x + "b";
 x = x + "c";
-print x;
+say x;
 
-fn repeat(s, n) {
-    if (n <= 0) {
-        return "";
+forge repeat(s, n) {
+    given (n <= 0) {
+        yield "";
     }
-    return s + repeat(s, n - 1);
+    yield s + repeat(s, n - 1);
 }
-print repeat("ab", 5);
+say repeat("ab", 5);
 
-let n = 5;
-print n;
-print s + "test";
-print n + 1;
+local n = 5;
+say n;
+say s + "test";
+say n + 1;

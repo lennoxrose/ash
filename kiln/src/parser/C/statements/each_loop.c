@@ -70,14 +70,14 @@ void each_statement(void) {
 
     loop_push();
     block();
-    loop_patch_continues(); // continue lands here, right before i++
+    loop_patch_nexts(); // next lands here, right before i++
 
     emit_load_mem_disp32(code, REG_RCX, REG_RBP, level + 16);
     emit_add_reg_imm8(code, REG_RCX, 1);
     emit_store_mem_disp32(code, REG_RBP, level + 16, REG_RCX); // i++
     emit_jmp_back(code, loop_start);
     emit_patch_jump(code, loop_exit);
-    loop_pop_and_patch_breaks(); // break lands here, after the loop
+    loop_pop_and_patch_stops(); // stop lands here, after the loop
 
     each_nesting_depth--;
     vars_scope_end(saved_scope);

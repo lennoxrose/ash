@@ -1,32 +1,32 @@
-let x = 5;
+local x = 5;
 x += 3;
-print x;
+say x;
 x -= 2;
-print x;
+say x;
 x *= 4;
-print x;
+say x;
 x /= 3;
-print x;
+say x;
 
-let s = "hello";
+local s = "hello";
 s += " world";
-print s;
+say s;
 
-let i = 0;
+local i = 0;
 i++;
 i++;
-print i;
+say i;
 i--;
-print i;
+say i;
 
-let total = 0;
-for (n in [1,2,3,4,5]) {
+local total = 0;
+each (n in [1,2,3,4,5]) {
     total += n;
 }
-print total;
+say total;
 
-let j = 0;
-while (j < 5) {
+local j = 0;
+during (j < 5) {
     j++;
 }
-print j;
+say j;

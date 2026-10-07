@@ -36,12 +36,12 @@ static void embed_message(CodeBuf *code, const char *msg, uint64_t *out_addr, in
     *out_len = len;
 }
 
-// Raise routine -- inputs RSI=message addr, RDX=message len. If a `try`
+// Raise routine -- inputs RSI=message addr, RDX=message len. If an `attempt`
 // is active (kiln_try_depth_addr() > 0), pops the innermost handler,
 // restores its saved RSP/RBP (kiln's hand-rolled longjmp -- no libc
 // setjmp in a freestanding binary), stores the message as a TAG_STRING
 // value into the handler's recorded error-variable slot, and jumps to
-// its catch block. Otherwise falls through to an inline fatal path
+// its handle block. Otherwise falls through to an inline fatal path
 // (write to stderr, exit 1).
 static void emit_raise_routine(CodeBuf *code) {
     int skip = emit_jmp_rel32(code);
@@ -63,7 +63,7 @@ static void emit_raise_routine(CodeBuf *code) {
 
     emit_load_mem_disp32(code, REG_RCX, REG_RAX, 0);  // saved rsp
     emit_load_mem_disp32(code, REG_RDI, REG_RAX, 8);  // saved rbp
-    emit_load_mem_disp32(code, REG_RDX, REG_RAX, 16); // catch target (clobbers RDX -- fine, msg len only needed on the fatal branch we didn't take)
+    emit_load_mem_disp32(code, REG_RDX, REG_RAX, 16); // handle target (clobbers RDX -- fine, msg len only needed on the fatal branch we didn't take)
     emit_load_mem_disp32(code, REG_RBX, REG_RAX, 24); // error variable's rbp-relative tag offset
 
     emit_mov_reg_reg(code, REG_RSP, REG_RCX);
@@ -80,7 +80,7 @@ static void emit_raise_routine(CodeBuf *code) {
     emit_patch_jump(code, go_fatal);
     // RSI/RDX still hold this call's original message addr/len -- nothing
     // between the raise routine's entry and here touches them on the path
-    // that skips straight past the try-active handling.
+    // that skips straight past the attempt-active handling.
     platform_emit_write_stderr(code);
     emit_sub_reg_imm8(code, REG_RSP, 8);
     emit_mov_reg_reg(code, REG_RCX, REG_RSP);
@@ -131,7 +131,7 @@ void errors_emit_die(CodeBuf *code, const char *msg) {
 // The ONE case that must never be "catchable" (exceeding
 // MAX_KILN_TRY_DEPTH itself -- silently continuing there would mean
 // pushing a handler past the fixed table, corrupting the adjacent code
-// segment). Only ever called from one site (parser/C/statements/try_catch.c), so
+// segment). Only ever called from one site (parser/C/statements/attempt_handle.c), so
 // there's no deduplication payoff in routing it through the shared
 // runtime at all -- it just emits its own small inline write+exit
 // sequence directly, in every link mode, decoupled from wherever RAISE

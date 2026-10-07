@@ -1,27 +1,27 @@
-let e = "outer";
-try {
-    throw "inner";
-} catch (e) {
-    print e;
+local e = "outer";
+attempt {
+    raise "inner";
+} handle (e) {
+    say e;
 }
-print e;
+say e;
 
-try {
-    print "no error";
-} catch (e) {
-    print "should not run";
+attempt {
+    say "no error";
+} handle (e) {
+    say "should not run";
 }
-print e;
+say e;
 
-// nested try/catch, inner catch variable shadows outer's
-try {
-    try {
-        throw "deep";
-    } catch (e) {
-        print e;
+// nested attempt/handle, inner handle variable shadows outer's
+attempt {
+    attempt {
+        raise "deep";
+    } handle (e) {
+        say e;
     }
-    print e;
-} catch (e) {
-    print "outer should not run";
+    say e;
+} handle (e) {
+    say "outer should not run";
 }
-print e;
+say e;

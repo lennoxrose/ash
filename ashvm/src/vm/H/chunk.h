@@ -22,7 +22,10 @@ typedef enum {
     OP_CALL_BUILTIN,
     OP_MAKE_CLOSURE,
     OP_TRY_PUSH,
-    OP_TRY_POP
+    OP_TRY_POP,
+    OP_RAISE,
+    OP_BAND, OP_BOR, OP_BXOR, OP_BNOT, OP_SHL, OP_SHR,
+    OP_TRUNC_LOCALS
 } OpCode;
 
 typedef struct {

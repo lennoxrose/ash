@@ -16,10 +16,10 @@ int resolve_var(const char *name, int len);
 int declare_var(const char *name, int len);
 
 // Milestone 9: overwrites an already-declared slot's name in place (same
-// slot index, new name) -- parser/C/statements/try_catch.c needs a catch variable's
-// slot reserved BEFORE its real name (`catch (e)`) is parsed, since the
+// slot index, new name) -- parser/C/statements/attempt_handle.c needs a handle variable's
+// slot reserved BEFORE its real name (`handle (e)`) is parsed, since the
 // slot's rbp-relative offset must be embedded into the handler struct at
-// try-entry, ahead of the try block's body.
+// attempt-entry, ahead of the attempt block's body.
 void rename_var(int slot, const char *name, int len);
 
 // Milestone 5: each variable now holds a (tag, payload) pair (16 bytes,
@@ -49,19 +49,20 @@ void vars_restore(const VarScope *saved);
 
 // Block scoping: `scope_start` marks the slot index where the innermost
 // active block began. vars_scope_begin/end bracket a single block() call
-// (or, for for/try statements whose own loop/catch variable is declared
-// outside their nested block() call -- see for_loop.c/try_catch.c -- the
-// whole statement). Same save-an-int-on-the-C-call-stack pattern as
-// for_depth_save/restore and loop_depth_save/restore above: block() nests
-// via ordinary recursive descent, so the C call stack gives correct
-// nesting for free, no explicit stack structure needed.
+// (or, for each/attempt statements whose own loop/handle variable is
+// declared outside their nested block() call -- see
+// each_loop.c/attempt_handle.c -- the whole statement). Same
+// save-an-int-on-the-C-call-stack pattern as each_depth_save/restore and
+// loop_depth_save/restore above: block() nests via ordinary recursive
+// descent, so the C call stack gives correct nesting for free, no explicit
+// stack structure needed.
 typedef struct { int count_mark; int prev_scope_start; } VarBlockScope;
 
 VarBlockScope vars_scope_begin(void);
 void vars_scope_end(VarBlockScope saved);
 
 // Like resolve_var, but only considers slots >= scope_start (the CURRENT
-// block's own declarations). let_statement/for_statement use this for
+// block's own declarations). local_statement/each_statement use this for
 // their "reuse this slot or declare fresh" decision: a name that only
 // exists in an ENCLOSING scope must shadow (fresh slot), not mutate.
 int resolve_var_in_current_scope(const char *name, int len);
@@ -91,21 +92,21 @@ int32_t call_scratch_offset(void);
 #define KILN_HIGHER_ORDER_SCRATCH_SIZE 128
 int32_t higher_order_scratch_offset(void);
 
-// Milestone 11: `for (x in array)` loop state (data_ptr, count, running
+// Milestone 11: `each (x in array)` loop state (data_ptr, count, running
 // index) also needs to survive across the loop body's own codegen -- but
-// unlike try/catch's runtime recursion, for-loop NESTING is fully known
-// at COMPILE TIME (nested `for` statements are literally nested calls in
+// unlike attempt/handle's runtime recursion, each-loop NESTING is fully known
+// at COMPILE TIME (nested `each` statements are literally nested calls in
 // this single-pass compiler), so each nesting level just gets its own
 // fixed offset rather than a runtime-tracked stack. Bounded the same way
-// every other table here is; parser/C/statements/for_loop.c resets its nesting
+// every other table here is; parser/C/statements/each_loop.c resets its nesting
 // counter to 0 when entering a function or lambda body (mirroring
 // vars_save/vars_clear/vars_restore), since that body gets its own RBP
 // at runtime and can safely reuse the same offsets independently of how
-// deep the enclosing code's own `for` nesting was.
-#define MAX_KILN_FOR_DEPTH 8
-#define KILN_FOR_LEVEL_SIZE 24
-#define KILN_FOR_STACK_SIZE (MAX_KILN_FOR_DEPTH * KILN_FOR_LEVEL_SIZE)
-int32_t for_level_offset(int depth);
+// deep the enclosing code's own `each` nesting was.
+#define MAX_KILN_EACH_DEPTH 8
+#define KILN_EACH_LEVEL_SIZE 24
+#define KILN_EACH_STACK_SIZE (MAX_KILN_EACH_DEPTH * KILN_EACH_LEVEL_SIZE)
+int32_t each_level_offset(int depth);
 
 // Plan A, phase A3: one 8-byte RBP-relative slot for codegen/C/platform/win_call.c to
 // stash the original RSP across a Windows API call (dynamic 16-byte align
@@ -131,7 +132,7 @@ int32_t win_call_scratch_offset(void);
 int32_t win_outparam_offset(void);
 
 #define KILN_FRAME_RESERVE \
-    ((MAX_KILN_VARS + 1) * 16 + KILN_HIGHER_ORDER_SCRATCH_SIZE + KILN_FOR_STACK_SIZE + \
+    ((MAX_KILN_VARS + 1) * 16 + KILN_HIGHER_ORDER_SCRATCH_SIZE + KILN_EACH_STACK_SIZE + \
      KILN_WIN_CALL_SCRATCH_SIZE + KILN_WIN_OUTPARAM_SCRATCH_SIZE)
 
 #endif

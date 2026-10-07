@@ -1,12 +1,12 @@
-let name = "Ash";
-print "Hello, " + name + "!";
+local name = "Ash";
+say "Hello, " + name + "!";
 
-let a = "abc";
-let b = "abc";
-print a == b;
-print a == "xyz";
+local a = "abc";
+local b = "abc";
+say a == b;
+say a == "xyz";
 
-fn greet(who) {
-    return "Hi " + who;
+forge greet(who) {
+    yield "Hi " + who;
 }
-print greet("world");
+say greet("world");

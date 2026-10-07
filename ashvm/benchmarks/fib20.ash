@@ -1,1 +1,1 @@
-fn fib(n) { if (n < 2) { return n; } return fib(n-1)+fib(n-2); } print fib(20);
+forge fib(n) { given (n < 2) { yield n; } yield fib(n-1)+fib(n-2); } say fib(20);

@@ -1,31 +1,31 @@
 // M8: lambda assigned to a variable and called
-let square = fn(x) { return x * x; };
-print square(5);
+local square = forge(x) { yield x * x; };
+say square(5);
 
 // named function referenced as a value and called indirectly
-fn add(a, b) { return a + b; }
-let op = add;
-print op(3, 4);
+forge add(a, b) { yield a + b; }
+local op = add;
+say op(3, 4);
 
 // genuine capture: adder-generator (partial application / currying)
-fn make_adder(n) {
-    return fn(x) { return x + n; };
+forge make_adder(n) {
+    yield forge(x) { yield x + n; };
 }
-let add5 = make_adder(5);
-let add10 = make_adder(10);
-print add5(1);
-print add10(1);
-print add5(2);
+local add5 = make_adder(5);
+local add10 = make_adder(10);
+say add5(1);
+say add10(1);
+say add5(2);
 
 // higher-order function: pass a closure into a plain function
-fn apply_twice(f, x) {
-    return f(f(x));
+forge apply_twice(f, x) {
+    yield f(f(x));
 }
-print apply_twice(square, 3);
+say apply_twice(square, 3);
 
 // closure capturing multiple outer variables
-fn make_scaler(mul, offset) {
-    return fn(x) { return x * mul + offset; };
+forge make_scaler(mul, offset) {
+    yield forge(x) { yield x * mul + offset; };
 }
-let scale = make_scaler(2, 1);
-print scale(10);
+local scale = make_scaler(2, 1);
+say scale(10);

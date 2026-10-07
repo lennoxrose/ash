@@ -1,24 +1,24 @@
-fn make_adder(x) {
-    return fn(y) { return x + y; };
+forge make_adder(x) {
+    yield forge(y) { yield x + y; };
 }
 
-let add5 = make_adder(5);
-let add10 = make_adder(10);
-print add5(3);
-print add10(3);
+local add5 = make_adder(5);
+local add10 = make_adder(10);
+say add5(3);
+say add10(3);
 
-let nums = [1, 2, 3];
-let shift100 = make_adder(100);
-let shifted = map(nums, shift100);
-print shifted;
+local nums = [1, 2, 3];
+local shift100 = make_adder(100);
+local shifted = map(nums, shift100);
+say shifted;
 
-fn compose(f, g) {
-    return fn(x) { return f(g(x)); };
+forge compose(f, g) {
+    yield forge(x) { yield f(g(x)); };
 }
-fn double(x) { return x * 2; }
-fn inc(x) { return x + 1; }
-let doubleThenInc = compose(inc, double);
-print doubleThenInc(5);
+forge double(x) { yield x * 2; }
+forge inc(x) { yield x + 1; }
+local doubleThenInc = compose(inc, double);
+say doubleThenInc(5);
 
-let total = reduce(nums, fn(acc, n) { return acc + n; }, 0);
-print total;
+local total = reduce(nums, forge(acc, n) { yield acc + n; }, 0);
+say total;

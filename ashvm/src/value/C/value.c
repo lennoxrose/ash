@@ -7,6 +7,9 @@
 VMValue vm_num(double n) {
     VMValue v; v.type = VM_NUM; v.number = n; v.str = NULL; v.array = NULL; v.map = NULL; v.closure = NULL; return v;
 }
+VMValue vm_nil(void) {
+    VMValue v; v.type = VM_NIL; v.number = 0; v.str = NULL; v.array = NULL; v.map = NULL; v.closure = NULL; return v;
+}
 VMValue vm_str(char *s) {
     VMValue v; v.type = VM_STR; v.number = 0; v.str = s; v.array = NULL; v.map = NULL; v.closure = NULL; return v;
 }
@@ -80,6 +83,8 @@ void vm_print_value(VMValue v) {
         else printf("%g", v.number);
     } else if (v.type == VM_STR) {
         printf("%s", v.str);
+    } else if (v.type == VM_NIL) {
+        printf("none");
     } else if (v.type == VM_FUNCTION) {
         printf("<function>");
     } else if (v.type == VM_CLOSURE) {

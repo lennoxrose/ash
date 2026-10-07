@@ -7,16 +7,16 @@ static int var_count = 0;
 static int scope_start = 0;
 
 // Scans newest-first (most-recently-declared wins), standard shadowing
-// semantics -- required for try/catch: parser/C/statements/try_catch.c reserves each
-// catch variable's slot with a synthetic placeholder name and renames it
+// semantics -- required for attempt/handle: parser/C/statements/attempt_handle.c reserves each
+// handle variable's slot with a synthetic placeholder name and renames it
 // to the real name only after the fact (the slot's rbp-offset has to be
-// known before the try body compiles, before the real name is even
-// parsed -- see try_catch.c's header comment), so two SEQUENTIAL (not
-// nested) `catch (e)` blocks end up with two separate table entries both
-// named "e". A first-match-wins scan would bind the second catch body's
-// references to the FIRST catch's stale slot; newest-first fixes that
-// while leaving `let`'s own reuse-if-already-declared behavior unchanged
-// (there's normally only one live entry for a given `let` name anyway).
+// known before the attempt body compiles, before the real name is even
+// parsed -- see attempt_handle.c's header comment), so two SEQUENTIAL (not
+// nested) `handle (e)` blocks end up with two separate table entries both
+// named "e". A first-match-wins scan would bind the second handle body's
+// references to the FIRST handle's stale slot; newest-first fixes that
+// while leaving `local`'s own reuse-if-already-declared behavior unchanged
+// (there's normally only one live entry for a given `local` name anyway).
 int resolve_var(const char *name, int len) {
     for (int i = var_count - 1; i >= 0; i--) {
         if ((int)strlen(var_names[i]) == len && strncmp(var_names[i], name, len) == 0) return i;
@@ -70,12 +70,12 @@ int32_t call_scratch_offset(void) { return var_slot_tag_offset(MAX_KILN_VARS); }
 
 int32_t higher_order_scratch_offset(void) { return call_scratch_offset() - KILN_HIGHER_ORDER_SCRATCH_SIZE; }
 
-int32_t for_level_offset(int depth) {
-    return higher_order_scratch_offset() - KILN_FOR_STACK_SIZE + depth * KILN_FOR_LEVEL_SIZE;
+int32_t each_level_offset(int depth) {
+    return higher_order_scratch_offset() - KILN_EACH_STACK_SIZE + depth * KILN_EACH_LEVEL_SIZE;
 }
 
 int32_t win_call_scratch_offset(void) {
-    return higher_order_scratch_offset() - KILN_FOR_STACK_SIZE - KILN_WIN_CALL_SCRATCH_SIZE;
+    return higher_order_scratch_offset() - KILN_EACH_STACK_SIZE - KILN_WIN_CALL_SCRATCH_SIZE;
 }
 
 int32_t win_outparam_offset(void) {

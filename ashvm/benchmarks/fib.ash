@@ -1,7 +1,7 @@
-fn fib(n) {
-    if (n < 2) {
-        return n;
+forge fib(n) {
+    given (n < 2) {
+        yield n;
     }
-    return fib(n - 1) + fib(n - 2);
+    yield fib(n - 1) + fib(n - 2);
 }
-print fib(30);
+say fib(30);

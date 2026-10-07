@@ -1,14 +1,14 @@
-print true;
-print false;
-print nil;
-print true == 1;
-print false == 0;
-print nil == nil;
-print nil == 0;
-print nil == false;
-if (true) { print "yes"; }
-if (false) { print "no"; } else { print "else"; }
-let x = nil;
-if (x) { print "truthy"; } else { print "falsy nil"; }
-let y = true;
-print y;
+say yes;
+say no;
+say none;
+say yes == 1;
+say no == 0;
+say none == none;
+say none == 0;
+say none == no;
+given (yes) { say "yes"; }
+given (no) { say "no"; } otherwise { say "else"; }
+local x = none;
+given (x) { say "truthy"; } otherwise { say "falsy nil"; }
+local y = yes;
+say y;

@@ -177,7 +177,7 @@ void import_statement(void) {
     resolving_depth++;
 
     // --- Save everything the recursive parse of the imported file will
-    // clobber, exactly mirroring vars_save/for_depth_save/loop_depth_save's
+    // clobber, exactly mirroring vars_save/each_depth_save/loop_depth_save's
     // existing save-recurse-restore pattern (the C call stack gives
     // correct nesting for free, same as those). ---
     DiagnosticsSource saved_diag = diagnostics_save_source();

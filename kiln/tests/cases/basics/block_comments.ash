@@ -1,10 +1,10 @@
 /* this is a block comment */
-print 1;
+say 1;
 /* multi
    line
    comment */
-print 2;
-print /* inline */ 3;
-let x = 5; /* trailing */ print x;
+say 2;
+say /* inline */ 3;
+local x = 5; /* trailing */ say x;
 // still works
-print 4;
+say 4;

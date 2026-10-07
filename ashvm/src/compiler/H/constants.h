@@ -18,7 +18,7 @@ VMConstant *resolve_constant(const char *name, int len);
 // would have -- used at every `ns.CONST` use site.
 void codegen_constant_value(VMConstant *k);
 
-// Called at the top of let_statement(), right after the variable name and
+// Called at the top of local_statement(), right after the variable name and
 // '=' have been consumed: if an import namespace is currently active,
 // consumes the RHS (must be a literal number or string), registers it as
 // a namespaced constant, and consumes the trailing ';'. Returns 1 if it

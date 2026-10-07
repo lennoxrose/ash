@@ -50,7 +50,13 @@ int import_resolve_path(const char *raw_path, int raw_len,
                 return 0;
             }
         }
+        // ash.libs/ (hand-written local libraries) wins first; a package
+        // installed by forgepack (see ideas/ash_modules.md) only gets
+        // tried if there's no local library shadowing the same name.
         snprintf(candidate, sizeof(candidate), "%s/ash.libs/%.*s/%.*s.ash",
+                  project_root_dir, raw_len, raw_path, raw_len, raw_path);
+        if (realpath(candidate, canonical_out) != NULL) return 1;
+        snprintf(candidate, sizeof(candidate), "%s/@ash-modules/%.*s/%.*s.ash",
                   project_root_dir, raw_len, raw_path, raw_len, raw_path);
     }
 
