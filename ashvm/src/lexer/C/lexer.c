@@ -76,6 +76,14 @@ static Token number(void) {
         advance(); // consume '.'
         while (isdigit(peek())) advance();
     }
+    if (peek() == 'e' || peek() == 'E') {
+        char after = peek_next();
+        if (isdigit(after) || after == '+' || after == '-') {
+            advance(); // consume 'e'/'E'
+            if (peek() == '+' || peek() == '-') advance();
+            while (isdigit(peek())) advance();
+        }
+    }
     return make_token(TOKEN_NUMBER);
 }
 

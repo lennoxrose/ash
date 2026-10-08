@@ -1,6 +1,7 @@
 src/parser/O/core/parser.o: src/parser/C/core/parser.c \
  src/parser/H/core/parser.h src/lexer/H/lexer.h src/codegen/H/emit/emit.h \
  src/parser/H/core/parser_internal.h src/parser/H/declarations/vars.h \
+ src/parser/H/declarations/module_state.h \
  src/parser/H/statements/loop_stack.h \
  src/parser/H/declarations/functions.h src/parser/H/imports/imports.h \
  src/parser/H/declarations/constants.h src/codegen/H/expressions/expr.h \
@@ -16,6 +17,7 @@ src/lexer/H/lexer.h:
 src/codegen/H/emit/emit.h:
 src/parser/H/core/parser_internal.h:
 src/parser/H/declarations/vars.h:
+src/parser/H/declarations/module_state.h:
 src/parser/H/statements/loop_stack.h:
 src/parser/H/declarations/functions.h:
 src/parser/H/imports/imports.h:

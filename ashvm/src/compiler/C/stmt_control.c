@@ -41,9 +41,9 @@ void compile_forge_decl(void) {
     char outer_locals[MAX_VM_LOCALS][64];
     int outer_local_count = local_count;
     memcpy(outer_locals, local_names, sizeof(local_names));
-    int outer_loop_depth;
-    loop_depth_save(&outer_loop_depth);
-    loop_depth_reset();
+    LoopScope outer_loop_scope;
+    loop_scope_save(&outer_loop_scope);
+    loop_scope_reset();
 
     chunk = &vm_functions[fn_idx].chunk;
     local_count = 0;
@@ -56,7 +56,7 @@ void compile_forge_decl(void) {
     chunk = outer_chunk;
     local_count = outer_local_count;
     memcpy(local_names, outer_locals, sizeof(local_names));
-    loop_depth_restore(outer_loop_depth);
+    loop_scope_restore(outer_loop_scope);
 }
 
 // Conditions may be parenthesized or not (`given (x < n) {` and
@@ -123,7 +123,9 @@ void compile_attempt_stmt(void) {
 
     int attempt_jump = emit_jump(OP_TRY_PUSH);
 
+    attempt_enter();
     block();
+    attempt_leave();
 
     emit_op(OP_TRY_POP);
     int skip_handle = emit_jump(OP_JUMP);

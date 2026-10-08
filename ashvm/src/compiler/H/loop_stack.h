@@ -43,8 +43,20 @@ void loop_pop_and_patch_stops(void);
 // reach past it into an ENCLOSING loop it happens to be textually written
 // inside -- jumps can't cross Chunks anyway, so this is what turns that
 // into a clean compile error instead of nonsense bytecode.
-void loop_depth_save(int *out);
-void loop_depth_reset(void);
-void loop_depth_restore(int saved);
+typedef struct { int loops; int attempts; } LoopScope;
+void loop_scope_save(LoopScope *out);
+void loop_scope_reset(void);
+void loop_scope_restore(LoopScope saved);
+
+// An attempt block pushes a runtime handler (OP_TRY_PUSH) that only its own
+// normal fallthrough pops, so any other way out of the block -- yield, stop,
+// next -- must pop it explicitly or the handler is left active and a later
+// raise jumps into it. attempt_enter/leave bracket the attempt block (not the
+// handle block, whose handler is already gone); the emit_* calls put one
+// OP_TRY_POP per open handler right before the exit jump/return.
+void attempt_enter(void);
+void attempt_leave(void);
+void emit_attempt_unwind_all(void);     // yield: leave every open attempt
+void emit_attempt_unwind_to_loop(void); // stop/next: leave those inside the loop
 
 #endif

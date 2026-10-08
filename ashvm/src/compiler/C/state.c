@@ -73,12 +73,41 @@ int declare_function_in_context(const char *name, int len) {
         final_name = buf;
         final_len = combined_len;
     }
+    // A prescan (prescan.c) may already have reserved this name so earlier code
+    // could call it; the real declaration fills that entry in.
+    int existing = find_function(final_name, final_len);
+    if (existing != -1 && !vm_functions[existing].defined) {
+        vm_functions[existing].defined = 1;
+        return existing;
+    }
     if (vm_function_count >= MAX_VM_FUNCS) { diagnostics_report("error", "too many functions", current.start, current.length); exit(1); }
     if (final_len >= (int)sizeof(vm_functions[0].name)) { diagnostics_report("error", "function name too long", current.start, current.length); exit(1); }
     int fn_idx = vm_function_count++;
     memcpy(vm_functions[fn_idx].name, final_name, (size_t)final_len);
     vm_functions[fn_idx].name[final_len] = '\0';
+    vm_functions[fn_idx].defined = 1;
     return fn_idx;
+}
+
+// Reserves `name` (under the current import namespace) with a known arity, not
+// yet defined, so calls that appear before the `forge` still compile.
+void predeclare_function_in_context(const char *name, int len, int arity) {
+    char buf[128];
+    const char *final_name = name;
+    int final_len = len;
+    if (g_import_ns_len > 0) {
+        int combined_len = build_namespaced_name(buf, sizeof(buf), name, len);
+        if (combined_len < 0) return; // the real declaration reports it
+        final_name = buf;
+        final_len = combined_len;
+    }
+    if (find_function(final_name, final_len) != -1) return;
+    if (vm_function_count >= MAX_VM_FUNCS || final_len >= (int)sizeof(vm_functions[0].name)) return;
+    int fn_idx = vm_function_count++;
+    memcpy(vm_functions[fn_idx].name, final_name, (size_t)final_len);
+    vm_functions[fn_idx].name[final_len] = '\0';
+    vm_functions[fn_idx].arity = arity;
+    vm_functions[fn_idx].defined = 0;
 }
 
 int find_function_in_context(const char *name, int len) {

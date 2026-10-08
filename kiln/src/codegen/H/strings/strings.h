@@ -28,6 +28,12 @@ void codegen_string_concat(void);
 // byte-different (invert=1, i.e. `!=`).
 void codegen_string_compare(int invert);
 
+// Lexicographic (bytewise) order of two strings, a_payload=RAX, b_payload=RCX.
+// Pushes nothing: leaves the flags as if a cmp of a against b had run, so the
+// caller can branch with the same unsigned conditions ucomisd uses (COND_B/BE/
+// A/AE). Clobbers RAX, RCX, RBX, RDX, RSI, RDI.
+void codegen_string_order(void);
+
 // Assumes index already pushed (top) and string already pushed (below
 // it), both (tag, payload) pairs -- postfix()'s `s[i]` read, the
 // TAG_STRING case (previously missing entirely -- see missing.md #1:

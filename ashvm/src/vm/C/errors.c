@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
 #include "vm/H/vm.h"
 #include "vm/H/state.h"
 #include "diagnostics/H/diagnostics.h"
@@ -15,6 +16,8 @@ void vm_runtime_error(const char *fmt, ...) {
     va_start(args, fmt);
     vsnprintf(error_message, sizeof(error_message), fmt, args);
     va_end(args);
+    size_t n = strlen(error_message); // messages are caught as values: no trailing newline
+    while (n > 0 && error_message[n - 1] == '\n') error_message[--n] = '\0';
 
     if (try_depth > 0) {
         longjmp(try_handlers[try_depth - 1].jmp, 1);
@@ -29,37 +32,35 @@ void vm_runtime_error(const char *fmt, ...) {
     }
 }
 
-// `raise expr;` -- expr must already be a VM_STR (checked here, not at
-// compile time, since the raised value is a general expression that could
-// be anything at runtime). Mirrors vm_runtime_error's three-way dispatch
+// `raise expr;` -- any value (a string is what built-in errors raise; a map
+// gives a structured error). Mirrors vm_runtime_error's three-way dispatch
 // (attempt handler / REPL recovery / hard exit) exactly, but hands back
 // the exact raised VMValue via `raised_value` instead of funneling it
 // through the fixed-size error_message buffer -- see state.h.
 void vm_raise_value(VMValue msg) {
-    if (msg.type != VM_STR) type_error("'raise'");
-
     raised_value = msg;
+    const char *text = msg.type == VM_STR ? msg.str : "uncaught non-string value";
     has_raised_value = 1;
 
     if (try_depth > 0) {
         longjmp(try_handlers[try_depth - 1].jmp, 1);
     } else if (repl_recovery_jmp != NULL) {
-        diagnostics_report("error", msg.str, current_pos, current_poslen);
+        diagnostics_report("error", text, current_pos, current_poslen);
         frame_count = repl_saved_frame_count;
         stack_top = repl_saved_stack_top;
         longjmp(*repl_recovery_jmp, 1);
     } else {
-        diagnostics_report("error", msg.str, current_pos, current_poslen);
+        diagnostics_report("error", text, current_pos, current_poslen);
         exit(1);
     }
 }
 
 void type_error(const char *context) {
-    vm_runtime_error("type error: invalid operand type in %s", context);
+    vm_runtime_error("invalid operand type in %s", context);
 }
 
 double require_num(VMValue v, const char *context) {
-    if (v.type != VM_NUM) type_error(context);
+    if (v.type != VM_NUM && v.type != VM_BOOL) type_error(context);
     return v.number;
 }
 

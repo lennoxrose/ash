@@ -21,9 +21,9 @@ static void primary(void) {
         return;
     }
     if (current.type == TOKEN_YES || current.type == TOKEN_NO) {
-        double v = current.type == TOKEN_YES ? 1.0 : 0.0;
+        int v = current.type == TOKEN_YES;
         advance_token();
-        emit_constant(vm_num(v));
+        emit_constant(vm_bool(v));
         return;
     }
     if (current.type == TOKEN_NONE) {
@@ -68,6 +68,20 @@ static void primary(void) {
         Token id = current;
         advance_token();
 
+        // `var.field` on a variable (not a namespace) is var["field"]; on an error
+        // string it is the string itself, so `e.message` works for built-in errors
+        // and for raised maps alike.
+        if (current.type == TOKEN_DOT && resolve_local(id.start, id.length) != -1) {
+            emit2(OP_GET_LOCAL, (uint8_t)resolve_local(id.start, id.length));
+            while (current.type == TOKEN_DOT) {
+                advance_token();
+                expect(TOKEN_IDENTIFIER, "expected field name after '.'");
+                emit_constant(vm_str(vm_copy_string_escaped(previous.start, previous.length)));
+                emit_op(OP_INDEX_GET);
+            }
+            return;
+        }
+
         if (current.type == TOKEN_DOT) {
             advance_token();
             expect(TOKEN_IDENTIFIER, "expected name after '.'");
@@ -85,6 +99,8 @@ static void primary(void) {
 
             VMConstant *k = resolve_constant(combined, combined_len);
             if (k != NULL) { codegen_constant_value(k); return; }
+            int state = module_state_resolve_qualified(combined, combined_len);
+            if (state != -1) { emit2(OP_GET_GLOBAL, (uint8_t)state); return; }
 
             diagnostics_report("error", "undefined namespaced function or constant", id.start, id.length);
             exit(1);
@@ -111,6 +127,10 @@ static void primary(void) {
             VMConstant *k = resolve_constant(combined, combined_len);
             if (k != NULL) { codegen_constant_value(k); return; }
         }
+
+        int state = module_state_resolve(id.start, id.length);
+        if (state != -1) { emit2(OP_GET_GLOBAL, (uint8_t)state); return; }
+        if (emit_builtin_value(id)) return;
 
         char msg[128];
         snprintf(msg, sizeof(msg), "undefined variable: %.*s", id.length, id.start);
@@ -208,13 +228,37 @@ static void bitwise(void) {
     }
 }
 
+// `and` / `or` short-circuit: the right operand only runs when the left
+// doesn't already decide the result. Built from the same OP_JUMP_IF_FALSE
+// the ternary uses; the right operand is normalized to 0/1 by OP_AND/OP_OR
+// against a constant, so the result is the same 0/1 the old eager ops gave.
 static void logical_and(void) {
     bitwise();
-    while (current.type == TOKEN_AND) { advance_token(); bitwise(); emit_op(OP_AND); }
+    while (current.type == TOKEN_AND) {
+        advance_token();
+        int lhs_false = emit_jump(OP_JUMP_IF_FALSE);
+        bitwise();
+        emit_constant(vm_num(1));
+        emit_op(OP_AND);
+        int end = emit_jump(OP_JUMP);
+        patch_jump(lhs_false);
+        emit_constant(vm_bool(0));
+        patch_jump(end);
+    }
 }
 static void logical_or(void) {
     logical_and();
-    while (current.type == TOKEN_OR) { advance_token(); logical_and(); emit_op(OP_OR); }
+    while (current.type == TOKEN_OR) {
+        advance_token();
+        int try_rhs = emit_jump(OP_JUMP_IF_FALSE);
+        emit_constant(vm_bool(1));
+        int end = emit_jump(OP_JUMP);
+        patch_jump(try_rhs);
+        logical_and();
+        emit_constant(vm_num(0));
+        emit_op(OP_OR);
+        patch_jump(end);
+    }
 }
 
 // a ? b : c  --  lowest precedence, sits above logical_or. Right-associative

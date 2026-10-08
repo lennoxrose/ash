@@ -2,6 +2,7 @@
 #include "vm/H/state.h"
 
 VMValue stack[STACK_MAX];
+VMValue vm_globals[MAX_VM_GLOBALS];
 VMValue *stack_top;
 CallFrame frames[FRAMES_MAX];
 int frame_count;

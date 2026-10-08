@@ -46,9 +46,9 @@ void codegen_lambda_expr(void) {
     int outer_each_depth;
     each_depth_save(&outer_each_depth);
     each_depth_reset();
-    int outer_loop_depth;
-    loop_depth_save(&outer_loop_depth);
-    loop_depth_reset();
+    LoopScope outer_loop_depth;
+    loop_scope_save(&outer_loop_depth);
+    loop_scope_reset();
     for (int i = 0; i < capture_count; i++) {
         declare_var(outer_vars.names[i], (int)strlen(outer_vars.names[i]));
     }
@@ -103,7 +103,7 @@ void codegen_lambda_expr(void) {
 
     vars_restore(&outer_vars);
     each_depth_restore(outer_each_depth);
-    loop_depth_restore(outer_loop_depth);
+    loop_scope_restore(outer_loop_depth);
     emit_patch_jump(code, skip_jump);
 
     uint64_t addr = kiln_code_base() + (uint64_t)lambda_code_offset;

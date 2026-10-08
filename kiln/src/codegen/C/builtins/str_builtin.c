@@ -4,98 +4,32 @@
 #include "codegen/H/emit/emit_sse.h"
 #include "codegen/H/emit/value.h"
 #include "codegen/H/runtime/heap.h"
+#include "codegen/H/runtime/errors.h"
+#include "codegen/H/strings/strings.h"
+#include "codegen/H/runtime/number_format.h"
 #include "codegen/H/emit/bytes.h"
 #include "parser/H/core/parser.h"
 
-static void load_double_const(XReg dst, double v) {
-    uint64_t bits;
-    memcpy(&bits, &v, sizeof(bits));
-    emit_mov_reg_imm64(code, REG_RAX, bits);
-    emit_movq_xmm_from_reg(code, dst, REG_RAX);
-}
-
-// Scratch layout while building digits, same shape as print_int.c:
-//   [rsp, rsp+32)   integer digits (+ optional '-'), built backward
-//   rsp+32          '.' (only if there's a fraction)
-//   [rsp+33, rsp+39) up to 6 fraction digits, built forward
+// str(number): formats via number_format_emit (see its header for the format)
+// into a stack scratch region, then copies the text into a fresh string.
 void codegen_builtin_str(void) {
     emit_pop_reg(code, REG_RAX); // payload
-    emit_pop_reg(code, REG_RBX); // tag (assumed NUMBER)
-    emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
-    emit_sub_reg_imm8(code, REG_RSP, 40);
-
-    // ---- sign ----
-    emit_pxor_xmm_xmm(code, XMM2);
-    emit_ucomisd(code, XMM0, XMM2);
-    emit_mov_reg_imm64(code, REG_RBX, 0);
-    int skip_negate = emit_jcc_rel32(code, COND_AE);
-    emit_pxor_xmm_xmm(code, XMM2);
-    emit_subsd(code, XMM2, XMM0);
-    emit_movsd_xmm_xmm(code, XMM0, XMM2);
-    emit_mov_reg_imm64(code, REG_RBX, 1);
-    emit_patch_jump(code, skip_negate);
-
-    // ---- split into integer part (RAX) and fractional remainder (XMM0) ----
-    emit_cvttsd2si(code, REG_RAX, XMM0);
-    emit_cvtsi2sd(code, XMM1, REG_RAX);
-    emit_subsd(code, XMM0, XMM1);
-
-    // ---- integer digits, backward ----
-    emit_mov_reg_reg(code, REG_RCX, REG_RSP);
-    emit_add_reg_imm8(code, REG_RCX, 32);
-    int loop_start = code->count;
-    emit_dec_reg(code, REG_RCX);
-    emit_cqo(code);
-    emit_mov_reg_imm64(code, REG_RSI, 10);
-    emit_idiv_reg(code, REG_RSI);
-    emit_add_reg_imm8(code, REG_RDX, '0');
-    emit_store_byte_reg(code, REG_RCX, REG_RDX);
-    emit_cmp_reg_imm32(code, REG_RAX, 0);
-    emit_jcc_back(code, COND_NE, loop_start);
-
-    // ---- sign prepend ----
-    emit_cmp_reg_imm32(code, REG_RBX, 0);
-    int skip_sign = emit_jcc_rel32(code, COND_E);
-    emit_dec_reg(code, REG_RCX);
-    emit_store_byte_imm(code, REG_RCX, '-');
-    emit_patch_jump(code, skip_sign);
-
-    // ---- fraction digits, forward, round-half-up first (see
-    // print_int.c's comment for why) ----
-    load_double_const(XMM1, 0.0000005);
-    emit_addsd(code, XMM0, XMM1);
-    emit_mov_reg_reg(code, REG_RSI, REG_RSP);
-    emit_add_reg_imm8(code, REG_RSI, 33);
-    load_double_const(XMM3, 10.0);
-    emit_mov_reg_imm64(code, REG_RBX, 0); // frac_len
-    for (int i = 0; i < 6; i++) {
-        emit_mulsd(code, XMM0, XMM3);
-        emit_cvttsd2si(code, REG_RAX, XMM0);
-        emit_cvtsi2sd(code, XMM1, REG_RAX);
-        emit_subsd(code, XMM0, XMM1);
-        emit_cmp_reg_imm32(code, REG_RAX, 0);
-        int skip_mark = emit_jcc_rel32(code, COND_E);
-        emit_mov_reg_imm64(code, REG_RBX, (uint64_t)(i + 1));
-        emit_patch_jump(code, skip_mark);
-        emit_add_reg_imm8(code, REG_RAX, '0');
-        emit_store_byte_reg(code, REG_RSI, REG_RAX);
-        emit_add_reg_imm8(code, REG_RSI, 1);
-    }
-
-    // ---- decide '.' placement, compute the content's end pointer (no
-    // trailing newline -- this is a string value, not a print) ----
-    emit_mov_reg_reg(code, REG_RDX, REG_RSP);
-    emit_add_reg_imm8(code, REG_RDX, 32);
-    emit_cmp_reg_imm32(code, REG_RBX, 0);
-    int whole_number = emit_jcc_rel32(code, COND_E);
-    emit_store_byte_imm(code, REG_RDX, '.');
-    emit_mov_reg_reg(code, REG_RDX, REG_RSP);
-    emit_add_reg_imm8(code, REG_RDX, 33);
-    emit_add_reg_reg(code, REG_RDX, REG_RBX);
-    int after_dot = emit_jmp_rel32(code);
-    emit_patch_jump(code, whole_number);
-    emit_patch_jump(code, after_dot);
-
+    emit_pop_reg(code, REG_RBX); // tag
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_NUMBER);
+    int is_number = emit_jcc_rel32(code, COND_E);
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_BOOL);
+    int is_bool = emit_jcc_rel32(code, COND_E);
+    errors_emit_die(code, "runtime error: str() expects a number");
+    emit_patch_jump(code, is_bool);
+    emit_cmp_reg_imm32(code, REG_RAX, 0); // payload bits: 0.0 is all zero
+    int bool_no = emit_jcc_rel32(code, COND_E);
+    codegen_string_literal_bytes("yes", 3);
+    int bool_done_yes = emit_jmp_rel32(code);
+    emit_patch_jump(code, bool_no);
+    codegen_string_literal_bytes("no", 2);
+    int bool_done = emit_jmp_rel32(code);
+    emit_patch_jump(code, is_number);
+    number_format_emit(code); // RCX = text start, RDX = text end (on the stack)
     emit_sub_reg_reg(code, REG_RDX, REG_RCX); // RDX = content length
 
     // ---- heap-allocate a length-prefixed block and copy the digits in ----
@@ -110,7 +44,7 @@ void codegen_builtin_str(void) {
     emit_mov_reg_reg(code, REG_RBX, REG_RCX);          // src = digit buffer start
     bytes_emit_copy(code); // clobbers RAX,RBX,RCX,RDX,RDI; leaves RSI = block addr
 
-    emit_add_reg_imm8(code, REG_RSP, 40); // release the digit scratch
+    emit_add_reg_imm8(code, REG_RSP, NUMBER_FORMAT_SCRATCH); // release the digit scratch
 
     emit_mov_reg_reg(code, REG_RAX, REG_RSI);
     emit_add_reg_imm8(code, REG_RAX, 8); // payload = block+8
@@ -118,4 +52,6 @@ void codegen_builtin_str(void) {
     emit_mov_reg_imm64(code, REG_RBX, TAG_STRING);
     emit_push_reg(code, REG_RBX);
     emit_push_reg(code, REG_RAX);
+    emit_patch_jump(code, bool_done_yes);
+    emit_patch_jump(code, bool_done);
 }

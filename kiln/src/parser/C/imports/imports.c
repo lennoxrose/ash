@@ -129,6 +129,19 @@ void import_statement(void) {
         parse_error(message);
     }
 
+    // Optional `as name`: the namespace this file's functions are called through,
+    // instead of the one derived from its file name.
+    char alias[64];
+    int has_alias = 0;
+    if (current.type == TOKEN_IDENTIFIER && current.length == 2 && strncmp(current.start, "as", 2) == 0) {
+        advance_token();
+        expect(TOKEN_IDENTIFIER, "expected a namespace name after 'as'");
+        if (previous.length >= (int)sizeof(alias)) parse_error("namespace name too long");
+        memcpy(alias, previous.start, (size_t)previous.length);
+        alias[previous.length] = '\0';
+        has_alias = 1;
+    }
+
     expect(TOKEN_SEMICOLON, "expected ';' after import path");
 
     // Cycle check MUST come before the dedup check: a file already in
@@ -146,6 +159,7 @@ void import_statement(void) {
 
     char ns[64];
     import_derive_namespace(canonical, ns, sizeof(ns));
+    if (has_alias) { memcpy(ns, alias, strlen(alias) + 1); }
 
     ImportedFile *collision = registry_find_by_namespace(ns);
     if (collision != NULL) {
@@ -198,6 +212,7 @@ void import_statement(void) {
     import_path_dirname(canonical, current_file_dir, sizeof(current_file_dir));
     set_import_namespace(entry->namespace_name, (int)strlen(entry->namespace_name));
 
+    prescan_functions(imported_source);
     lexer_init(imported_source);
     advance_token();
     parse_imported_file_body();

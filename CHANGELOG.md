@@ -1,3 +1,56 @@
+## 2026-10-08 (item 22 reversed: no JSON in the language)
+A built-in `json_*` library compiled into both engines was added and then removed again: the goal is general tools, not code for one module, and it needed name-mention detection and a special lookup rule in the compilers. The 'JSON in the stdlib?' item is answered by ash-json itself: its 0.3.0 codec is plain Ash built on the new tools (real booleans, insertion-ordered maps, `chr`/`ord`, forward declarations, `contains`/`repeat`, `rename_file`), with no compiler support. It parses and prints `\uXXXX` (surrogate pairs too), `\b`, `\f` and reports `json: <what> at line L, column C`. Its suite passes on both engines.
+
+## 2026-10-08 (the rest of the language gaps ash-json found)
+Second batch; the numbers in parentheses are the entries of ash-json's list of language gaps. Every change is on both `ashvm` and `kiln` with a test in each `tests/cases/` tree, and the regression diffs below were checked against a baseline built from the previous commit (the intended ones: booleans printing as `yes`/`no`, insertion-ordered maps, the new number format, unified error wording). As before, there is deliberately no `remove` builtin (ash-json defines its own `remove` functions, and a builtin name would shadow them); `delete(array, i)` covers it.
+
+**Booleans (4):** new value type. `yes`/`no`, comparisons, `not`, `and`/`or`, `has`, `file_exists`, `contains`/`starts_with`/`ends_with`, `rename_file`/`delete_file`/`make_dir` and `write_file`/`append_file` produce it. Prints `yes`/`no`, `type()` is `"boolean"`, `str(yes)` is `"yes"`, `yes == 1` is false (arithmetic and truthiness still treat it as 1/0). `ashvm`: `VM_BOOL`, `vm_values_equal()` (also gives arrays/maps/functions identity equality, as kiln already did). `kiln`: `TAG_BOOL`. Conditions on both engines now accept booleans, numbers and `none` and raise `invalid operand type in condition` for a string/array/map/function (kiln used to treat a map as truthy; `kiln` has one `codegen_pop_and_test_truthy` instead of three copies). `filter` accepts a boolean-returning predicate.
+
+**Insertion-ordered maps (3):** `ashvm`'s open-addressing table became a dense entry list plus an index (deleting no longer leaves probe-chain holes, which also fixed lookups after a delete); `kiln`'s `delete` shifts later entries down instead of swapping in the last one. `keys`/`values`/printing agree on both.
+
+**Number format (8):** one format for both engines. `ashvm` used `%lld`/`%g` (6 significant digits), `kiln` printed 6 fraction digits and produced garbage past int64. Now: integers plainly below 1e15, otherwise up to 6 fraction digits with trailing zeros dropped, and scientific (`1e+21`, `1.5e-07`) at or above 1e15 / below 1e-6; `nan`/`inf`/`-inf`. `kiln`: `codegen/C/runtime/number_format.c`, shared by `say` and `str` (it replaces two copies and also fixes a carry bug at `x.9999999`); `ashvm`: `vm_format_number`. 6 fraction digits is not shortest-round-trip; that stays a documented limit.
+
+**`var.field` and `e.message` (9):** `x.name` on a local variable is `x["name"]`; indexing a string with a string yields the string itself, so `handle (e) { say e.message; }` works for built-in errors (strings) and raised maps alike on both engines.
+
+**Error wording and structured errors (9):** caught messages are identical on both engines and carry no prefix or detail (`index out of bounds`, `key not found`, `invalid operand type in '+'`, `could not open file`, ...); `kiln` adds `error: ` itself when an error is uncaught. `raise` takes any value (`kiln`'s raise routine now carries the value's tag), so `raise {"kind": "parse", "line": 3}` is caught as a map. Built-in errors remain strings (making every caught error a map would break `"x: " + e`); `ashvm` also gained string indexing `s[i]` to match `kiln`.
+
+**Sort (6):** `sort(array)` / `sort(array, cmp)`, in place, stable, returns the array; `cmp(a, b) > 0` means `a` goes after `b`. `ashvm`: merge sort; `kiln`: insertion sort (O(n^2)).
+
+**Files (17):** `rename_file`, `delete_file`, `make_dir`, `list_dir` (names without `.`/`..`, directory order). Windows `kiln` targets get real `MoveFileA`/`DeleteFileA`/`CreateDirectoryA` imports, and `list_dir` walks `FindFirstFileA`/`FindNextFileA`/`FindClose` (shared with the Linux path through `emit_add_entry`). The Windows code is verified by running it: `kiln/tests/scripts/windows_emulated_check.sh` executes each test case's PE under the Unicorn emulator with a Python stand-in for kernel32 (real files underneath), and all 63 runnable cases match their Linux builds, `fs_ops` included. The same cases also match under Wine 11.19 (`windows_wine_check.sh`), including `C:\\` paths for the file operations, which removes the dependence on my own kernel32 stand-in. Neither is real Windows.
+
+**Strings (18, 19):** `contains`, `starts_with`, `ends_with`, `repeat`. Complexity, as requested: strings carry their length now on `ashvm` (`len`, `substring`, `s[i]` no longer `strlen`), and are length-prefixed on `kiln`, so `len`/`s[i]` are O(1) and `substring` O(piece). `s += x` copies the whole string (quadratic over a loop, and nothing is freed); `join(parts, "")` is the linear builder. `kiln`'s `push` grew arrays by 4 slots per reallocation (quadratic memory against its 16 MB bump heap, so a 200k-element array crashed); it doubles now.
+
+**Builtins as values (11):** `type(len)`, `map(xs, str)`, `local f = len;` compile a one-line wrapper lambda by re-lexing a synthesized `forge (a0, ...) { yield name(a0, ...); }`. Variadic builtins (`sort`) wrap with their minimum arity.
+
+**Forward declarations (13):** a pre-pass over each file reserves every named `forge name(params)` (with its arity), so calls can precede the definition and functions can call each other. `ashvm`: `compiler/C/prescan.c`; `kiln`: calls to a not-yet-defined function emit a placeholder that is patched when the body is compiled (`function_add_call_fixup`/`function_resolve_fixups`). A reserved name that is never defined is `undefined function`. A local variable now shadows a function of the same name on `ashvm` too (kiln already did).
+
+**Imports (14, 15, 16):** `@import <file.ash> as name;` chooses the namespace. Transitive imports are now documented (README) and covered by `imports_transitive_test`. Every top-level `local` of an imported file is a module-level variable: its expression runs once where the `@import` is, the file's functions read it and update it (`NAME = ...;`, `NAME += ...;`, `NAME++;`, `NAME[i] = ...;`), and `file.NAME` reads it from outside. `ashvm`: `OP_GET_GLOBAL`/`OP_SET_GLOBAL` (256 slots); `kiln`: a 128-slot table in the globals region of every binary (+2 KB). It replaces the old "literal number/string constant only" rule (such constants were read-only).
+
+**Smaller (7, 10, 12, 20, 21):** exponent literals and `num("1.5e2")` already landed in the first batch; `exit(code)` ends the program with a status (an uncaught error exits 1), which is what a test runner needs; the `kiln` output that "silently stopped" after `attempt { delete(array, 0); ... }` came from `delete` treating an array as a map and is gone now that `delete(array, i)` exists (`attempt_array_delete` covers it).
+
+**Not done:** nothing left from that list.
+
+## 2026-10-08 (language gaps found by ash-json: function limit, `attempt` unwinding, short-circuit, string order, `chr`/`ord`, array mutation, more)
+First batch from the ash-json 0.2.0 needs list (numbers are the entries of ash-json's list of language gaps). Everything below behaves the same on `ashvm` and `kiln` and has a test in both `tests/cases/` trees.
+
+**Function limit (0):** `MAX_VM_FUNCS` / `MAX_KILN_FUNCS` 64 -> 1024, so `@import <ash-json>;` (87 functions) loads.
+
+**Stale `attempt` handlers (9b):** two separate causes. `ashvm`: after a `longjmp`, `do_TRY_PUSH`'s recovery branch read its plain local `h`, which still pointed at a later, already-popped nested handler, so a caught error restored the wrong frame/stack. It now re-derives the handler from `try_depth`. Both engines: leaving an `attempt` block early with `yield`, `stop` or `next` skipped the handler pop, so the handler stayed active for the rest of the program. The compilers now count open `attempt` blocks per function (`attempt_enter`/`attempt_leave` in each `loop_stack.c`, which also remembers the count at loop entry) and emit the handler pops before those jumps/returns. No VM cost; kiln had this bug too (found by the new test).
+
+**`and` / `or` short-circuit on `ashvm` (10a):** compiled to `OP_JUMP_IF_FALSE` plus the old `OP_AND`/`OP_OR` against a constant (to keep the result 0/1); no new opcode.
+
+**String `<` `>` `<=` `>=` (1):** bytewise on both engines. `ashvm`: one `ORDER` macro used by the four ops and the fused `OP_CMP_JUMP`. `kiln`: `codegen_string_order()` leaves cmp-style flags that `push_bool` consumes like `ucomisd`'s. Mixed string/number is still a type error on `ashvm`; kiln keeps its "assume number" limit there.
+
+**`chr(n)` / `ord(s)` (2):** byte <-> one-byte string. `chr` takes 1..255 (`ashvm` strings are C strings, so no 0), `ord` of `""` is an error.
+
+**Arrays (5):** `delete(array, i)` removes at an index (returns the array, like `delete(map, k)`), plus new `pop(array)`, `insert(array, i, v)` (`i` may equal `len`) and `slice(array, from, to)` (`[from, to)`, strict bounds). kiln: `codegen/C/collections/array_mutate.c`; `insert` validates first, then reuses `push()` for growth. Not added as `remove`: ash-json defines functions called `remove`, and a builtin name shadows user functions.
+
+**Numbers (7, 12):** `ashvm` lexes exponent literals (`1e3`, `1.5e-3`) like kiln already did; kiln's `num()` now parses `e`/`E` exponents (`num("-1.5e2")` was `-1.5`).
+
+**Type errors (10, 10b):** kiln `"x" + 1` / `1 + "x"` and `str("text")` now raise (`invalid operand type in '+'`, `str() expects a number`) instead of returning garbage.
+
+**Still open at this point:** everything not listed above; the rest of the list is in the next entry up.
+
 ## 2026-10-07 (three more parity bugs, found verifying the JSON module before handing it off)
 Before writing `mission.md` (a hand-off doc for shipping the first real `forgepack` module — a JSON codec in pure Ash), actually ran the module's code through both engines rather than just writing it and hoping. Found three more real bugs this way, on top of `type()` above — the module itself was the test case the existing regression suites never exercised (real, non-trivial, deeply-nested-and-recursive user code, not hand-picked feature probes).
 

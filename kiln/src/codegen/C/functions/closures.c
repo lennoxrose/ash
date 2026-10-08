@@ -36,8 +36,11 @@ void closures_push_value(void) {
 
 void codegen_named_function_value(KilnFunction *fn) {
     closures_alloc_object(0);
-    uint64_t addr = kiln_code_base() + (uint64_t)fn->code_offset;
-    emit_mov_reg_imm64(code, REG_RCX, addr);
+    if (fn->defined) {
+        emit_mov_reg_imm64(code, REG_RCX, kiln_code_base() + (uint64_t)fn->code_offset);
+    } else {
+        function_add_abs_fixup(fn, emit_mov_reg_imm64_patchable(code, REG_RCX)); // filled in when the body is compiled
+    }
     emit_store_mem_disp32(code, REG_RBX, 0, REG_RCX);
     closures_push_value();
 }

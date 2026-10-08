@@ -1,6 +1,7 @@
 #include "parser/H/core/parser.h"
 #include "parser/H/core/parser_internal.h"
 #include "parser/H/declarations/vars.h"
+#include "parser/H/statements/loop_stack.h"
 #include "codegen/H/emit/emit.h"
 #include "codegen/H/runtime/errors.h"
 #include "codegen/H/emit/layout.h"
@@ -23,6 +24,13 @@
 // is actually seen. attempt/handle is inline (like given/during), not a
 // new call frame, so this works the same way given/during's own bodies
 // share the enclosing function's variable table.
+void attempt_emit_handler_pop(void) {
+    emit_mov_reg_imm64(code, REG_RDX, kiln_try_depth_addr());
+    emit_load_mem_disp32(code, REG_RCX, REG_RDX, 0);
+    emit_dec_reg(code, REG_RCX);
+    emit_store_mem_disp32(code, REG_RDX, 0, REG_RCX);
+}
+
 void attempt_statement(void) {
     VarBlockScope saved_scope = vars_scope_begin();
     advance_token(); // consume 'attempt'
@@ -58,15 +66,14 @@ void attempt_statement(void) {
     errors_emit_fatal(code, "runtime error: too many nested try blocks");
     emit_patch_jump(code, skip_overflow_die);
 
+    attempt_enter();
     block(); // compiles A
+    attempt_leave();
 
     // Normal completion (no error was raised): pop the handler -- past
     // this point, an error inside the enclosing scope should NOT be
     // caught by this attempt anymore.
-    emit_mov_reg_imm64(code, REG_RAX, kiln_try_depth_addr());
-    emit_load_mem_disp32(code, REG_RCX, REG_RAX, 0);
-    emit_dec_reg(code, REG_RCX);
-    emit_store_mem_disp32(code, REG_RAX, 0, REG_RCX);
+    attempt_emit_handler_pop();
 
     int skip_handle = emit_jmp_rel32(code);
     int handle_code_offset = code->count;

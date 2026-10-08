@@ -23,6 +23,8 @@ ASHVM_SRC = \
     src/compiler/C/stmt.c \
     src/compiler/C/stmt_control.c \
     src/compiler/C/stmt_import.c \
+    src/compiler/C/module_state.c \
+    src/compiler/C/prescan.c \
     src/builtins/C/builtins.c \
     src/builtins/C/collection.c \
     src/builtins/C/core.c \

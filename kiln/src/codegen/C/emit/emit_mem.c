@@ -85,6 +85,13 @@ void emit_call_back(CodeBuf *buf, int target_offset) {
     emit_i32(buf, rel);
 }
 
+int emit_call_rel32(CodeBuf *buf) {
+    emit_byte(buf, 0xE8);
+    int patch_offset = buf->count;
+    emit_i32(buf, 0);
+    return patch_offset;
+}
+
 void emit_ret(CodeBuf *buf) {
     emit_byte(buf, 0xC3);
 }

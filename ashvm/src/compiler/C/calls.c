@@ -8,8 +8,9 @@
 
 void emit_call(Token id) {
     int builtin_id = vm_builtin_lookup(id.start, id.length);
-    int fn_idx = (builtin_id == -1) ? find_function_in_context(id.start, id.length) : -1;
-    int local_slot = (builtin_id == -1 && fn_idx == -1) ? resolve_local(id.start, id.length) : -1;
+    // A local variable shadows a function of the same name (as on kiln).
+    int local_slot = (builtin_id == -1) ? resolve_local(id.start, id.length) : -1;
+    int fn_idx = (builtin_id == -1 && local_slot == -1) ? find_function_in_context(id.start, id.length) : -1;
 
     int argc = 0;
     if (current.type != TOKEN_RPAREN) {
@@ -95,6 +96,7 @@ void lambda_literal(void) {
     memcpy(vm_functions[fn_idx].name, namebuf, namelen);
     vm_functions[fn_idx].name[namelen] = '\0';
     vm_functions[fn_idx].arity = 0;
+    vm_functions[fn_idx].defined = 1;
     chunk_init(&vm_functions[fn_idx].chunk);
 
     char param_names[8][64];
@@ -124,9 +126,9 @@ void lambda_literal(void) {
     char outer_locals[MAX_VM_LOCALS][64];
     int outer_local_count = local_count;
     memcpy(outer_locals, local_names, sizeof(local_names));
-    int outer_loop_depth;
-    loop_depth_save(&outer_loop_depth);
-    loop_depth_reset();
+    LoopScope outer_loop_scope;
+    loop_scope_save(&outer_loop_scope);
+    loop_scope_reset();
 
     chunk = &vm_functions[fn_idx].chunk;
     local_count = 0;
@@ -140,7 +142,7 @@ void lambda_literal(void) {
     chunk = outer_chunk;
     local_count = outer_local_count;
     memcpy(local_names, outer_locals, sizeof(local_names));
-    loop_depth_restore(outer_loop_depth);
+    loop_scope_restore(outer_loop_scope);
 
     emit_op(OP_MAKE_CLOSURE);
     emit((uint8_t)fn_idx);
@@ -201,4 +203,31 @@ int try_fuse_condition(TokenType terminator) {
     int patch_loc = chunk->count;
     emit(0xff); emit(0xff);
     return patch_loc;
+}
+
+// A builtin name used as a value (`map(xs, str)`, `local f = len;`) becomes a
+// small wrapper lambda `forge (a0, ...) { yield name(a0, ...); }`, compiled by
+// pointing the lexer at a synthesized snippet. `current` is the token after the
+// name; everything is restored afterwards. Returns 0 if `id` isn't a builtin.
+int emit_builtin_value(Token id) {
+    int builtin_id = vm_builtin_lookup(id.start, id.length);
+    if (builtin_id == -1) return 0;
+    int arity = vm_builtin_arity(builtin_id);
+
+    char *snippet = malloc(64 + 2 * (size_t)id.length + 12 * (size_t)arity); // kept: tokens point into it
+    int n = sprintf(snippet, "forge (");
+    for (int i = 0; i < arity; i++) n += sprintf(snippet + n, "%s__%d", i ? ", " : "", i);
+    n += sprintf(snippet + n, ") { yield %.*s(", id.length, id.start);
+    for (int i = 0; i < arity; i++) n += sprintf(snippet + n, "%s__%d", i ? ", " : "", i);
+    sprintf(snippet + n, "); }");
+
+    Token saved_current = current, saved_previous = previous;
+    LexerState saved_lexer = lexer_save_state();
+    lexer_init(snippet);
+    advance_token(); // current = 'forge'
+    lambda_literal();
+    lexer_restore_state(saved_lexer);
+    current = saved_current;
+    previous = saved_previous;
+    return 1;
 }

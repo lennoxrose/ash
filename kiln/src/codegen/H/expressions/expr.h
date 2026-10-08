@@ -33,4 +33,8 @@ void codegen_call_named(const char *name, int len);
 // the exact same logic instead of a second, drifting copy of it.
 void codegen_apply_plus(void);
 
+// Pops a value and sets flags for a condition: COND_E afterward means falsy.
+// Errors on strings, arrays, maps and functions.
+void codegen_pop_and_test_truthy(void);
+
 #endif

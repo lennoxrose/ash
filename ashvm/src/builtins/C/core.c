@@ -10,7 +10,7 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc) {
     switch (id) {
         case 0: { // len
             if (argc != 1) { vm_runtime_error("len() expects 1 argument\n"); }
-            if (args[0].type == VM_STR) return vm_num((int64_t)strlen(args[0].str));
+            if (args[0].type == VM_STR) return vm_num(args[0].number);
             if (args[0].type == VM_ARRAY) return vm_num(args[0].array->count);
             if (args[0].type == VM_MAP) return vm_num(args[0].map->count);
             vm_runtime_error("len() expects a string, array, or map\n");
@@ -29,10 +29,13 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc) {
             return vm_str(copy);
         }
         case 3: { // str
+            if (argc == 1 && args[0].type == VM_BOOL) {
+                char *copy = malloc(4); strcpy(copy, args[0].number != 0 ? "yes" : "no");
+                return vm_str(copy);
+            }
             if (argc != 1 || args[0].type != VM_NUM) { vm_runtime_error("str() expects a number\n"); }
             char buf[64];
-            if (args[0].number == (long long)args[0].number) snprintf(buf, sizeof(buf), "%lld", (long long)args[0].number);
-            else snprintf(buf, sizeof(buf), "%g", args[0].number);
+            vm_format_number(args[0].number, buf, sizeof(buf));
             char *copy = malloc(strlen(buf) + 1); strcpy(copy, buf);
             return vm_str(copy);
         }
@@ -62,6 +65,7 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc) {
             const char *name;
             switch (args[0].type) {
                 case VM_NUM: name = "number"; break;
+                case VM_BOOL: name = "boolean"; break;
                 case VM_STR: name = "string"; break;
                 case VM_ARRAY: name = "array"; break;
                 case VM_MAP: name = "map"; break;
@@ -71,6 +75,23 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc) {
             }
             char *copy = malloc(strlen(name) + 1); strcpy(copy, name);
             return vm_str(copy);
+        }
+        case 42: { // exit -- exit(code) ends the program with that status
+            if (argc != 1 || args[0].type != VM_NUM) { vm_runtime_error("exit(code) expected\n"); }
+            fflush(stdout);
+            exit((int)args[0].number);
+        }
+        case 28: { // chr -- byte value to a one-byte string (strings are C strings: no 0)
+            if (argc != 1 || args[0].type != VM_NUM) { vm_runtime_error("chr() expects a number\n"); }
+            double n = args[0].number;
+            if (n < 1 || n > 255) { vm_runtime_error("chr() expects a number from 1 to 255\n"); }
+            char *s = malloc(2); s[0] = (char)(unsigned char)n; s[1] = '\0';
+            return vm_str(s);
+        }
+        case 29: { // ord -- first byte of a string, 0..255
+            if (argc != 1 || args[0].type != VM_STR) { vm_runtime_error("ord() expects a string\n"); }
+            if (args[0].str[0] == '\0') { vm_runtime_error("ord() expects a non-empty string\n"); }
+            return vm_num((unsigned char)args[0].str[0]);
         }
     }
     vm_runtime_error("unknown builtin id: %d\n", id);

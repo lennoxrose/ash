@@ -9,7 +9,7 @@
 #include "parser/H/declarations/vars.h"
 
 static void push_number(double v) {
-    emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+    emit_mov_reg_imm64(code, REG_RBX, TAG_BOOL);
     emit_push_reg(code, REG_RBX);
     if (v == 0.0) {
         emit_pxor_xmm_xmm(code, XMM0);

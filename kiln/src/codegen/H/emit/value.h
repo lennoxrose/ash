@@ -31,13 +31,14 @@
 // M5's `==`/`!=`, see codegen/C/expressions/expr_bool.c -- nil==nil compares equal
 // tags then falls into the numeric path, 0.0==0.0; nil compared against
 // any other tag is caught by the tags-differ branch before ever
-// touching the payload). `true`/`false` are NOT a separate tag --
-// they're just named literals for TAG_NUMBER 1.0/0.0 (missing.md's
-// "boolean type" note is intentionally only half-addressed this way:
-// the whole codebase already treats "truthy" as "NUMBER != 0", so a
-// distinct boolean tag would mean touching that logic everywhere
-// instead of adding one clean new case).
+// touching the payload).
 #define TAG_NIL 5
+
+// A real boolean: `yes` / `no`, and what comparisons, `!`, `and`/`or`, has() and
+// the *_exists / contains-style builtins produce. The payload is 1.0 / 0.0, so
+// truthiness and arithmetic (which only look at the payload) keep working;
+// `yes == 1` is false because the tags differ. Prints as yes / no.
+#define TAG_BOOL 6
 
 // An array's payload is the address of a small, fixed-size, STABLE
 // "array object" (see codegen/H/strings/strings.h's comment on why absolute

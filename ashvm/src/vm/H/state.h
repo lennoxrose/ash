@@ -26,6 +26,8 @@ typedef struct {
     uint8_t *target_ip;
 } TryHandler;
 
+#define MAX_VM_GLOBALS 256
+extern VMValue vm_globals[MAX_VM_GLOBALS]; // module-level variables of imported files
 extern VMValue stack[STACK_MAX];
 extern VMValue *stack_top;
 extern CallFrame frames[FRAMES_MAX];

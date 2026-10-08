@@ -11,6 +11,7 @@ KILN_SRC = \
     src/parser/C/core/parser.c \
     src/parser/C/declarations/constants.c \
     src/parser/C/declarations/functions.c \
+    src/parser/C/declarations/module_state.c \
     src/parser/C/declarations/vars.c \
     src/parser/C/imports/import_paths.c \
     src/parser/C/imports/imports.c \
@@ -19,13 +20,16 @@ KILN_SRC = \
     src/parser/C/statements/parser_control.c \
     src/parser/C/statements/attempt_handle.c \
     src/codegen/C/builtins/builtins.c \
+    src/codegen/C/builtins/exit_builtin.c \
     src/codegen/C/builtins/filter_builtin.c \
     src/codegen/C/builtins/map_builtin.c \
     src/codegen/C/builtins/type_builtin.c \
     src/codegen/C/builtins/math_builtins.c \
     src/codegen/C/builtins/num_builtin.c \
     src/codegen/C/builtins/reduce_builtin.c \
+    src/codegen/C/builtins/sort_builtin.c \
     src/codegen/C/builtins/str_builtin.c \
+    src/codegen/C/collections/array_mutate.c \
     src/codegen/C/collections/arrays.c \
     src/codegen/C/collections/keys_values.c \
     src/codegen/C/collections/maps.c \
@@ -43,6 +47,7 @@ KILN_SRC = \
     src/codegen/C/io/argv_builtin.c \
     src/codegen/C/io/argv_builtin_windows.c \
     src/codegen/C/io/file_path.c \
+    src/codegen/C/io/fs_builtins.c \
     src/codegen/C/io/input_builtin.c \
     src/codegen/C/io/read_file_builtin.c \
     src/codegen/C/io/write_file_builtins.c \
@@ -52,8 +57,11 @@ KILN_SRC = \
     src/codegen/C/platform/win_file_call.c \
     src/codegen/C/runtime/errors.c \
     src/codegen/C/runtime/heap.c \
+    src/codegen/C/runtime/number_format.c \
     src/codegen/C/runtime/print_int.c \
+    src/codegen/C/strings/affix_builtins.c \
     src/codegen/C/strings/case_builtins.c \
+    src/codegen/C/strings/char_builtins.c \
     src/codegen/C/strings/indexof_builtin.c \
     src/codegen/C/strings/join_builtin.c \
     src/codegen/C/strings/replace_builtin.c \

@@ -37,6 +37,12 @@ uint64_t kiln_try_depth_addr(void) {
     return KILN_TRY_DEPTH_ADDR;
 }
 
+uint64_t kiln_modstate_addr(void) {
+    if (kiln_get_target() == KILN_TARGET_WINDOWS) return KILN_PE_MODSTATE_ADDR;
+    if (is_linux_shared()) return KILN_DYN_MODSTATE_ADDR;
+    return KILN_MODSTATE_ADDR;
+}
+
 uint64_t kiln_try_handlers_addr(void) {
     if (kiln_get_target() == KILN_TARGET_WINDOWS) return KILN_PE_TRY_HANDLERS_ADDR;
     if (is_linux_shared()) return KILN_DYN_GLOBALS_ADDR + 8 + KILN_TRY_DEPTH_SIZE;

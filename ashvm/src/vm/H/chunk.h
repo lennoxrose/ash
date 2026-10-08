@@ -25,7 +25,8 @@ typedef enum {
     OP_TRY_POP,
     OP_RAISE,
     OP_BAND, OP_BOR, OP_BXOR, OP_BNOT, OP_SHL, OP_SHR,
-    OP_TRUNC_LOCALS
+    OP_TRUNC_LOCALS,
+    OP_GET_GLOBAL, OP_SET_GLOBAL
 } OpCode;
 
 typedef struct {

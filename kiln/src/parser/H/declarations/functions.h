@@ -13,14 +13,30 @@
 // programs room to import a handful of libraries without hitting the cap
 // immediately; still a hard ceiling, noted as a tuning knob in the design
 // spec, not solved generally here.
-#define MAX_KILN_FUNCS 64
+#define MAX_KILN_FUNCS 1024
 #define MAX_KILN_PARAMS 8
 
 typedef struct {
     char name[64];
     int code_offset;
     int arity;
+    int defined; // 0 while only forward-declared by the prescan; code_offset is valid once 1
 } KilnFunction;
+
+// --- Forward declarations ---
+// Before a file is compiled, prescan_functions() reserves every named
+// `forge name(...)` in it (with its arity), so calls may appear before the
+// definition and functions may call each other. A call to a not-yet-defined
+// function emits a placeholder that function_add_call_fixup /
+// function_add_abs_fixup record; forge_statement resolves them the moment the
+// body's start is known (function_resolve_fixups). check_all_functions_defined()
+// reports a reserved name that never got defined.
+void prescan_functions(const char *source);
+void predeclare_function_in_context(const char *name, int len, int arity);
+void function_add_call_fixup(KilnFunction *fn, int patch_offset); // rel32 of a `call`
+void function_add_abs_fixup(KilnFunction *fn, int patch_offset);  // imm64 holding the absolute address
+void function_resolve_fixups(KilnFunction *fn);
+void check_all_functions_defined(void);
 
 // Returns a pointer to the function's entry, or NULL if not declared.
 KilnFunction *resolve_function(const char *name, int len);

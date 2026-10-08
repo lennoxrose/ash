@@ -34,11 +34,12 @@
 // inside it (see codegen/C/io/argv_builtin.c).
 #define KILN_ARGV_SIZE 8
 
-#define KILN_GLOBALS_SIZE (8 + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_ARGV_SIZE) // heap_ptr, try_depth, handler stack, argv
+#define KILN_GLOBALS_SIZE (8 + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_ARGV_SIZE + KILN_MODSTATE_SIZE) // heap_ptr, try_depth, handler stack, argv, module state
 #define KILN_GLOBALS_ADDR (KILN_LOAD_BASE + KILN_EHDR_SIZE + KILN_PHDR_SIZE)
 #define KILN_TRY_DEPTH_ADDR (KILN_GLOBALS_ADDR + 8)
 #define KILN_TRY_HANDLERS_ADDR (KILN_TRY_DEPTH_ADDR + KILN_TRY_DEPTH_SIZE)
 #define KILN_ARGV_ADDR (KILN_TRY_HANDLERS_ADDR + KILN_TRY_HANDLERS_SIZE)
+#define KILN_MODSTATE_ADDR (KILN_ARGV_ADDR + KILN_ARGV_SIZE)
 #define KILN_CODE_START_OFFSET (KILN_EHDR_SIZE + KILN_PHDR_SIZE + KILN_GLOBALS_SIZE)
 
 // Writes `machine_code` as a minimal, standalone, directly-executable

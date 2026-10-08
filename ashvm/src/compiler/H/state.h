@@ -40,6 +40,7 @@ void get_import_namespace(const char **out_ns, int *out_len);
 // imports.c-equivalent code and compile_forge_decl share it). Exits via
 // diagnostics_report + exit(1) on table-full or name-too-long, matching
 // every other error path in this file.
+void predeclare_function_in_context(const char *name, int len, int arity);
 int declare_function_in_context(const char *name, int len);
 
 // While a namespace is set: resolves ONLY "ns.NAME" (no bare fallback).

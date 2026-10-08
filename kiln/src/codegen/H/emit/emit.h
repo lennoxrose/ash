@@ -99,6 +99,9 @@ void emit_jcc_back(CodeBuf *buf, Cond cc, int target_offset);
 // in the source, same single-pass limitation ashvm's compiler has -- so
 // the target's code offset is always already known, no patching needed).
 void emit_call_back(CodeBuf *buf, int target_offset);
+// Forward call: emits `call rel32` with a placeholder and returns its patch
+// offset (rel32 = target - (patch_offset + 4)).
+int emit_call_rel32(CodeBuf *buf);
 void emit_ret(CodeBuf *buf);
 
 // CALL r/m64 (opcode FF /2) -- indirect call through a register holding

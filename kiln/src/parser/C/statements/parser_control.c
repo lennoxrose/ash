@@ -9,19 +9,6 @@
 #include "codegen/H/emit/emit_sse.h"
 #include "codegen/H/emit/value.h"
 
-// Truthiness test for given/during conditions: pop the value (tag
-// discarded, assumed NUMBER -- matches ashvm's own truthy(), which
-// requires a number too) and compare its payload against 0.0 via ucomisd
-// (not GP cmp -- see emit_sse.h). COND_E afterward means "was zero, i.e.
-// falsy".
-static void pop_and_test_truthy(void) {
-    emit_pop_reg(code, REG_RAX); // payload
-    emit_pop_reg(code, REG_RBX); // tag (assumed NUMBER)
-    emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
-    emit_pxor_xmm_xmm(code, XMM1); // XMM1 = +0.0
-    emit_ucomisd(code, XMM0, XMM1);
-}
-
 // Conditions may be parenthesized or not (`given (x < n) {` and
 // `given x < n {` both work) -- unlike ashvm, there's no superinstruction
 // fusion here to keep firing either way, so this is just a plain optional
@@ -42,7 +29,7 @@ void given_statement(void) {
     int parenthesized = consume_optional_lparen();
     codegen_expression();
     if (parenthesized) expect(TOKEN_RPAREN, "expected ')' after condition");
-    pop_and_test_truthy();
+    codegen_pop_and_test_truthy();
     int otherwise_jump = emit_jcc_rel32(code, COND_E);
 
     block();
@@ -63,7 +50,7 @@ void during_statement(void) {
     int parenthesized = consume_optional_lparen();
     codegen_expression();
     if (parenthesized) expect(TOKEN_RPAREN, "expected ')' after condition");
-    pop_and_test_truthy();
+    codegen_pop_and_test_truthy();
     int exit_jump = emit_jcc_rel32(code, COND_E);
 
     loop_push();
@@ -127,6 +114,7 @@ void forge_statement(void) {
 
     int skip_jump = emit_jmp_rel32(code);
     fn->code_offset = code->count;
+    function_resolve_fixups(fn);
 
     VarScope outer_vars;
     vars_save(&outer_vars);
@@ -134,9 +122,9 @@ void forge_statement(void) {
     int outer_each_depth;
     each_depth_save(&outer_each_depth);
     each_depth_reset();
-    int outer_loop_depth;
-    loop_depth_save(&outer_loop_depth);
-    loop_depth_reset();
+    LoopScope outer_loop_depth;
+    loop_scope_save(&outer_loop_depth);
+    loop_scope_reset();
 
     emit_push_reg(code, REG_RBP);
     emit_mov_reg_reg(code, REG_RBP, REG_RSP);
@@ -173,6 +161,6 @@ void forge_statement(void) {
 
     vars_restore(&outer_vars);
     each_depth_restore(outer_each_depth);
-    loop_depth_restore(outer_loop_depth);
+    loop_scope_restore(outer_loop_depth);
     emit_patch_jump(code, skip_jump);
 }

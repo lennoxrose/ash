@@ -9,15 +9,18 @@ typedef struct {
     int stop_count;
     int next_jumps[MAX_LOOP_JUMPS];
     int next_count;
+    int attempt_base; // attempt_depth when the loop began
 } LoopContext;
 
 static LoopContext loop_stack[MAX_LOOP_NESTING];
 static int loop_depth = 0;
+static int attempt_depth = 0; // attempt blocks currently open in this function body
 
 void loop_push(void) {
     if (loop_depth >= MAX_LOOP_NESTING) parse_error("too many nested loops");
     loop_stack[loop_depth].stop_count = 0;
     loop_stack[loop_depth].next_count = 0;
+    loop_stack[loop_depth].attempt_base = attempt_depth;
     loop_depth++;
 }
 
@@ -46,6 +49,20 @@ void loop_pop_and_patch_stops(void) {
     loop_depth--;
 }
 
-void loop_depth_save(int *out) { *out = loop_depth; }
-void loop_depth_reset(void) { loop_depth = 0; }
-void loop_depth_restore(int saved) { loop_depth = saved; }
+void loop_scope_save(LoopScope *out) { out->loops = loop_depth; out->attempts = attempt_depth; }
+void loop_scope_reset(void) { loop_depth = 0; attempt_depth = 0; }
+void loop_scope_restore(LoopScope saved) { loop_depth = saved.loops; attempt_depth = saved.attempts; }
+
+void attempt_enter(void) { attempt_depth++; }
+void attempt_leave(void) { attempt_depth--; }
+
+static void emit_handler_pops(int count) {
+    for (int i = 0; i < count; i++) attempt_emit_handler_pop();
+}
+
+void emit_attempt_unwind_all(void) { emit_handler_pops(attempt_depth); }
+
+// stop/next leave every attempt block opened since the innermost loop began.
+void emit_attempt_unwind_to_loop(void) {
+    if (loop_depth > 0) emit_handler_pops(attempt_depth - loop_stack[loop_depth - 1].attempt_base);
+}

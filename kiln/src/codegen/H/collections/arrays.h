@@ -28,4 +28,12 @@ void codegen_builtin_push(void);
 // len(array): pushes the element count as a NUMBER.
 void codegen_builtin_len(void);
 
+// pop/insert/slice and delete(array, i): see C/collections/array_mutate.c.
+// Arguments already pushed left-to-right, like push()/len().
+void codegen_builtin_pop(void);
+void codegen_builtin_insert(void);
+void codegen_builtin_slice(void);
+// delete() on an array: RDI = index payload, RSI = array object; pushes the array.
+void codegen_array_delete_index(void);
+
 #endif

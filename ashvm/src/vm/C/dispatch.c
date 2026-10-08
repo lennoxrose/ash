@@ -16,6 +16,12 @@
 // that makes this VM fast in the first place. Everything that CAN live
 // outside it (error handling, the public call/run API, shared state) does,
 // in vm_errors.c / vm_api.c / vm_state.c.
+// Ordering comparison: numbers numerically, strings bytewise (strcmp);
+// anything else (or a mix) is the usual type error.
+#define ORDER(a, b, op) \
+    (((a).type == VM_STR && (b).type == VM_STR) ? strcmp((a).str, (b).str) op 0 \
+                                                : require_num((a), "comparison") op require_num((b), "comparison"))
+
 void vm_execute(int stop_at_frame_count) {
     CallFrame *volatile frame = &frames[frame_count - 1];
 
@@ -34,7 +40,8 @@ void vm_execute(int stop_at_frame_count) {
         &&do_TRY_PUSH, &&do_TRY_POP,
         &&do_RAISE,
         &&do_BAND, &&do_BOR, &&do_BXOR, &&do_BNOT, &&do_SHL, &&do_SHR,
-        &&do_TRUNC_LOCALS
+        &&do_TRUNC_LOCALS,
+        &&do_GET_GLOBAL, &&do_SET_GLOBAL
     };
 
     #define DISPATCH() \
@@ -52,7 +59,7 @@ void vm_execute(int stop_at_frame_count) {
     do_ADD: {
         VMValue b = *--stack_top;
         VMValue *a = stack_top - 1;
-        if (a->type == VM_STR && b.type == VM_STR) *a = vm_str(vm_concat_strings(a->str, b.str));
+        if (a->type == VM_STR && b.type == VM_STR) *a = vm_concat_strings(*a, b);
         else *a = vm_num(require_num(*a, "'+'") + require_num(b, "'+'"));
         DISPATCH();
     }
@@ -61,33 +68,15 @@ void vm_execute(int stop_at_frame_count) {
     do_DIV: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num(require_num(*a, "'/'") / require_num(b, "'/'")); DISPATCH(); }
     do_MOD: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num(fmod(require_num(*a, "'%'"), require_num(b, "'%'"))); DISPATCH(); }
     do_NEG: { stack_top[-1] = vm_num(-require_num(stack_top[-1], "unary '-'")); DISPATCH(); }
-    do_NOT: { stack_top[-1] = vm_num(require_num(stack_top[-1], "'!'") == 0 ? 1 : 0); DISPATCH(); }
-    do_EQ: {
-        VMValue b = *--stack_top; VMValue *a = stack_top - 1;
-        int eq;
-        if (a->type == VM_STR && b.type == VM_STR) eq = strcmp(a->str, b.str) == 0;
-        else if (a->type == VM_NUM && b.type == VM_NUM) eq = a->number == b.number;
-        else if (a->type == VM_NIL && b.type == VM_NIL) eq = 1;
-        else eq = 0;
-        *a = vm_num(eq);
-        DISPATCH();
-    }
-    do_NEQ: {
-        VMValue b = *--stack_top; VMValue *a = stack_top - 1;
-        int eq;
-        if (a->type == VM_STR && b.type == VM_STR) eq = strcmp(a->str, b.str) == 0;
-        else if (a->type == VM_NUM && b.type == VM_NUM) eq = a->number == b.number;
-        else if (a->type == VM_NIL && b.type == VM_NIL) eq = 1;
-        else eq = 0;
-        *a = vm_num(!eq);
-        DISPATCH();
-    }
-    do_LT: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num(require_num(*a, "comparison") < require_num(b, "comparison")); DISPATCH(); }
-    do_LE: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num(require_num(*a, "comparison") <= require_num(b, "comparison")); DISPATCH(); }
-    do_GT: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num(require_num(*a, "comparison") > require_num(b, "comparison")); DISPATCH(); }
-    do_GE: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num(require_num(*a, "comparison") >= require_num(b, "comparison")); DISPATCH(); }
-    do_AND: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num((truthy(*a, "'&&'") && truthy(b, "'&&'")) ? 1 : 0); DISPATCH(); }
-    do_OR: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_num((truthy(*a, "'||'") || truthy(b, "'||'")) ? 1 : 0); DISPATCH(); }
+    do_NOT: { stack_top[-1] = vm_bool(!truthy(stack_top[-1], "'!'")); DISPATCH(); }
+    do_EQ: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(vm_values_equal(*a, b)); DISPATCH(); }
+    do_NEQ: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(!vm_values_equal(*a, b)); DISPATCH(); }
+    do_LT: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(ORDER(*a, b, <)); DISPATCH(); }
+    do_LE: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(ORDER(*a, b, <=)); DISPATCH(); }
+    do_GT: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(ORDER(*a, b, >)); DISPATCH(); }
+    do_GE: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(ORDER(*a, b, >=)); DISPATCH(); }
+    do_AND: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(truthy(*a, "'&&'") && truthy(b, "'&&'")); DISPATCH(); }
+    do_OR: { VMValue b = *--stack_top; VMValue *a = stack_top - 1; *a = vm_bool(truthy(*a, "'||'") || truthy(b, "'||'")); DISPATCH(); }
     do_PRINT: { VMValue v = *--stack_top; vm_print_value(v); printf("\n"); DISPATCH(); }
     do_POP: { --stack_top; DISPATCH(); }
     do_GET_LOCAL: { uint8_t slot = *frame->ip++; *stack_top++ = frame->slots[slot]; DISPATCH(); }
@@ -165,7 +154,7 @@ void vm_execute(int stop_at_frame_count) {
         int op = flags & 0x03;
         VMValue *a = &frame->slots[slot_a];
         if (op == 0) {
-            if (a->type == VM_STR && b.type == VM_STR) *a = vm_str(vm_concat_strings(a->str, b.str));
+            if (a->type == VM_STR && b.type == VM_STR) *a = vm_concat_strings(*a, b);
             else *a = vm_num(require_num(*a, "'+'") + require_num(b, "'+'"));
         } else if (op == 1) {
             *a = vm_num(require_num(*a, "'-'") - require_num(b, "'-'"));
@@ -185,20 +174,14 @@ void vm_execute(int stop_at_frame_count) {
         int cmp_code = flags & 0x0F;
         int taken;
         if (cmp_code == 4 || cmp_code == 5) {
-            int eq;
-            if (a.type == VM_STR && b.type == VM_STR) eq = strcmp(a.str, b.str) == 0;
-            else if (a.type == VM_NUM && b.type == VM_NUM) eq = a.number == b.number;
-            else if (a.type == VM_NIL && b.type == VM_NIL) eq = 1;
-            else eq = 0;
+            int eq = vm_values_equal(a, b);
             taken = (cmp_code == 4) ? eq : !eq;
         } else {
-            double av = require_num(a, "comparison");
-            double bv = require_num(b, "comparison");
             switch (cmp_code) {
-                case 0: taken = av < bv; break;
-                case 1: taken = av <= bv; break;
-                case 2: taken = av > bv; break;
-                default: taken = av >= bv; break;
+                case 0: taken = ORDER(a, b, <); break;
+                case 1: taken = ORDER(a, b, <=); break;
+                case 2: taken = ORDER(a, b, >); break;
+                default: taken = ORDER(a, b, >=); break;
             }
         }
         if (!taken) frame->ip += off;
@@ -217,13 +200,20 @@ void vm_execute(int stop_at_frame_count) {
         VMValue arr = *--stack_top;
         if (arr.type == VM_ARRAY) {
             int64_t i = (int64_t)require_num(idx, "array index");
-            if (i < 0 || i >= arr.array->count) vm_runtime_error("index out of bounds: %lld", (long long)i);
+            if (i < 0 || i >= arr.array->count) vm_runtime_error("index out of bounds");
             *stack_top++ = arr.array->items[i];
         } else if (arr.type == VM_MAP) {
             if (idx.type != VM_STR) vm_runtime_error("map keys must be strings");
             VMValue out;
-            if (!vm_map_get(arr.map, idx.str, &out)) vm_runtime_error("key not found: %s", idx.str);
+            if (!vm_map_get(arr.map, idx.str, &out)) vm_runtime_error("key not found");
             *stack_top++ = out;
+        } else if (arr.type == VM_STR && idx.type == VM_STR) {
+            *stack_top++ = arr; // string[string]: an error value's `.message` is the string itself
+        } else if (arr.type == VM_STR) {
+            int64_t i = (int64_t)require_num(idx, "string index");
+            if (i < 0 || i >= (int64_t)arr.number) vm_runtime_error("index out of bounds");
+            char *one = malloc(2); one[0] = arr.str[i]; one[1] = '\0';
+            *stack_top++ = vm_str(one);
         } else {
             type_error("indexing");
         }
@@ -235,12 +225,14 @@ void vm_execute(int stop_at_frame_count) {
         VMValue arr = *--stack_top;
         if (arr.type == VM_ARRAY) {
             int64_t i = (int64_t)require_num(idx, "array index");
-            if (i < 0 || i >= arr.array->count) vm_runtime_error("index out of bounds: %lld", (long long)i);
+            if (i < 0 || i >= arr.array->count) vm_runtime_error("index out of bounds");
             arr.array->items[i] = value;
         } else if (arr.type == VM_MAP) {
             if (idx.type != VM_STR) vm_runtime_error("map keys must be strings");
             char *key_copy = malloc(strlen(idx.str) + 1); strcpy(key_copy, idx.str);
             vm_map_set(arr.map, key_copy, value);
+        } else if (arr.type == VM_STR) {
+            vm_runtime_error("cannot assign to a string index");
         } else {
             type_error("index-assign");
         }
@@ -283,7 +275,10 @@ void vm_execute(int stop_at_frame_count) {
         if (setjmp(h->jmp) == 0) {
             DISPATCH();
         } else {
-            try_depth--;
+            // `h` is a plain local reused by every TRY_PUSH, so after a longjmp it
+            // may point at a later (now stale) handler; the one that fired is
+            // always the top of the handler stack.
+            h = &try_handlers[--try_depth];
             frame_count = h->saved_frame_count;
             stack_top = h->saved_stack_top;
             frame = h->target_frame;
@@ -325,5 +320,9 @@ void vm_execute(int stop_at_frame_count) {
     // static per chunk, "what the stack should look like once this block
     // is done" is just "n slots past frame->slots" -- always correct
     // regardless of the path taken through the block this time.
+    // Module-level variables (see compiler/C/module_state.c). SET_GLOBAL keeps the
+    // value on the stack, like SET_LOCAL.
+    do_GET_GLOBAL: { uint8_t idx = *frame->ip++; *stack_top++ = vm_globals[idx]; DISPATCH(); }
+    do_SET_GLOBAL: { uint8_t idx = *frame->ip++; vm_globals[idx] = stack_top[-1]; DISPATCH(); }
     do_TRUNC_LOCALS: { uint8_t n = *frame->ip++; stack_top = frame->slots + n; DISPATCH(); }
 }

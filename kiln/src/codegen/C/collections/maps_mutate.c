@@ -1,4 +1,5 @@
 #include "codegen/H/collections/maps.h"
+#include "codegen/H/collections/arrays.h"
 #include "codegen/H/collections/maps_internal.h"
 #include "codegen/H/emit/emit_internal.h"
 #include "codegen/H/emit/value.h"
@@ -9,7 +10,7 @@
 static void push_number_local(double v) {
     uint64_t bits;
     __builtin_memcpy(&bits, &v, sizeof(bits));
-    emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+    emit_mov_reg_imm64(code, REG_RBX, TAG_BOOL);
     emit_push_reg(code, REG_RBX);
     emit_mov_reg_imm64(code, REG_RAX, bits);
     emit_push_reg(code, REG_RAX);
@@ -128,15 +129,20 @@ void codegen_builtin_delete(void) {
     emit_pop_reg(code, REG_RDI); // key payload
     emit_pop_reg(code, REG_RBX); // key tag (ignored)
     emit_pop_reg(code, REG_RSI); // map object
-    emit_pop_reg(code, REG_RBX); // map tag (ignored)
+    emit_pop_reg(code, REG_RBX); // map tag
+
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_ARRAY);
+    int is_map = emit_jcc_rel32(code, COND_NE);
+    codegen_array_delete_index(); // delete(array, index)
+    int array_done = emit_jmp_rel32(code);
+    emit_patch_jump(code, is_map);
 
     emit_sub_reg_imm8(code, REG_RSP, 8);
     emit_mov_reg_reg(code, REG_RCX, REG_RSP);
     emit_store_mem_disp32(code, REG_RCX, 0, REG_RSI);
 
     int not_found = find_entry_index();
-    // found: RBX = entry addr to remove -- overwrite it with the last
-    // entry's data (order doesn't matter for a map), then count--
+    // found: RBX = entry addr to remove -- close the gap, then count--
     emit_mov_reg_reg(code, REG_RCX, REG_RSP);
     emit_load_mem_disp32(code, REG_RSI, REG_RCX, 0);
     emit_load_mem_disp32(code, REG_RAX, REG_RSI, 8); // count
@@ -147,10 +153,17 @@ void codegen_builtin_delete(void) {
     emit_imul_reg_reg(code, REG_RCX, REG_RAX);
     emit_add_reg_reg(code, REG_RCX, REG_RDX); // RCX = last entry's address
 
-    emit_load_mem_disp32(code, REG_RAX, REG_RCX, 0);  emit_store_mem_disp32(code, REG_RBX, 0, REG_RAX);
-    emit_load_mem_disp32(code, REG_RAX, REG_RCX, 8);  emit_store_mem_disp32(code, REG_RBX, 8, REG_RAX);
-    emit_load_mem_disp32(code, REG_RAX, REG_RCX, 16); emit_store_mem_disp32(code, REG_RBX, 16, REG_RAX);
-    emit_load_mem_disp32(code, REG_RAX, REG_RCX, 24); emit_store_mem_disp32(code, REG_RBX, 24, REG_RAX);
+    // shift every later entry down one slot, so the survivors keep their order
+    int shift = code->count;
+    emit_cmp_reg_reg(code, REG_RBX, REG_RCX);
+    int shifted = emit_jcc_rel32(code, COND_GE);
+    emit_load_mem_disp32(code, REG_RAX, REG_RBX, 32); emit_store_mem_disp32(code, REG_RBX, 0, REG_RAX);
+    emit_load_mem_disp32(code, REG_RAX, REG_RBX, 40); emit_store_mem_disp32(code, REG_RBX, 8, REG_RAX);
+    emit_load_mem_disp32(code, REG_RAX, REG_RBX, 48); emit_store_mem_disp32(code, REG_RBX, 16, REG_RAX);
+    emit_load_mem_disp32(code, REG_RAX, REG_RBX, 56); emit_store_mem_disp32(code, REG_RBX, 24, REG_RAX);
+    emit_add_reg_imm8(code, REG_RBX, MAP_ENTRY_SIZE);
+    emit_jmp_back(code, shift);
+    emit_patch_jump(code, shifted);
 
     emit_load_mem_disp32(code, REG_RAX, REG_RSI, 8);
     emit_sub_reg_imm8(code, REG_RAX, 1);
@@ -173,4 +186,5 @@ void codegen_builtin_delete(void) {
     emit_push_reg(code, REG_RSI);
 
     emit_patch_jump(code, done);
+    emit_patch_jump(code, array_done);
 }

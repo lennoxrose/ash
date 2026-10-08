@@ -11,4 +11,12 @@
 #define KILN_TRY_HANDLERS_SIZE (MAX_KILN_TRY_DEPTH * KILN_TRY_HANDLER_SIZE)
 #define KILN_TRY_DEPTH_SIZE 8
 
+
+// Module-level state: top-level `local`s of an imported file whose value is
+// computed at import time live in a fixed table of (tag, payload) slots in the
+// globals region (see parser/C/declarations/module_state.c), because a called
+// function's own frame can't reach the importing frame.
+#define KILN_MODSTATE_SLOTS 128
+#define KILN_MODSTATE_SIZE (16 * KILN_MODSTATE_SLOTS)
+
 #endif

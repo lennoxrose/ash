@@ -11,6 +11,22 @@
 
 static int raise_routine_offset = -1;
 
+// Writes `text` (<= 31 bytes) to stderr via a stack buffer. Clobbers
+// RAX/RCX/RDX/RSI (and RBX/RDI on Windows), like platform_emit_write_stderr.
+static void write_stderr_text(CodeBuf *code, const char *text) {
+    int n = (int)strlen(text);
+    emit_sub_reg_imm8(code, REG_RSP, 32);
+    emit_mov_reg_reg(code, REG_RCX, REG_RSP);
+    for (int i = 0; i < n; i++) {
+        emit_store_byte_imm(code, REG_RCX, (uint8_t)text[i]);
+        emit_add_reg_imm8(code, REG_RCX, 1);
+    }
+    emit_mov_reg_reg(code, REG_RSI, REG_RSP);
+    emit_mov_reg_imm64(code, REG_RDX, (uint64_t)n);
+    platform_emit_write_stderr(code);
+    emit_add_reg_imm8(code, REG_RSP, 32);
+}
+
 static int is_shared(void) {
     return kiln_get_link_mode() == KILN_LINK_SHARED && !kiln_is_compiling_so();
 }
@@ -36,7 +52,8 @@ static void embed_message(CodeBuf *code, const char *msg, uint64_t *out_addr, in
     *out_len = len;
 }
 
-// Raise routine -- inputs RSI=message addr, RDX=message len. If an `attempt`
+// Raise routine -- inputs RBX=value tag, RSI=value payload, RDX=message len
+// (only meaningful when the tag is STRING). If an `attempt`
 // is active (kiln_try_depth_addr() > 0), pops the innermost handler,
 // restores its saved RSP/RBP (kiln's hand-rolled longjmp -- no libc
 // setjmp in a freestanding binary), stores the message as a TAG_STRING
@@ -47,6 +64,7 @@ static void emit_raise_routine(CodeBuf *code) {
     int skip = emit_jmp_rel32(code);
     raise_routine_offset = code->count;
 
+    emit_push_reg(code, REG_RBX); // the raised value's tag, kept until the handler's slot is known
     emit_mov_reg_imm64(code, REG_RAX, kiln_try_depth_addr());
     emit_load_mem_disp32(code, REG_RAX, REG_RAX, 0);
     emit_cmp_reg_imm32(code, REG_RAX, 0);
@@ -66,12 +84,12 @@ static void emit_raise_routine(CodeBuf *code) {
     emit_load_mem_disp32(code, REG_RDX, REG_RAX, 16); // handle target (clobbers RDX -- fine, msg len only needed on the fatal branch we didn't take)
     emit_load_mem_disp32(code, REG_RBX, REG_RAX, 24); // error variable's rbp-relative tag offset
 
+    emit_pop_reg(code, REG_RAX); // the raised value's tag
     emit_mov_reg_reg(code, REG_RSP, REG_RCX);
     emit_mov_reg_reg(code, REG_RBP, REG_RDI);
 
     emit_mov_reg_reg(code, REG_RCX, REG_RBP);
     emit_add_reg_reg(code, REG_RCX, REG_RBX); // RCX = error variable's address
-    emit_mov_reg_imm64(code, REG_RAX, TAG_STRING);
     emit_store_mem_disp32(code, REG_RCX, 0, REG_RAX); // tag
     emit_store_mem_disp32(code, REG_RCX, 8, REG_RSI); // payload = message address
 
@@ -81,7 +99,21 @@ static void emit_raise_routine(CodeBuf *code) {
     // RSI/RDX still hold this call's original message addr/len -- nothing
     // between the raise routine's entry and here touches them on the path
     // that skips straight past the attempt-active handling.
+    emit_pop_reg(code, REG_RAX); // tag
+    emit_push_reg(code, REG_RSI);
+    emit_push_reg(code, REG_RDX);
+    emit_push_reg(code, REG_RAX);
+    write_stderr_text(code, "error: ");
+    emit_pop_reg(code, REG_RAX);
+    emit_pop_reg(code, REG_RDX);
+    emit_pop_reg(code, REG_RSI);
+    emit_cmp_reg_imm32(code, REG_RAX, TAG_STRING);
+    int is_text = emit_jcc_rel32(code, COND_E);
+    write_stderr_text(code, "uncaught non-string value");
+    int text_done = emit_jmp_rel32(code);
+    emit_patch_jump(code, is_text);
     platform_emit_write_stderr(code);
+    emit_patch_jump(code, text_done);
     emit_sub_reg_imm8(code, REG_RSP, 8);
     emit_mov_reg_reg(code, REG_RCX, REG_RSP);
     emit_store_byte_imm(code, REG_RCX, '\n');
@@ -121,8 +153,14 @@ static void emit_die(CodeBuf *code) {
 }
 
 void errors_emit_die(CodeBuf *code, const char *msg) {
+    // Call sites spell messages "runtime error: ..."; the caught value is just
+    // the text after that (identical to ashvm's), and the fatal path adds its own
+    // "error: " prefix.
+    static const char prefix[] = "runtime error: ";
+    if (strncmp(msg, prefix, sizeof(prefix) - 1) == 0) msg += sizeof(prefix) - 1;
     uint64_t addr; int len;
     embed_message(code, msg, &addr, &len);
+    emit_mov_reg_imm64(code, REG_RBX, TAG_STRING);
     emit_mov_reg_imm64(code, REG_RSI, addr);
     emit_mov_reg_imm64(code, REG_RDX, (uint64_t)len);
     emit_die(code);

@@ -2,6 +2,7 @@
 #define ASH_VM_COMPILER_INTERNAL_H
 #include "compiler/H/state.h"
 #include "compiler/H/constants.h"
+#include "compiler/H/module_state.h"
 
 // Cross-file forward declarations between compiler_expr.c and
 // compiler_stmt.c -- not part of the public API (compiler.h).
@@ -9,8 +10,15 @@
 // compiler_expr.c
 void expression(void);
 
+// compiler_prescan.c -- forward declarations: finds every `forge name(...)` in a
+// source text up front so calls can appear before the definition, and checks at
+// the end that every reserved name did get defined.
+void prescan_functions(const char *source);
+void check_all_functions_defined(void);
+
 // compiler_calls.c
 void emit_call(Token id);
+int emit_builtin_value(Token id); // builtin name used as a value -> wrapper lambda; 0 if not a builtin
 void emit_call_named(const char *name, int len);
 void lambda_literal(void);
 // Tries to compile `identifier CMP (number|identifier)` directly into a

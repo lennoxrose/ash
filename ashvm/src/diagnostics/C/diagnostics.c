@@ -67,7 +67,7 @@ static const char *lookup_hint(const char *message) {
     if (has_prefix(message, "index out of bounds")) return "check the array's length before indexing";
     if (has_prefix(message, "key not found")) return "use `has(map, key)` to check before accessing";
     if (has_prefix(message, "could not open file")) return "check the file path is correct";
-    if (has_prefix(message, "type error")) return "check the value's type before using it this way";
+    if (has_prefix(message, "invalid operand type")) return "check the value's type before using it this way";
     if (has_prefix(message, "could not resolve")) return "check the import path is correct and the file exists";
     if (has_prefix(message, "circular import")) return "break the cycle by removing one of the imports in the chain shown above";
     if (has_prefix(message, "namespace")) return "give one of the colliding files/libraries a different name, or move one out of the way";

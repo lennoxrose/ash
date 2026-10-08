@@ -31,10 +31,10 @@ void errors_emit_die(CodeBuf *code, const char *msg);
 // the adjacent code segment).
 void errors_emit_fatal(CodeBuf *code, const char *msg);
 
-// Like errors_emit_die, but for a RUNTIME string value (parser.c's
-// `raise expr;`) instead of a compile-time-constant C string -- the
-// caller must already have RSI=message payload and RDX=message length
-// loaded (a raise expression's already-popped (tag,payload), payload is
+// Like errors_emit_die, but for a RUNTIME value (parser.c's `raise expr;`,
+// any type) instead of a compile-time-constant C string -- the caller must
+// already have RBX=tag and RSI=payload loaded, plus RDX=length when the tag is
+// STRING (a raise expression's already-popped (tag,payload), payload is
 // already a valid length-prefixed TAG_STRING pointer, so there's nothing
 // to embed, just the same jump to the raise routine errors_emit_die uses.
 void errors_emit_die_dynamic(CodeBuf *code);

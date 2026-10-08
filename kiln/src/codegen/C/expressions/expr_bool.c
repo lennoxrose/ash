@@ -5,6 +5,7 @@
 #include "codegen/H/emit/emit_sse.h"
 #include "codegen/H/emit/value.h"
 #include "codegen/H/strings/strings.h"
+#include "codegen/H/runtime/errors.h"
 #include "parser/H/core/parser.h"
 
 // Precedence climbing continued from expr.c: comparison -> logical_and ->
@@ -14,7 +15,7 @@
 
 // Pushes a literal double 0.0 or 1.0, tagged NUMBER.
 static void push_number_literal(double v) {
-    emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+    emit_mov_reg_imm64(code, REG_RBX, TAG_BOOL);
     emit_push_reg(code, REG_RBX);
     if (v == 0.0) {
         emit_pxor_xmm_xmm(code, XMM0);
@@ -43,11 +44,19 @@ static void push_bool(Cond cc_if_true) {
 }
 
 // Pops the top-of-stack value and sets flags as if its payload were
-// compared against 0.0 (ucomisd), for truthiness tests -- assumes
-// NUMBER, matching ashvm's own truthy(), which requires a number too.
-static void pop_and_test_truthy(void) {
-    emit_pop_reg(code, REG_RAX);  // payload
-    emit_pop_reg(code, REG_RBX);  // tag (assumed NUMBER)
+// compared against 0.0 (ucomisd), for truthiness tests: COND_E afterward
+// means falsy. Numbers, booleans and none are testable (their payload is
+// 0.0 when falsy); strings, arrays, maps and functions are a type error, as
+// on ashvm.
+void codegen_pop_and_test_truthy(void) {
+    emit_pop_reg(code, REG_RAX); // payload
+    emit_pop_reg(code, REG_RBX); // tag
+    emit_mov_reg_reg(code, REG_RCX, REG_RBX);
+    emit_sub_reg_imm8(code, REG_RCX, 1);
+    emit_cmp_reg_imm32(code, REG_RCX, 4); // unsigned: tags 1..4 (STRING..FUNCTION) fall below 4
+    int testable = emit_jcc_rel32(code, COND_AE);
+    errors_emit_die(code, "runtime error: invalid operand type in condition");
+    emit_patch_jump(code, testable);
     emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
     emit_pxor_xmm_xmm(code, XMM1);
     emit_ucomisd(code, XMM0, XMM1);
@@ -90,9 +99,19 @@ static void comparison(void) {
             emit_patch_jump(code, done);
             emit_patch_jump(code, done2);
         } else {
+            // Two strings order bytewise; anything else is compared as numbers.
+            emit_cmp_reg_imm32(code, REG_RBX, TAG_STRING);
+            int a_not_string = emit_jcc_rel32(code, COND_NE);
+            emit_cmp_reg_imm32(code, REG_RDX, TAG_STRING);
+            int b_not_string = emit_jcc_rel32(code, COND_NE);
+            codegen_string_order();
+            int flags_ready = emit_jmp_rel32(code);
+            emit_patch_jump(code, a_not_string);
+            emit_patch_jump(code, b_not_string);
             emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
             emit_movq_xmm_from_reg(code, XMM1, REG_RCX);
             emit_ucomisd(code, XMM0, XMM1);
+            emit_patch_jump(code, flags_ready);
             switch (op) {
                 case TOKEN_LESS:          push_bool(COND_B);  break;
                 case TOKEN_LESS_EQUAL:    push_bool(COND_BE); break;
@@ -151,10 +170,10 @@ static void logical_and(void) {
     bitwise();
     while (current.type == TOKEN_AND) {
         advance_token();
-        pop_and_test_truthy();
+        codegen_pop_and_test_truthy();
         int to_false = emit_jcc_rel32(code, COND_E);
         bitwise();
-        pop_and_test_truthy();
+        codegen_pop_and_test_truthy();
         int to_false2 = emit_jcc_rel32(code, COND_E);
         push_number_literal(1.0);
         int to_end = emit_jmp_rel32(code);
@@ -171,10 +190,10 @@ static void logical_or(void) {
     logical_and();
     while (current.type == TOKEN_OR) {
         advance_token();
-        pop_and_test_truthy();
+        codegen_pop_and_test_truthy();
         int to_true = emit_jcc_rel32(code, COND_NE);
         logical_and();
-        pop_and_test_truthy();
+        codegen_pop_and_test_truthy();
         int to_true2 = emit_jcc_rel32(code, COND_NE);
         push_number_literal(0.0);
         int to_end = emit_jmp_rel32(code);
@@ -194,11 +213,7 @@ void codegen_expression(void) {
     logical_or();
     if (current.type == TOKEN_QUESTION) {
         advance_token();
-        emit_pop_reg(code, REG_RAX); // condition payload
-        emit_pop_reg(code, REG_RBX); // condition tag (assumed NUMBER)
-        emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
-        emit_pxor_xmm_xmm(code, XMM1);
-        emit_ucomisd(code, XMM0, XMM1);
+        codegen_pop_and_test_truthy();
         int else_jump = emit_jcc_rel32(code, COND_E);
 
         codegen_expression(); // true branch

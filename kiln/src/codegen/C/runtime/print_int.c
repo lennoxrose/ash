@@ -1,5 +1,6 @@
 #include <string.h>
 #include "codegen/H/runtime/print_int.h"
+#include "codegen/H/runtime/number_format.h"
 #include "codegen/H/emit/emit_internal.h"
 #include "codegen/H/emit/emit_sse.h"
 #include "codegen/H/emit/value.h"
@@ -8,17 +9,6 @@
 #include "codegen/H/platform/platform_console.h"
 #include "elf/H/elf_dynamic_call.h"
 #include "app/H/target.h"
-
-// Loads a compile-time-known double literal into an xmm register, via a
-// GP register holding its raw IEEE-754 bit pattern -- same technique
-// codegen/C/expressions/expr.c uses for user-written number literals (there's no "mov
-// xmm, imm64" instruction).
-static void load_double_const(CodeBuf *code, XReg dst, double v) {
-    uint64_t bits;
-    memcpy(&bits, &v, sizeof(bits));
-    emit_mov_reg_imm64(code, REG_RAX, bits);
-    emit_movq_xmm_from_reg(code, dst, REG_RAX);
-}
 
 // Embeds a fixed byte sequence directly in the code stream (jumped over
 // at runtime, never executed) and writes it to stdout -- used for the
@@ -90,87 +80,12 @@ static void emit_number_routine(CodeBuf *code) {
     int routine_skip = emit_jmp_rel32(code);
     number_routine_offset = code->count;
 
-    emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
-    emit_sub_reg_imm8(code, REG_RSP, 40);
-
-    // ---- sign ----
-    emit_pxor_xmm_xmm(code, XMM2); // XMM2 = +0.0, used as the comparison zero
-    emit_ucomisd(code, XMM0, XMM2);
-    emit_mov_reg_imm64(code, REG_RBX, 0);
-    int skip_negate = emit_jcc_rel32(code, COND_AE); // XMM0 >= 0 -> not negative
-    emit_pxor_xmm_xmm(code, XMM2);
-    emit_subsd(code, XMM2, XMM0);    // XMM2 = 0.0 - XMM0 = -XMM0
-    emit_movsd_xmm_xmm(code, XMM0, XMM2);
-    emit_mov_reg_imm64(code, REG_RBX, 1);
-    emit_patch_jump(code, skip_negate);
-
-    // ---- split into integer part (RAX) and fractional remainder (XMM0, now in [0,1)) ----
-    emit_cvttsd2si(code, REG_RAX, XMM0);
-    emit_cvtsi2sd(code, XMM1, REG_RAX);
-    emit_subsd(code, XMM0, XMM1);
-
-    // ---- integer digits, backward ----
-    emit_mov_reg_reg(code, REG_RCX, REG_RSP);
-    emit_add_reg_imm8(code, REG_RCX, 32);
-    int loop_start = code->count;
-    emit_dec_reg(code, REG_RCX);
-    emit_cqo(code);
-    emit_mov_reg_imm64(code, REG_RSI, 10);
-    emit_idiv_reg(code, REG_RSI);
-    emit_add_reg_imm8(code, REG_RDX, '0');
-    emit_store_byte_reg(code, REG_RCX, REG_RDX);
-    emit_cmp_reg_imm32(code, REG_RAX, 0);
-    emit_jcc_back(code, COND_NE, loop_start);
-
-    // ---- sign prepend ----
-    emit_cmp_reg_imm32(code, REG_RBX, 0);
-    int skip_sign = emit_jcc_rel32(code, COND_E);
-    emit_dec_reg(code, REG_RCX);
-    emit_store_byte_imm(code, REG_RCX, '-');
-    emit_patch_jump(code, skip_sign);
-
-    // ---- fraction digits, forward, 6 unrolled steps -- see print_int.c's
-    // history for why the 0.0000005 round-half-up nudge is needed ----
-    load_double_const(code, XMM1, 0.0000005);
-    emit_addsd(code, XMM0, XMM1);
-    emit_mov_reg_reg(code, REG_RSI, REG_RSP);
-    emit_add_reg_imm8(code, REG_RSI, 33);
-    load_double_const(code, XMM3, 10.0);
-    emit_mov_reg_imm64(code, REG_RBX, 0); // repurposed: frac_len (sign already applied above)
-    for (int i = 0; i < 6; i++) {
-        emit_mulsd(code, XMM0, XMM3);
-        emit_cvttsd2si(code, REG_RAX, XMM0);   // this step's digit, 0-9
-        emit_cvtsi2sd(code, XMM1, REG_RAX);
-        emit_subsd(code, XMM0, XMM1);          // remainder for the next digit
-        emit_cmp_reg_imm32(code, REG_RAX, 0);
-        int skip_mark = emit_jcc_rel32(code, COND_E);
-        emit_mov_reg_imm64(code, REG_RBX, (uint64_t)(i + 1)); // "kept up through here"
-        emit_patch_jump(code, skip_mark);
-        emit_add_reg_imm8(code, REG_RAX, '0');
-        emit_store_byte_reg(code, REG_RSI, REG_RAX);
-        emit_add_reg_imm8(code, REG_RSI, 1);
-    }
-
-    // ---- decide '.' placement, then a single write(2) -- no newline ----
-    emit_mov_reg_reg(code, REG_RDX, REG_RSP);
-    emit_add_reg_imm8(code, REG_RDX, 32);
-    emit_cmp_reg_imm32(code, REG_RBX, 0);
-    int whole_number = emit_jcc_rel32(code, COND_E);
-    emit_store_byte_imm(code, REG_RDX, '.');
-    emit_mov_reg_reg(code, REG_RDX, REG_RSP);
-    emit_add_reg_imm8(code, REG_RDX, 33);
-    emit_add_reg_reg(code, REG_RDX, REG_RBX); // + frac_len
-    int after_dot = emit_jmp_rel32(code);
-    emit_patch_jump(code, whole_number);
-    // RDX already points one past the last int digit -- the correct
-    // end-of-content position when there's no fraction.
-    emit_patch_jump(code, after_dot);
-
-    emit_mov_reg_reg(code, REG_RSI, REG_RCX); // buf start
-    emit_sub_reg_reg(code, REG_RDX, REG_RCX); // length = content_end - buf_start
+    number_format_emit(code); // RCX = text start, RDX = text end (on the stack)
+    emit_mov_reg_reg(code, REG_RSI, REG_RCX);
+    emit_sub_reg_reg(code, REG_RDX, REG_RCX);
     platform_emit_write_stdout(code);
 
-    emit_add_reg_imm8(code, REG_RSP, 40);
+    emit_add_reg_imm8(code, REG_RSP, NUMBER_FORMAT_SCRATCH);
     emit_ret(code);
     emit_patch_jump(code, routine_skip);
 }
@@ -211,7 +126,7 @@ static void emit_print_recursive_routine(CodeBuf *code) {
     emit_mov_reg_reg(code, REG_RBP, REG_RSP);
     emit_sub_reg_imm8(code, REG_RSP, 32); // [RBP-8/-16/-24] loop state, [RBP-32] map's current entry addr
 
-    int to_epilogue[5];
+    int to_epilogue[8];
     int n_epilogue = 0;
 
     emit_cmp_reg_imm32(code, REG_RBX, TAG_STRING);
@@ -250,6 +165,23 @@ static void emit_print_recursive_routine(CodeBuf *code) {
         to_epilogue[n_epilogue++] = emit_jmp_rel32(code);
     }
     emit_patch_jump(code, not_number);
+
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_BOOL);
+    int not_bool = emit_jcc_rel32(code, COND_NE);
+    {
+        static int yes_offset = -1;
+        static int no_offset = -1;
+        if (yes_offset == -1) yes_offset = emit_literal(code, "yes", 3);
+        if (no_offset == -1) no_offset = emit_literal(code, "no", 2);
+        emit_cmp_reg_imm32(code, REG_RAX, 0); // payload bits: 0.0 is all zero
+        int is_no = emit_jcc_rel32(code, COND_E);
+        write_literal(code, yes_offset, 3);
+        to_epilogue[n_epilogue++] = emit_jmp_rel32(code);
+        emit_patch_jump(code, is_no);
+        write_literal(code, no_offset, 2);
+        to_epilogue[n_epilogue++] = emit_jmp_rel32(code);
+    }
+    emit_patch_jump(code, not_bool);
 
     emit_cmp_reg_imm32(code, REG_RBX, TAG_ARRAY);
     int not_array = emit_jcc_rel32(code, COND_NE);

@@ -21,4 +21,10 @@ void platform_emit_write_bytes(CodeBuf *code);     // in: RDI=fd/handle, RSI=buf
 // limit already documented elsewhere for file I/O).
 void platform_emit_file_size(CodeBuf *code);       // in: RDI=fd/handle -> out: RAX=size
 
+// Filesystem operations. All three return RAX = 0 on success, nonzero on failure,
+// on both targets.
+void platform_emit_rename(CodeBuf *code);          // in: RDI=nullterm from, RSI=nullterm to
+void platform_emit_delete(CodeBuf *code);          // in: RDI=nullterm path
+void platform_emit_mkdir(CodeBuf *code);           // in: RDI=nullterm path
+
 #endif

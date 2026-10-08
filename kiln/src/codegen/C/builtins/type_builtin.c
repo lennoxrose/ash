@@ -4,7 +4,7 @@
 #include "codegen/H/emit/value.h"
 #include "parser/H/core/parser.h"
 
-// Pops (tag, payload), pushes one of six string literals depending on
+// Pops (tag, payload), pushes one of seven string literals depending on
 // the tag -- TAG_FUNCTION covers both a plain named function and a
 // closure, matching value.h's documented "capture_count=0 is just a
 // zero-capture closure" shape (kiln has no separate closure tag the way
@@ -16,7 +16,7 @@ void codegen_builtin_type(void) {
     emit_pop_reg(code, REG_RAX); // payload (unused -- only the tag matters)
     emit_pop_reg(code, REG_RBX); // tag
 
-    int jumps[5];
+    int jumps[6];
     int n = 0;
 
     emit_cmp_reg_imm32(code, REG_RBX, TAG_NUMBER);
@@ -24,6 +24,12 @@ void codegen_builtin_type(void) {
     codegen_string_literal_bytes("number", 6);
     jumps[n++] = emit_jmp_rel32(code);
     emit_patch_jump(code, not_number);
+
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_BOOL);
+    int not_bool = emit_jcc_rel32(code, COND_NE);
+    codegen_string_literal_bytes("boolean", 7);
+    jumps[n++] = emit_jmp_rel32(code);
+    emit_patch_jump(code, not_bool);
 
     emit_cmp_reg_imm32(code, REG_RBX, TAG_STRING);
     int not_string = emit_jcc_rel32(code, COND_NE);

@@ -117,6 +117,73 @@ void codegen_builtin_num(void) {
     emit_patch_jump(code, not_dot);
     emit_patch_jump(code, no_frac_check);
 
+    // ---- optional exponent: e/E, optional sign, digits ----
+    emit_cmp_reg_reg(code, REG_RSI, REG_RDI);
+    int exp_end = emit_jcc_rel32(code, COND_GE);
+    emit_load_byte_reg(code, REG_RCX, REG_RSI);
+    emit_cmp_reg_imm32(code, REG_RCX, 'e');
+    int is_e = emit_jcc_rel32(code, COND_E);
+    emit_cmp_reg_imm32(code, REG_RCX, 'E');
+    int exp_none = emit_jcc_rel32(code, COND_NE);
+    emit_patch_jump(code, is_e);
+    emit_add_reg_imm8(code, REG_RSI, 1);
+
+    load_double_const(XMM2, 10.0);        // (clobbers RAX, so before the flag)
+    emit_mov_reg_imm64(code, REG_RAX, 0); // exponent-negative flag
+    emit_pxor_xmm_xmm(code, XMM3);        // exponent magnitude, as a double
+    emit_cmp_reg_reg(code, REG_RSI, REG_RDI);
+    int exp_sign_skip = emit_jcc_rel32(code, COND_GE);
+    emit_load_byte_reg(code, REG_RCX, REG_RSI);
+    emit_cmp_reg_imm32(code, REG_RCX, '-');
+    int exp_not_minus = emit_jcc_rel32(code, COND_NE);
+    emit_mov_reg_imm64(code, REG_RAX, 1);
+    emit_add_reg_imm8(code, REG_RSI, 1);
+    int exp_sign_done = emit_jmp_rel32(code);
+    emit_patch_jump(code, exp_not_minus);
+    emit_cmp_reg_imm32(code, REG_RCX, '+');
+    int exp_not_plus = emit_jcc_rel32(code, COND_NE);
+    emit_add_reg_imm8(code, REG_RSI, 1);
+    emit_patch_jump(code, exp_not_plus);
+    emit_patch_jump(code, exp_sign_done);
+    emit_patch_jump(code, exp_sign_skip);
+
+    int exp_loop = code->count;
+    emit_cmp_reg_reg(code, REG_RSI, REG_RDI);
+    int exp_digits_end = emit_jcc_rel32(code, COND_GE);
+    emit_load_byte_reg(code, REG_RCX, REG_RSI);
+    emit_cmp_reg_imm32(code, REG_RCX, '0');
+    int exp_lt = emit_jcc_rel32(code, COND_LT);
+    emit_cmp_reg_imm32(code, REG_RCX, '9');
+    int exp_gt = emit_jcc_rel32(code, COND_GT);
+    emit_mulsd(code, XMM3, XMM2);
+    emit_sub_reg_imm8(code, REG_RCX, '0');
+    emit_cvtsi2sd(code, XMM1, REG_RCX);
+    emit_addsd(code, XMM3, XMM1);
+    emit_add_reg_imm8(code, REG_RSI, 1);
+    emit_jmp_back(code, exp_loop);
+    emit_patch_jump(code, exp_lt);
+    emit_patch_jump(code, exp_gt);
+    emit_patch_jump(code, exp_digits_end);
+
+    // Scale by 10^exponent, one multiply (or divide, for a negative
+    // exponent) at a time -- exact for the common small cases.
+    emit_cvttsd2si(code, REG_RDX, XMM3);
+    int scale_loop = code->count;
+    emit_cmp_reg_imm32(code, REG_RDX, 0);
+    int scale_done = emit_jcc_rel32(code, COND_LE);
+    emit_cmp_reg_imm32(code, REG_RAX, 0);
+    int scale_down = emit_jcc_rel32(code, COND_NE);
+    emit_mulsd(code, XMM0, XMM2);
+    int scale_next = emit_jmp_rel32(code);
+    emit_patch_jump(code, scale_down);
+    emit_divsd(code, XMM0, XMM2);
+    emit_patch_jump(code, scale_next);
+    emit_dec_reg(code, REG_RDX);
+    emit_jmp_back(code, scale_loop);
+    emit_patch_jump(code, scale_done);
+    emit_patch_jump(code, exp_none);
+    emit_patch_jump(code, exp_end);
+
     // ---- apply sign ----
     emit_cmp_reg_imm32(code, REG_RBX, 0);
     int no_negate = emit_jcc_rel32(code, COND_E);

@@ -11,8 +11,10 @@
 #include "codegen/H/collections/maps.h"
 #include "codegen/H/builtins/builtins.h"
 #include "codegen/H/functions/closures.h"
+#include "codegen/H/runtime/errors.h"
 #include "parser/H/core/parser.h"
 #include "parser/H/declarations/vars.h"
+#include "parser/H/declarations/module_state.h"
 #include "parser/H/declarations/functions.h"
 #include "parser/H/declarations/constants.h"
 
@@ -37,6 +39,33 @@
 // milestone, not silently pretended-away here).
 
 static void power(void);
+static void emit_index_read(void);
+
+// A builtin name used as a value (`map(xs, str)`, `local f = len;`) becomes a
+// small wrapper lambda `forge (a0, ...) { yield name(a0, ...); }`, compiled by
+// pointing the lexer at a synthesized snippet. `current` is the token after
+// the name; everything is restored afterwards. Returns 0 if `id` isn't a builtin.
+static int codegen_builtin_value(Token id) {
+    int arity = codegen_builtin_arity(id.start, id.length);
+    if (arity < 0) return 0;
+
+    char *snippet = malloc(64 + 2 * (size_t)id.length + 12 * (size_t)arity); // kept: tokens point into it
+    int n = sprintf(snippet, "forge (");
+    for (int i = 0; i < arity; i++) n += sprintf(snippet + n, "%s__%d", i ? ", " : "", i);
+    n += sprintf(snippet + n, ") { yield %.*s(", id.length, id.start);
+    for (int i = 0; i < arity; i++) n += sprintf(snippet + n, "%s__%d", i ? ", " : "", i);
+    sprintf(snippet + n, "); }");
+
+    Token saved_current = current, saved_previous = previous;
+    LexerState saved_lexer = lexer_save_state();
+    lexer_init(snippet);
+    advance_token(); // current = 'forge'
+    codegen_lambda_expr();
+    lexer_restore_state(saved_lexer);
+    current = saved_current;
+    previous = saved_previous;
+    return 1;
+}
 
 static void primary(void) {
     if (current.type == TOKEN_NUMBER) {
@@ -77,7 +106,7 @@ static void primary(void) {
         advance_token();
         uint64_t bits;
         memcpy(&bits, &v, sizeof(bits));
-        emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+        emit_mov_reg_imm64(code, REG_RBX, TAG_BOOL);
         emit_push_reg(code, REG_RBX);
         emit_mov_reg_imm64(code, REG_RAX, bits);
         emit_push_reg(code, REG_RAX);
@@ -94,6 +123,24 @@ static void primary(void) {
     if (current.type == TOKEN_IDENTIFIER) {
         Token id = current;
         advance_token();
+
+        // `var.field` on a variable (not a namespace) is var["field"]; on an
+        // error string it is the string itself, so `e.message` works for built-in
+        // errors and for raised maps alike.
+        if (current.type == TOKEN_DOT && resolve_var(id.start, id.length) != -1) {
+            int slot = resolve_var(id.start, id.length);
+            emit_load_mem_disp32(code, REG_RBX, REG_RBP, var_slot_tag_offset(slot));
+            emit_push_reg(code, REG_RBX);
+            emit_load_mem_disp32(code, REG_RAX, REG_RBP, var_slot_payload_offset(slot));
+            emit_push_reg(code, REG_RAX);
+            while (current.type == TOKEN_DOT) {
+                advance_token();
+                expect(TOKEN_IDENTIFIER, "expected field name after '.'");
+                codegen_string_literal_bytes(previous.start, previous.length);
+                emit_index_read();
+            }
+            return;
+        }
 
         if (current.type == TOKEN_DOT) {
             advance_token();
@@ -112,6 +159,8 @@ static void primary(void) {
 
             KilnConstant *k = resolve_constant(combined, combined_len);
             if (k != NULL) { codegen_constant_value(k); return; }
+            int state = module_state_resolve_qualified(combined, combined_len);
+            if (state != -1) { module_state_emit_load(state); return; }
 
             parse_error("undefined namespaced function or constant");
         }
@@ -154,6 +203,10 @@ static void primary(void) {
             KilnConstant *k = resolve_constant(combined, combined_len);
             if (k != NULL) { codegen_constant_value(k); return; }
         }
+        int state = module_state_resolve(id.start, id.length);
+        if (state != -1) { module_state_emit_load(state); return; }
+        if (codegen_builtin_value(id)) return;
+
         char msg[128];
         snprintf(msg, sizeof(msg), "undefined variable: %.*s", id.length, id.start);
         parse_error(msg);
@@ -181,13 +234,10 @@ static void primary(void) {
 // the same order, and dispatches. A while loop (not a single check) so
 // chains like `arr[0][1]` work, matching ashvm/src/compiler/expr.c's
 // postfix() shape.
-static void postfix(void) {
-    primary();
-    while (current.type == TOKEN_LBRACKET) {
-        advance_token();
-        codegen_expression();
-        expect(TOKEN_RBRACKET, "expected ']' after index");
-
+// Both the base and the index are already pushed (base deeper). Pops both and
+// pushes base[index] for an array, map or string. A string indexed by a string
+// is an error value's `.message`: it yields the string itself.
+static void emit_index_read(void) {
         emit_pop_reg(code, REG_RAX); // index payload
         emit_pop_reg(code, REG_RBX); // index tag
         emit_pop_reg(code, REG_RCX); // base payload
@@ -206,9 +256,24 @@ static void postfix(void) {
         codegen_map_index_read();
         int done2 = emit_jmp_rel32(code);
         emit_patch_jump(code, is_string);
+        emit_cmp_reg_imm32(code, REG_RBX, TAG_STRING); // string[string]: the value itself
+        int by_number = emit_jcc_rel32(code, COND_NE);
+        emit_add_reg_imm8(code, REG_RSP, 16);
+        int done3 = emit_jmp_rel32(code);
+        emit_patch_jump(code, by_number);
         codegen_string_index_read();
         emit_patch_jump(code, done);
         emit_patch_jump(code, done2);
+        emit_patch_jump(code, done3);
+}
+
+static void postfix(void) {
+    primary();
+    while (current.type == TOKEN_LBRACKET) {
+        advance_token();
+        codegen_expression();
+        expect(TOKEN_RBRACKET, "expected ']' after index");
+        emit_index_read();
     }
 }
 
@@ -222,26 +287,22 @@ static void unary(void) {
     if (current.type == TOKEN_BANG) {
         advance_token();
         unary();
-        emit_pop_reg(code, REG_RAX); // payload
-        emit_pop_reg(code, REG_RBX); // tag (ignored)
-        emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
-        emit_pxor_xmm_xmm(code, XMM1);
-        emit_ucomisd(code, XMM0, XMM1);
+        codegen_pop_and_test_truthy();
         int is_zero = emit_jcc_rel32(code, COND_E);
-        emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+        emit_mov_reg_imm64(code, REG_RBX, TAG_BOOL);
         emit_push_reg(code, REG_RBX);
         emit_pxor_xmm_xmm(code, XMM0);
         emit_movq_reg_from_xmm(code, REG_RAX, XMM0);
-        emit_push_reg(code, REG_RAX); // nonzero operand -> 0.0
+        emit_push_reg(code, REG_RAX); // truthy operand -> no
         int done = emit_jmp_rel32(code);
         emit_patch_jump(code, is_zero);
-        emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+        emit_mov_reg_imm64(code, REG_RBX, TAG_BOOL);
         emit_push_reg(code, REG_RBX);
         double one = 1.0;
         uint64_t one_bits;
         memcpy(&one_bits, &one, sizeof(one_bits));
         emit_mov_reg_imm64(code, REG_RAX, one_bits);
-        emit_push_reg(code, REG_RAX); // zero operand -> 1.0
+        emit_push_reg(code, REG_RAX); // falsy operand -> yes
         emit_patch_jump(code, done);
         return;
     }
@@ -400,6 +461,17 @@ void codegen_apply_plus(void) {
     int done = emit_jmp_rel32(code);
     emit_patch_jump(code, not_string);
     emit_patch_jump(code, not_string2);
+    // A string on exactly one side is a type error (as on ashvm), not a
+    // numeric add of a heap pointer.
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_STRING);
+    int a_is_string = emit_jcc_rel32(code, COND_E);
+    emit_cmp_reg_imm32(code, REG_RDX, TAG_STRING);
+    int b_is_string = emit_jcc_rel32(code, COND_E);
+    int numeric = emit_jmp_rel32(code);
+    emit_patch_jump(code, a_is_string);
+    emit_patch_jump(code, b_is_string);
+    errors_emit_die(code, "runtime error: invalid operand type in '+'");
+    emit_patch_jump(code, numeric);
     emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
     emit_movq_xmm_from_reg(code, XMM1, REG_RCX);
     emit_addsd(code, XMM0, XMM1);

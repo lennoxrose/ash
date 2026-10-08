@@ -72,7 +72,7 @@ void codegen_array_index_read(void) {
     emit_pop_reg(code, REG_RSI); // array object address
     emit_pop_reg(code, REG_RBX); // array tag (assumed ARRAY)
 
-    bounds_check("runtime error: array index out of bounds"); // RCX=index, RDX=data_ptr
+    bounds_check("index out of bounds"); // RCX=index, RDX=data_ptr
 
     // element address = data_ptr + RCX*16
     emit_mov_reg_imm64(code, REG_RAX, 16);
@@ -98,7 +98,7 @@ void codegen_array_index_store(void) {
     emit_push_reg(code, REG_RAX); // value payload
     emit_mov_reg_reg(code, REG_RAX, REG_RCX); // index payload -> RAX, where bounds_check expects it
 
-    bounds_check("runtime error: array index out of bounds"); // RCX=index, RDX=data_ptr
+    bounds_check("index out of bounds"); // RCX=index, RDX=data_ptr
 
     emit_mov_reg_imm64(code, REG_RAX, 16);
     emit_imul_reg_reg(code, REG_RCX, REG_RAX);
@@ -129,8 +129,14 @@ void codegen_builtin_push(void) {
     emit_cmp_reg_reg(code, REG_RDX, REG_RAX);
     int has_room = emit_jcc_rel32(code, COND_LT);
 
-    // --- grow: new data block sized capacity+4, copy the old elements over ---
-    emit_add_reg_imm8(code, REG_RAX, 4);       // RAX = new_capacity
+    // --- grow: new data block of double the capacity (at least 4 slots), copy the
+    // old elements over. Doubling keeps total allocation linear in the final
+    // size; the bump allocator never frees the old block. ---
+    emit_add_reg_reg(code, REG_RAX, REG_RAX);  // RAX = new_capacity = 2 * capacity
+    emit_cmp_reg_imm32(code, REG_RAX, 4);
+    int big_enough = emit_jcc_rel32(code, COND_GE);
+    emit_mov_reg_imm64(code, REG_RAX, 4);
+    emit_patch_jump(code, big_enough);
     emit_mov_reg_reg(code, REG_RDI, REG_RAX);
     emit_mov_reg_imm64(code, REG_RBX, 16);
     emit_imul_reg_reg(code, REG_RDI, REG_RBX); // RDI = new data block size

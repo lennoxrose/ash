@@ -108,3 +108,56 @@ void platform_emit_file_size(CodeBuf *code) {
     emit_syscall(code); // rewind (syscall preserves RDI, the fd survives for the caller's next use)
     emit_pop_reg(code, REG_RAX);
 }
+
+// Windows BOOL (nonzero = success) -> the Linux-style "0 = success" contract.
+static void bool_to_status(CodeBuf *code) {
+    emit_cmp_reg_imm32(code, REG_RAX, 0);
+    int failed = emit_jcc_rel32(code, COND_E);
+    emit_mov_reg_imm64(code, REG_RAX, 0);
+    int done = emit_jmp_rel32(code);
+    emit_patch_jump(code, failed);
+    emit_mov_reg_imm64(code, REG_RAX, 1);
+    emit_patch_jump(code, done);
+}
+
+void platform_emit_rename(CodeBuf *code) {
+    if (kiln_get_target() == KILN_TARGET_WINDOWS) {
+        win_call_begin(code, 0);
+        win_call_arg_reg(code, 0, REG_RDI);
+        win_call_arg_reg(code, 1, REG_RSI);
+        win_call_import(code, PE_IMPORT_MOVE_FILE_A);
+        win_call_end(code);
+        bool_to_status(code);
+        return;
+    }
+    emit_mov_reg_imm64(code, REG_RAX, 82); // syscall: rename
+    emit_syscall(code);
+}
+
+void platform_emit_delete(CodeBuf *code) {
+    if (kiln_get_target() == KILN_TARGET_WINDOWS) {
+        win_call_begin(code, 0);
+        win_call_arg_reg(code, 0, REG_RDI);
+        win_call_import(code, PE_IMPORT_DELETE_FILE_A);
+        win_call_end(code);
+        bool_to_status(code);
+        return;
+    }
+    emit_mov_reg_imm64(code, REG_RAX, 87); // syscall: unlink
+    emit_syscall(code);
+}
+
+void platform_emit_mkdir(CodeBuf *code) {
+    if (kiln_get_target() == KILN_TARGET_WINDOWS) {
+        win_call_begin(code, 0);
+        win_call_arg_reg(code, 0, REG_RDI);
+        win_call_arg_imm64(code, 1, 0); // lpSecurityAttributes = NULL
+        win_call_import(code, PE_IMPORT_CREATE_DIRECTORY_A);
+        win_call_end(code);
+        bool_to_status(code);
+        return;
+    }
+    emit_mov_reg_imm64(code, REG_RSI, 493); // mode 0755
+    emit_mov_reg_imm64(code, REG_RAX, 83);  // syscall: mkdir
+    emit_syscall(code);
+}

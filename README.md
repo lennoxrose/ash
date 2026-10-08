@@ -88,19 +88,35 @@ optimizing native compiler.
 
 ## Language features
 
-- Numbers (real doubles), strings (with escape sequences), arrays, hash maps, `none`
-- `yes`/`no` boolean literals (plain sugar for `1`/`0` - truthiness is number-based throughout)
-- Functions, recursion, closures with by-value capture
-- First-class functions - pass them around, store them in variables, call them indirectly
-- `map`, `filter`, `reduce`, `type` (runtime type introspection: `"number"/"string"/"array"/"map"/"function"/"none"`), and 20+ other built-ins (string ops, file I/O, math)
-- `attempt` / `handle` error handling, plus `raise expr;` for user-thrown errors with a runtime string message
-- `each (x in array)` and `during` loops, with `stop` / `next` for early exit and skip-to-next-iteration
+- Numbers (real doubles, with `1e3`-style literals), strings (with escape sequences), arrays, hash maps, `none`
+- A real boolean type: `yes` / `no`, and everything that answers a question (`==`, `<`, `not`, `and`, `or`, `has`, `contains`, `file_exists`, ...) produces one. They print as `yes` / `no`, `type(yes)` is `"boolean"`, and `yes == 1` is false. Conditions accept booleans, numbers and `none`; a string, array, map or function in a condition is an error
+- `and` / `or` short-circuit; strings compare bytewise with `< <= > >=`
+- Maps keep insertion order (`keys`, `values`, printing); `delete` closes the gap
+- Functions, recursion, closures with by-value capture, and forward declarations: a function can be called before its `forge` appears, so mutual recursion just works
+- First-class functions - pass them around, store them in variables, call them indirectly. Builtins are values too: `map(xs, str)`, `local f = len;`
+- Builtins:
+  - core: `len type str num exit sqrt abs floor chr ord`
+  - collections: `push pop insert slice delete sort keys values has map filter reduce` (`delete(array, i)` removes an index, `sort(array)` / `sort(array, cmp)` sorts in place and is stable; `cmp(a, b)` returns a number, `> 0` meaning `a` goes after `b`)
+  - strings: `split join substring indexOf contains starts_with ends_with replace repeat upper lower trim`
+  - files: `read_file write_file append_file file_exists rename_file delete_file make_dir list_dir`
+- One number-to-text format on both engines: integers print plainly up to 1e15, other values with up to 6 fraction digits, and anything beyond that (or below 1e-6) in scientific form (`1e+21`, `1.5e-07`)
+- `attempt` / `handle` error handling. Built-in errors raise a string with the same wording on both engines (`index out of bounds`, `key not found`, `invalid operand type in '+'`, ...); `raise expr;` raises any value, so a map gives a structured error. `e.message` (more generally `var.field`, same as `var["field"]`) reads a field of a raised map, and on a plain string error it is the string itself, so `e.message` works for every error
+- `each (x in array)` and `during` loops, with `stop` / `next` for early exit and skip-to-next-iteration (leaving an `attempt` block that way pops its handler)
 - Compound assignment (`+= -= *= /=`) and `++` / `--`
 - Ternary `cond ? a : b`
 - Bitwise operators: `& | ^ ~ << >>`
+- Imports: `@import <./file.ash>;` makes the file's functions callable as `file.name(...)`; `@import <./file.ash> as alias;` picks the namespace. Imports are transitive (a file imported by a file you import is callable by its own namespace too) and each file is loaded once. A top-level `local` in an imported file is a module-level variable: its expression runs once at import, and the file's functions can read and update it (`NAME = ...;`, `NAME += ...;`, `NAME[i] = ...;`); outside, `file.NAME` reads it
+- `exit(code)` ends the program with that status; an uncaught error exits with status 1
 - Colorized, Rust-style diagnostics for both compile-time and runtime
   errors: file:line:column, a source snippet, a caret, and a contextual hint
 - An interactive REPL with persistent variables across lines
+
+### Performance notes
+
+- `len(s)`, `substring(s, i, j)` and `s[i]` are O(1) / O(length of the piece) on both engines (strings carry their length).
+- `s += x` copies `s`, so building a long string one piece at a time is quadratic in time and, since nothing is freed, in memory (and `kiln` has a fixed 16 MB heap). Collect the pieces in an array and `join(parts, "")` once - that is linear.
+- `push` grows arrays geometrically (amortized O(1)); `sort` is a stable merge sort on `ashvm` and a stable insertion sort on `kiln`.
+- `kiln`'s Windows output is checked without a Windows machine: `kiln/tests/scripts/windows_emulated_check.sh` runs every test case as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. All of them, including the Windows file operations (`list_dir` via `FindFirstFileA`/`FindNextFileA`), match. `kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`), also with all cases matching. Neither is Windows itself.
 
 ## Getting started
 

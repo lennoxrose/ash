@@ -4,6 +4,7 @@
 #include "parser/H/core/parser.h"
 #include "parser/H/core/parser_internal.h"
 #include "parser/H/declarations/vars.h"
+#include "parser/H/declarations/module_state.h"
 #include "parser/H/statements/loop_stack.h"
 #include "parser/H/declarations/functions.h"
 #include "parser/H/imports/imports.h"
@@ -77,26 +78,14 @@ static void local_statement(void) {
     // that file's own functions -- the sibling guard further down in
     // statement() already gets this right, this one didn't.
     if (ns_len > 0 && block_depth == 0) {
-        char combined[96];
-        int combined_len = snprintf(combined, sizeof(combined), "%.*s.%.*s", ns_len, ns, len, name);
-        if (current.type == TOKEN_NUMBER) {
-            char clean[128];
-            int clean_len = 0;
-            for (int i = 0; i < current.length; i++) {
-                if (current.start[i] == '_') continue;
-                clean[clean_len++] = current.start[i];
-            }
-            clean[clean_len] = '\0';
-            double v = strtod(clean, NULL);
-            advance_token();
-            declare_number_constant(combined, combined_len, v);
-        } else if (current.type == TOKEN_STRING) {
-            declare_string_constant(combined, combined_len, current.start, current.length);
-            advance_token();
-        } else {
-            parse_error("imported top-level 'local' must be a literal number or string constant");
-        }
+        // A top-level `local` of an imported file is a module-level variable: the
+        // expression runs once, at the point of the `@import`, and the value lives
+        // in a global slot every function of that file (and `ns.NAME`) can read,
+        // and `NAME = ...;` can update (see parser/H/declarations/module_state.h).
+        int state_slot = module_state_declare(name, len);
+        codegen_expression();
         expect(TOKEN_SEMICOLON, "expected ';' after statement");
+        module_state_emit_store(state_slot);
         return;
     }
 
@@ -111,20 +100,46 @@ static void local_statement(void) {
     emit_store_mem_disp32(code, REG_RBP, var_slot_payload_offset(slot), REG_RAX);
 }
 
+// A variable that statements can read and write: either a frame slot of the
+// current function, or (inside an imported file) a module-level variable.
+typedef struct { int global; int index; } VarRef;
+
+static VarRef resolve_ref_or_error(Token id) {
+    int slot = resolve_var(id.start, id.length);
+    if (slot != -1) return (VarRef){ 0, slot };
+    int state = module_state_resolve(id.start, id.length);
+    if (state != -1) return (VarRef){ 1, state };
+    char msg[128];
+    snprintf(msg, sizeof(msg), "undefined variable: %.*s", id.length, id.start);
+    parse_error(msg);
+    return (VarRef){ 0, -1 };
+}
+
+static void ref_push(VarRef r) {
+    if (r.global) { module_state_emit_load(r.index); return; }
+    emit_load_mem_disp32(code, REG_RBX, REG_RBP, var_slot_tag_offset(r.index));
+    emit_push_reg(code, REG_RBX);
+    emit_load_mem_disp32(code, REG_RAX, REG_RBP, var_slot_payload_offset(r.index));
+    emit_push_reg(code, REG_RAX);
+}
+
+// Stores RBX (tag) / RAX (payload) into the variable.
+static void ref_store_regs(VarRef r) {
+    if (r.global) {
+        emit_push_reg(code, REG_RBX);
+        emit_push_reg(code, REG_RAX);
+        module_state_emit_store(r.index);
+        return;
+    }
+    emit_store_mem_disp32(code, REG_RBP, var_slot_tag_offset(r.index), REG_RBX);
+    emit_store_mem_disp32(code, REG_RBP, var_slot_payload_offset(r.index), REG_RAX);
+}
+
 // IDENT[index] = expr ;  -- writes through an existing array OR map
 // variable (which one is only known at runtime -- see expr.c's postfix()
 // for the read-side version of this same dispatch).
 static void index_assignment_statement(Token id) {
-    int slot = resolve_var(id.start, id.length);
-    if (slot == -1) {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "undefined variable: %.*s", id.length, id.start);
-        parse_error(msg);
-    }
-    emit_load_mem_disp32(code, REG_RBX, REG_RBP, var_slot_tag_offset(slot));
-    emit_push_reg(code, REG_RBX);
-    emit_load_mem_disp32(code, REG_RAX, REG_RBP, var_slot_payload_offset(slot));
-    emit_push_reg(code, REG_RAX);
+    ref_push(resolve_ref_or_error(id));
 
     advance_token(); // consume '['
     codegen_expression();
@@ -171,28 +186,15 @@ static void call_statement(Token id) {
     emit_pop_reg(code, REG_RBX);
 }
 
-static int resolve_var_or_error(Token id) {
-    int slot = resolve_var(id.start, id.length);
-    if (slot == -1) {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "undefined variable: %.*s", id.length, id.start);
-        parse_error(msg);
-    }
-    return slot;
-}
-
 // x += e ; / x -= e ; / x *= e ; / x /= e ;  -- sugar for x = x <op> e.
 // `+=` reuses codegen_apply_plus() (the exact same tag-aware string-concat-
 // or-numeric-add logic `+` itself uses); `-=`/`*=`/`/=` are NUMBER-only,
 // same scope limit as `-`/`*`/`/` themselves.
 static void compound_assignment_statement(Token id, TokenType op) {
-    int slot = resolve_var_or_error(id);
+    VarRef ref = resolve_ref_or_error(id);
     advance_token(); // consume the += / -= / *= / /=
 
-    emit_load_mem_disp32(code, REG_RBX, REG_RBP, var_slot_tag_offset(slot));
-    emit_push_reg(code, REG_RBX);
-    emit_load_mem_disp32(code, REG_RAX, REG_RBP, var_slot_payload_offset(slot));
-    emit_push_reg(code, REG_RAX);
+    ref_push(ref);
 
     codegen_expression();
     expect(TOKEN_SEMICOLON, "expected ';' after assignment");
@@ -218,19 +220,20 @@ static void compound_assignment_statement(Token id, TokenType op) {
 
     emit_pop_reg(code, REG_RAX); // result payload
     emit_pop_reg(code, REG_RBX); // result tag
-    emit_store_mem_disp32(code, REG_RBP, var_slot_tag_offset(slot), REG_RBX);
-    emit_store_mem_disp32(code, REG_RBP, var_slot_payload_offset(slot), REG_RAX);
+    ref_store_regs(ref);
 }
 
 // x++ ; / x-- ;  -- sugar for x = x + 1 / x = x - 1. Statement-only (not
 // a pre/post-increment EXPRESSION with a value of its own -- that needs
 // primary()/postfix() changes this project's scope doesn't call for).
 static void incdec_statement(Token id, TokenType op) {
-    int slot = resolve_var_or_error(id);
+    VarRef ref = resolve_ref_or_error(id);
     advance_token(); // consume ++ or --
     expect(TOKEN_SEMICOLON, "expected ';' after statement");
 
-    emit_load_mem_disp32(code, REG_RAX, REG_RBP, var_slot_payload_offset(slot));
+    ref_push(ref);
+    emit_pop_reg(code, REG_RAX); // payload
+    emit_pop_reg(code, REG_RBX); // tag (ignored)
     emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
     double one = 1.0;
     uint64_t one_bits;
@@ -241,8 +244,7 @@ static void incdec_statement(Token id, TokenType op) {
     else emit_subsd(code, XMM0, XMM1);
     emit_movq_reg_from_xmm(code, REG_RAX, XMM0);
     emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
-    emit_store_mem_disp32(code, REG_RBP, var_slot_tag_offset(slot), REG_RBX);
-    emit_store_mem_disp32(code, REG_RBP, var_slot_payload_offset(slot), REG_RAX);
+    ref_store_regs(ref);
 }
 
 // IDENT = expr ;  -- `name` must already be declared via `let`.
@@ -284,11 +286,10 @@ static void assignment_statement(void) {
     codegen_expression();
     expect(TOKEN_SEMICOLON, "expected ';' after assignment");
 
-    int slot = resolve_var_or_error(id);
+    VarRef ref = resolve_ref_or_error(id);
     emit_pop_reg(code, REG_RAX); // payload
     emit_pop_reg(code, REG_RBX); // tag
-    emit_store_mem_disp32(code, REG_RBP, var_slot_tag_offset(slot), REG_RBX);
-    emit_store_mem_disp32(code, REG_RBP, var_slot_payload_offset(slot), REG_RAX);
+    ref_store_regs(ref);
 }
 
 // yield [expr] ;  -- bare `yield;` returns 0, matching ashc/ashvm.
@@ -306,14 +307,14 @@ static void yield_statement(void) {
         emit_mov_reg_imm64(code, REG_RAX, 0); // 0.0's bits are all zero
         emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
     }
+    emit_attempt_unwind_all(); // leave open attempts; only touches RCX/RDX, so the result in RAX/RBX survives
     emit_mov_reg_reg(code, REG_RSP, REG_RBP);
     emit_pop_reg(code, REG_RBP);
     emit_ret(code);
 }
 
-// raise expr ;  -- expr must be a STRING (matches attempt/handle's own
-// convention: every caught error, built-in or user-raised, is a plain
-// string). Reuses codegen/C/runtime/errors.c's raise routine directly --
+// raise expr ;  -- expr may be any value: a string (what every built-in
+// runtime error raises) or, say, a map for structured errors. Reuses codegen/C/runtime/errors.c's raise routine directly --
 // the exact same handle/unwind mechanism M9's built-in errors (array
 // bounds, missing map key) already go through, just with a runtime
 // message instead of a compile-time-constant one. (The runtime "raise
@@ -324,9 +325,12 @@ static void raise_statement(void) {
     codegen_expression();
     expect(TOKEN_SEMICOLON, "expected ';' after 'raise'");
 
-    emit_pop_reg(code, REG_RSI); // message payload (assumed STRING)
-    emit_pop_reg(code, REG_RBX); // message tag (ignored)
-    emit_load_mem_disp32(code, REG_RDX, REG_RSI, -8); // length
+    emit_pop_reg(code, REG_RSI); // raised payload
+    emit_pop_reg(code, REG_RBX); // raised tag
+    emit_cmp_reg_imm32(code, REG_RBX, TAG_STRING);
+    int not_text = emit_jcc_rel32(code, COND_NE);
+    emit_load_mem_disp32(code, REG_RDX, REG_RSI, -8); // length (strings only)
+    emit_patch_jump(code, not_text);
     errors_emit_die_dynamic(code);
 }
 
@@ -337,6 +341,7 @@ static void raise_statement(void) {
 static void stop_statement(void) {
     advance_token();
     expect(TOKEN_SEMICOLON, "expected ';' after 'stop'");
+    emit_attempt_unwind_to_loop();
     loop_record_stop(emit_jmp_rel32(code));
 }
 
@@ -347,6 +352,7 @@ static void stop_statement(void) {
 static void next_statement(void) {
     advance_token();
     expect(TOKEN_SEMICOLON, "expected ';' after 'next'");
+    emit_attempt_unwind_to_loop();
     loop_record_next(emit_jmp_rel32(code));
 }
 
@@ -394,6 +400,7 @@ void statement(void) {
 void compile_program(const char *source, const char *source_path, CodeBuf *out) {
     code = out;
     code_init(code);
+    prescan_functions(source);
     lexer_init(source);
     advance_token();
     imports_init(source_path);
@@ -429,5 +436,6 @@ void compile_program(const char *source, const char *source_path, CodeBuf *out) 
     errors_emit_startup(code);
 
     while (current.type != TOKEN_EOF) statement();
+    check_all_functions_defined();
     codegen_exit0(code);
 }

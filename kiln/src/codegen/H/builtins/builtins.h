@@ -8,4 +8,8 @@
 // caller falls through to a user-defined function lookup.
 int codegen_try_builtin_call(const char *name, int len);
 
+// Argument count a builtin is wrapped with when used as a value, or -1 if
+// `name` is not a builtin.
+int codegen_builtin_arity(const char *name, int len);
+
 #endif

@@ -44,13 +44,13 @@ VMValue vm_call_builtin_string(int id, VMValue *args, int argc) {
         }
         case 17: { // substring
             if (argc != 3 || args[0].type != VM_STR) { vm_runtime_error("substring(str, start, end) expected\n"); }
-            int slen = (int)strlen(args[0].str);
+            int slen = (int)args[0].number; // cached length
             int start = (int)args[1].number; int end = (int)args[2].number;
             if (start < 0) start = 0;
             if (end > slen) end = slen;
             if (start > end) start = end;
             char *buf = malloc(end - start + 1); memcpy(buf, args[0].str + start, end - start); buf[end - start] = '\0';
-            return vm_str(buf);
+            return vm_str_n(buf, (size_t)(end - start));
         }
         case 18: { // indexOf
             if (argc != 2 || args[0].type != VM_STR || args[1].type != VM_STR) { vm_runtime_error("indexOf(str, search) expected\n"); }
@@ -74,6 +74,28 @@ VMValue vm_call_builtin_string(int id, VMValue *args, int argc) {
             int remaining = (int)strlen(cur);
             while (blen + remaining + 1 > cap) { cap *= 2; buf = realloc(buf, cap); }
             memcpy(buf + blen, cur, remaining); blen += remaining; buf[blen] = '\0';
+            return vm_str(buf);
+        }
+        case 38: { // contains
+            if (argc != 2 || args[0].type != VM_STR || args[1].type != VM_STR) { vm_runtime_error("contains(str, search) expected\n"); }
+            return vm_bool(strstr(args[0].str, args[1].str) != NULL);
+        }
+        case 39: { // starts_with
+            if (argc != 2 || args[0].type != VM_STR || args[1].type != VM_STR) { vm_runtime_error("starts_with(str, prefix) expected\n"); }
+            return vm_bool(strncmp(args[0].str, args[1].str, strlen(args[1].str)) == 0);
+        }
+        case 40: { // ends_with
+            if (argc != 2 || args[0].type != VM_STR || args[1].type != VM_STR) { vm_runtime_error("ends_with(str, suffix) expected\n"); }
+            size_t sl = strlen(args[0].str), xl = strlen(args[1].str);
+            return vm_bool(xl <= sl && strcmp(args[0].str + (sl - xl), args[1].str) == 0);
+        }
+        case 41: { // repeat
+            if (argc != 2 || args[0].type != VM_STR || args[1].type != VM_NUM) { vm_runtime_error("repeat(str, count) expected\n"); }
+            if (args[1].number < 0) { vm_runtime_error("repeat() count must not be negative\n"); }
+            size_t n = (size_t)args[1].number, sl = strlen(args[0].str);
+            char *buf = malloc(sl * n + 1);
+            for (size_t k = 0; k < n; k++) memcpy(buf + k * sl, args[0].str, sl);
+            buf[sl * n] = '\0';
             return vm_str(buf);
         }
         case 20: { // upper

@@ -12,7 +12,7 @@
 static void push_number_literal(double v) {
     uint64_t bits;
     __builtin_memcpy(&bits, &v, sizeof(bits));
-    emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+    emit_mov_reg_imm64(code, REG_RBX, TAG_BOOL);
     emit_push_reg(code, REG_RBX);
     emit_mov_reg_imm64(code, REG_RAX, bits);
     emit_push_reg(code, REG_RAX);
@@ -141,6 +141,32 @@ void codegen_string_compare(int invert) {
     emit_patch_jump(code, skip_true);
 }
 
+void codegen_string_order(void) {
+    emit_load_mem_disp32(code, REG_RBX, REG_RAX, -8); // bytes left in a
+    emit_load_mem_disp32(code, REG_RDX, REG_RCX, -8); // bytes left in b
+
+    int loop_start = code->count;
+    emit_cmp_reg_imm32(code, REG_RBX, 0);
+    int a_done = emit_jcc_rel32(code, COND_E);
+    emit_cmp_reg_imm32(code, REG_RDX, 0);
+    int b_done = emit_jcc_rel32(code, COND_E);
+    emit_load_byte_reg(code, REG_RSI, REG_RAX);
+    emit_load_byte_reg(code, REG_RDI, REG_RCX);
+    emit_cmp_reg_reg(code, REG_RSI, REG_RDI);
+    int differ = emit_jcc_rel32(code, COND_NE); // flags from the first differing byte
+    emit_add_reg_imm8(code, REG_RAX, 1);
+    emit_add_reg_imm8(code, REG_RCX, 1);
+    emit_dec_reg(code, REG_RBX);
+    emit_dec_reg(code, REG_RDX);
+    emit_jmp_back(code, loop_start);
+
+    // One side ran out: the one with bytes left is greater (both out: equal).
+    emit_patch_jump(code, a_done);
+    emit_patch_jump(code, b_done);
+    emit_cmp_reg_reg(code, REG_RBX, REG_RDX);
+    emit_patch_jump(code, differ);
+}
+
 void codegen_string_index_read(void) {
     emit_pop_reg(code, REG_RAX); // index payload
     emit_pop_reg(code, REG_RBX); // index tag (ignored, assumed NUMBER)
@@ -158,7 +184,7 @@ void codegen_string_index_read(void) {
     int ok = emit_jmp_rel32(code);
     emit_patch_jump(code, neg);
     emit_patch_jump(code, toobig);
-    errors_emit_die(code, "runtime error: string index out of bounds");
+    errors_emit_die(code, "index out of bounds");
     emit_patch_jump(code, ok);
 
     emit_add_reg_reg(code, REG_RSI, REG_RCX); // char address

@@ -40,8 +40,22 @@ void loop_pop_and_patch_stops(void);
 // each_depth_save/reset/restore): a stop/next inside a function or
 // lambda body must never reach past that body into an ENCLOSING loop it
 // happens to be textually written inside.
-void loop_depth_save(int *out);
-void loop_depth_reset(void);
-void loop_depth_restore(int saved);
+typedef struct { int loops; int attempts; } LoopScope;
+void loop_scope_save(LoopScope *out);
+void loop_scope_reset(void);
+void loop_scope_restore(LoopScope saved);
+
+// An attempt block pushes a runtime handler that only its own normal
+// fallthrough pops, so any other way out of the block -- yield, stop, next --
+// must pop it explicitly or a later raise jumps into the stale handler.
+// attempt_enter/leave bracket the attempt block (not the handle block); the
+// emit_* calls put one handler pop per open attempt right before the exit.
+void attempt_enter(void);
+void attempt_leave(void);
+void emit_attempt_unwind_all(void);     // yield: leave every open attempt
+void emit_attempt_unwind_to_loop(void); // stop/next: leave those inside the loop
+
+// Emits the code that pops the innermost runtime handler (attempt_handle.c).
+void attempt_emit_handler_pop(void);
 
 #endif

@@ -39,7 +39,8 @@ void codegen_call(Token id) {
         snprintf(msg, sizeof(msg), "function %.*s expected %d args, got %d", id.length, id.start, fn->arity, argc);
         parse_error(msg);
     }
-    emit_call_back(code, fn->code_offset);
+    if (fn->defined) emit_call_back(code, fn->code_offset);
+    else function_add_call_fixup(fn, emit_call_rel32(code));
     if (argc > 0) emit_add_reg_imm32(code, REG_RSP, 16 * argc); // caller cleans up pushed args (each now 16 bytes)
     emit_push_reg(code, REG_RBX); // return convention: RBX=tag, RAX=payload
     emit_push_reg(code, REG_RAX);
@@ -67,7 +68,8 @@ void codegen_call_named(const char *name, int len) {
         snprintf(msg, sizeof(msg), "function %.*s expected %d args, got %d", len, name, fn->arity, argc);
         parse_error(msg);
     }
-    emit_call_back(code, fn->code_offset);
+    if (fn->defined) emit_call_back(code, fn->code_offset);
+    else function_add_call_fixup(fn, emit_call_rel32(code));
     if (argc > 0) emit_add_reg_imm32(code, REG_RSP, 16 * argc);
     emit_push_reg(code, REG_RBX);
     emit_push_reg(code, REG_RAX);

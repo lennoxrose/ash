@@ -2,12 +2,13 @@
 #define ASH_VM_COMPILER_H
 #include "vm/H/chunk.h"
 
-#define MAX_VM_FUNCS 64
+#define MAX_VM_FUNCS 1024
 #define MAX_VM_LOCALS 128
 
 typedef struct {
     char name[64];
     int arity;
+    int defined; // 0 while only forward-declared by the prescan (see compiler/C/prescan.c)
     Chunk chunk;
 } VMFunction;
 

@@ -2,6 +2,9 @@
 #include <string.h>
 #include "value/H/hashmap.h"
 
+#define INDEX_EMPTY (-1)
+#define INDEX_DELETED (-2)
+
 static unsigned long hash_string(const char *s) {
     unsigned long h = 5381;
     int c;
@@ -9,70 +12,99 @@ static unsigned long hash_string(const char *s) {
     return h;
 }
 
+static int *new_index(int capacity) {
+    int *index = malloc(sizeof(int) * (size_t)capacity);
+    for (int i = 0; i < capacity; i++) index[i] = INDEX_EMPTY;
+    return index;
+}
+
 VMMap *vm_map_new(void) {
     VMMap *m = malloc(sizeof(VMMap));
     m->capacity = 8;
+    m->size = 0;
     m->count = 0;
-    m->entries = calloc(m->capacity, sizeof(VMMapEntry));
+    m->entries = calloc((size_t)m->capacity, sizeof(VMMapEntry));
+    m->index_capacity = 16;
+    m->index = new_index(m->index_capacity);
     return m;
 }
 
-static void vm_map_resize(VMMap *m) {
-    int old_capacity = m->capacity;
-    VMMapEntry *old_entries = m->entries;
-    m->capacity *= 2;
-    m->entries = calloc(m->capacity, sizeof(VMMapEntry));
-    m->count = 0;
-    for (int i = 0; i < old_capacity; i++) {
-        if (old_entries[i].used) vm_map_set(m, old_entries[i].key, old_entries[i].value);
+// Position in `entries` of `key`, or -1.
+static int find_entry(VMMap *m, const char *key) {
+    unsigned long h = hash_string(key) % (unsigned long)m->index_capacity;
+    for (int probes = 0; probes < m->index_capacity; probes++) {
+        int pos = m->index[h];
+        if (pos == INDEX_EMPTY) return -1;
+        if (pos >= 0 && strcmp(m->entries[pos].key, key) == 0) return pos;
+        h = (h + 1) % (unsigned long)m->index_capacity;
     }
-    free(old_entries);
+    return -1;
+}
+
+static void index_insert(VMMap *m, int pos) {
+    unsigned long h = hash_string(m->entries[pos].key) % (unsigned long)m->index_capacity;
+    while (m->index[h] >= 0) h = (h + 1) % (unsigned long)m->index_capacity;
+    m->index[h] = pos;
+}
+
+// Called when `entries` is full: drop dead slots (keeping order), grow if the
+// live entries still fill more than half, and rebuild the index.
+static void compact_and_grow(VMMap *m) {
+    int live = 0;
+    for (int i = 0; i < m->size; i++) {
+        if (m->entries[i].used) m->entries[live++] = m->entries[i];
+    }
+    m->size = live;
+    if (live * 2 >= m->capacity) {
+        m->capacity *= 2;
+        m->entries = realloc(m->entries, sizeof(VMMapEntry) * (size_t)m->capacity);
+    }
+    for (int i = m->size; i < m->capacity; i++) m->entries[i].used = 0;
+    free(m->index);
+    m->index_capacity = m->capacity * 2;
+    m->index = new_index(m->index_capacity);
+    for (int i = 0; i < m->size; i++) index_insert(m, i);
 }
 
 void vm_map_set(VMMap *m, char *key, VMValue value) {
-    if ((double)(m->count + 1) / m->capacity > 0.7) vm_map_resize(m);
-    unsigned long h = hash_string(key) % (unsigned long)m->capacity;
-    while (m->entries[h].used) {
-        if (strcmp(m->entries[h].key, key) == 0) {
-            m->entries[h].value = value;
-            free(key);
-            return;
-        }
-        h = (h + 1) % (unsigned long)m->capacity;
+    int pos = find_entry(m, key);
+    if (pos >= 0) {
+        m->entries[pos].value = value;
+        free(key);
+        return;
     }
-    m->entries[h].key = key;
-    m->entries[h].value = value;
-    m->entries[h].used = 1;
+    if (m->size >= m->capacity) compact_and_grow(m);
+    pos = m->size++;
+    m->entries[pos].key = key;
+    m->entries[pos].value = value;
+    m->entries[pos].used = 1;
     m->count++;
+    index_insert(m, pos);
 }
 
 int vm_map_get(VMMap *m, const char *key, VMValue *out) {
-    unsigned long h = hash_string(key) % (unsigned long)m->capacity;
-    unsigned long start = h;
-    while (m->entries[h].used) {
-        if (strcmp(m->entries[h].key, key) == 0) { *out = m->entries[h].value; return 1; }
-        h = (h + 1) % (unsigned long)m->capacity;
-        if (h == start) break;
-    }
-    return 0;
+    int pos = find_entry(m, key);
+    if (pos < 0) return 0;
+    *out = m->entries[pos].value;
+    return 1;
 }
 
 int vm_map_has(VMMap *m, const char *key) {
-    VMValue tmp;
-    return vm_map_get(m, key, &tmp);
+    return find_entry(m, key) >= 0;
 }
 
 void vm_map_delete(VMMap *m, const char *key) {
-    unsigned long h = hash_string(key) % (unsigned long)m->capacity;
-    unsigned long start = h;
-    while (m->entries[h].used) {
-        if (strcmp(m->entries[h].key, key) == 0) {
-            free(m->entries[h].key);
-            m->entries[h].used = 0;
+    unsigned long h = hash_string(key) % (unsigned long)m->index_capacity;
+    for (int probes = 0; probes < m->index_capacity; probes++) {
+        int pos = m->index[h];
+        if (pos == INDEX_EMPTY) return;
+        if (pos >= 0 && strcmp(m->entries[pos].key, key) == 0) {
+            free(m->entries[pos].key);
+            m->entries[pos].used = 0;
+            m->index[h] = INDEX_DELETED;
             m->count--;
             return;
         }
-        h = (h + 1) % (unsigned long)m->capacity;
-        if (h == start) break;
+        h = (h + 1) % (unsigned long)m->index_capacity;
     }
 }

@@ -16,4 +16,8 @@ void codegen_builtin_filter(void);
 // reduce(array, fn, initial): pushes fn(...fn(fn(initial, e0), e1)..., eN).
 void codegen_builtin_reduce(void);
 
+// sort(array) / sort(array, cmp): in-place stable sort, pushes the array.
+// cmp(a, b) returns a number; > 0 means a goes after b.
+void codegen_builtin_sort(void);
+
 #endif
