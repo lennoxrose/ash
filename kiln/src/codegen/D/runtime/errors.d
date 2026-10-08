@@ -7,7 +7,9 @@ src/codegen/O/runtime/errors.o: src/codegen/C/runtime/errors.c \
  src/codegen/H/emit/runtime_import_enum.h \
  src/codegen/H/emit/runtime_exports.def src/pe/H/pe_imports.def \
  src/elf/H/elf_dynamic_call.h src/elf/H/elf_dynamic.h \
- src/elf/H/elf_writer.h src/app/H/target.h
+ src/codegen/H/emit/ash_gpu_import_enum.h \
+ src/codegen/H/emit/ash_gpu_exports.def src/elf/H/elf_writer.h \
+ src/app/H/target.h
 src/codegen/H/runtime/errors.h:
 src/codegen/H/emit/emit.h:
 src/codegen/H/emit/emit_internal.h:
@@ -22,5 +24,7 @@ src/codegen/H/emit/runtime_exports.def:
 src/pe/H/pe_imports.def:
 src/elf/H/elf_dynamic_call.h:
 src/elf/H/elf_dynamic.h:
+src/codegen/H/emit/ash_gpu_import_enum.h:
+src/codegen/H/emit/ash_gpu_exports.def:
 src/elf/H/elf_writer.h:
 src/app/H/target.h:

@@ -3,3 +3,7 @@
 void elf_dynamic_call(CodeBuf *code, RuntimeImport which) {
     emit_call_abs32(code, (uint32_t)elf_dynamic_got_addr(which));
 }
+
+void ash_gpu_dynamic_call(CodeBuf *code, AshGpuImport which) {
+    emit_call_abs32(code, (uint32_t)ash_gpu_dynamic_got_addr(which));
+}

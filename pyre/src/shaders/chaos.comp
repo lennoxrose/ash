@@ -1,0 +1,35 @@
+#version 450
+// See src/H/runtime/ash_gpu.h's comment on ash_gpu_chaos_iterate for why
+// this kernel exists and what shape it's deliberately given: huge
+// compute per element, trivial data movement, no cross-element
+// dependency at all -- the opposite of matrix_multiply.comp.
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 256) in;
+
+layout(std430, set = 0, binding = 0) buffer DataBuf { double data[]; };
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+    uint iterations;
+} pc;
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= pc.n) return;
+
+    // sqrt/abs are the GL_ARB_gpu_shader_fp64 double overloads that
+    // actually exist -- sin/cos do NOT get a double overload from that
+    // extension (GLSL keeps transcendental functions float-only even
+    // with it enabled; found by trying it: glslc rejected sin(double)
+    // outright). Bounded (abs(x)+1 >= 1, so sqrt of it stays small) and
+    // numerically stable regardless of how many iterations run; the
+    // exact converged value doesn't matter, only that every iteration
+    // does real, data-dependent floating-point work no compiler can
+    // skip or hoist out of the loop.
+    double x = data[i];
+    for (uint k = 0u; k < pc.iterations; k++) {
+        x = sqrt(abs(x) + 1.0lf) * 0.99999lf + 0.00001lf;
+    }
+    data[i] = x;
+}

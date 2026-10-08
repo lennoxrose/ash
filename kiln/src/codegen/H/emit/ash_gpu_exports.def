@@ -1,0 +1,8 @@
+// x-macro list of libashgpu.so's exported symbols kiln's --link=shared
+// codegen calls (elf/C/elf_dynamic.c's executable-side GOT/hash/dynsym,
+// alongside kiln's own runtime_exports.def entries -- see that file's
+// header comment and ideas/assigned.md for why this is a SECOND needed
+// library, not more entries in libkilnrt.so's own export list: this
+// list's names come from Pyre (pyre/src/H/runtime/ash_gpu.h), a
+// different binary kiln doesn't build.
+ASH_GPU_EXPORT(MATRIX_MULTIPLY, "ash_gpu_matrix_multiply")

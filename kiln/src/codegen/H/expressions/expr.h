@@ -37,4 +37,13 @@ void codegen_apply_plus(void);
 // Errors on strings, arrays, maps and functions.
 void codegen_pop_and_test_truthy(void);
 
+// `x[index]` reads -- arrays, maps and strings all use this syntax, and
+// which one `x` actually is can only be known at runtime. Both the base
+// and the index must already be pushed (base deeper); pops both and
+// pushes base[index]. Exposed (not static to expr.c) so parser/C/core/parser.c's
+// index_assignment_statement can read through every index but the last
+// one in a chain (`C[i][j] = val`), matching this function's own
+// postfix() while-loop shape for the read side.
+void codegen_index_read(void);
+
 #endif

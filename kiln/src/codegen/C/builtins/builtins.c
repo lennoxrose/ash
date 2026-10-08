@@ -3,6 +3,7 @@
 #include "codegen/H/expressions/expr.h"
 #include "codegen/H/collections/arrays.h"
 #include "codegen/H/collections/maps.h"
+#include "codegen/H/collections/matrix_mul.h"
 #include "codegen/H/builtins/math_builtins.h"
 #include "codegen/H/builtins/convert_builtins.h"
 #include "codegen/H/builtins/higher_order.h"
@@ -169,6 +170,14 @@ int codegen_try_builtin_call(const char *name, int len) {
         codegen_expression();
         expect(TOKEN_RPAREN, "expected ')' after arguments");
         codegen_builtin_push();
+        return 1;
+    }
+    if (len == 10 && strncmp(name, "matrix_mul", 10) == 0) {
+        codegen_expression();
+        expect(TOKEN_COMMA, "expected ',' after array argument");
+        codegen_expression();
+        expect(TOKEN_RPAREN, "expected ')' after arguments");
+        codegen_builtin_matrix_mul();
         return 1;
     }
     if (len == 3 && strncmp(name, "len", 3) == 0) {

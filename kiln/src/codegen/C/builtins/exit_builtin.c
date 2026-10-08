@@ -20,7 +20,9 @@ void codegen_builtin_exit(void) {
         win_call_arg_reg(code, 0, REG_RDI);
         win_call_import(code, PE_IMPORT_EXIT_PROCESS);
     } else {
-        emit_mov_reg_imm64(code, REG_RAX, 60); // syscall: exit
+        // exit_group (231), not exit (60) -- see runtime/print_int.c's
+        // codegen_exit0 for why (the same reasoning applies here).
+        emit_mov_reg_imm64(code, REG_RAX, 231);
         emit_syscall(code);
     }
     // never returns; keep the stack-machine model balanced for the caller

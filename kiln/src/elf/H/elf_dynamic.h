@@ -2,6 +2,7 @@
 #define KILN_ELF_DYNAMIC_H
 #include "codegen/H/emit/emit.h"
 #include "codegen/H/emit/runtime_import_enum.h"
+#include "codegen/H/emit/ash_gpu_import_enum.h"
 #include "elf/H/elf_writer.h"
 
 // Layout for a --link=shared kiln executable: real dynamic linking, the
@@ -20,10 +21,24 @@
 // same validated structure, not a first attempt.
 #define KILN_RPATH "/usr/local/lib/kiln"
 #define KILN_LIBKILNRT_SONAME "libkilnrt.so"
+// ideas/assigned.md: a SECOND needed library, Pyre's compute runtime --
+// kept as a parallel DT_NEEDED next to libkilnrt.so's, never merged into
+// it (libkilnrt.so is kiln's own hand-rolled routines; libashgpu.so is a
+// normal gcc/g++-built shared object this project doesn't build). ld.so
+// resolves each imported symbol name against ALL needed libraries, so
+// the two don't need separate hash/dynsym/GOT regions -- one combined
+// table (KILN_DYN_TOTAL_IMPORTS below) covering both libraries' symbols
+// is correct and the much smaller change.
+#define KILN_ASHGPU_SONAME "libashgpu.so"
 #define KILN_INTERP_STR "/lib64/ld-linux-x86-64.so.2"
 
+// Every symbol this executable needs resolved, from EITHER needed
+// library -- kiln's own (RUNTIME_IMPORT_COUNT_, from libkilnrt.so) then
+// Pyre's (ASH_GPU_IMPORT_COUNT_, from libashgpu.so), in that order.
+#define KILN_DYN_TOTAL_IMPORTS ((unsigned)RUNTIME_IMPORT_COUNT_ + (unsigned)ASH_GPU_IMPORT_COUNT_)
+
 // nsyms includes the mandatory null 0th symbol.
-#define KILN_DYN_NSYMS ((unsigned)RUNTIME_IMPORT_COUNT_ + 1u)
+#define KILN_DYN_NSYMS (KILN_DYN_TOTAL_IMPORTS + 1u)
 #define KILN_DYN_NBUCKET KILN_DYN_NSYMS
 
 // Section order: everything whose address codegen (or another fixed-size
@@ -49,26 +64,32 @@
 // symbol NAME lengths, exactly like pe_writer.h's IAT -- codegen can
 // address a slot as a compile-time constant.
 #define KILN_DYN_GOT_ADDR (KILN_DYN_SYMTAB_ADDR + KILN_DYN_SYMTAB_SIZE)
-#define KILN_DYN_GOT_SIZE (8u * (unsigned)RUNTIME_IMPORT_COUNT_)
+#define KILN_DYN_GOT_SIZE (8u * KILN_DYN_TOTAL_IMPORTS)
 
 #define KILN_DYN_ENTRY_SIZE 16u // Elf64_Dyn: {Elf64_Sxword d_tag; union d_val/d_ptr;}
-#define KILN_DYN_TABLE_NENT_TOTAL 10u // NEEDED,RPATH,HASH,STRTAB,SYMTAB,STRSZ,SYMENT,RELA,RELASZ,RELAENT,NULL(11, see .c)
+// NEEDED(libkilnrt.so),NEEDED(libashgpu.so),RPATH,HASH,STRTAB,SYMTAB,STRSZ,SYMENT,RELA,RELASZ,RELAENT,NULL(12, see .c)
+#define KILN_DYN_TABLE_NENT_TOTAL 11u
 #define KILN_DYN_TABLE_ADDR (KILN_DYN_GOT_ADDR + KILN_DYN_GOT_SIZE)
 #define KILN_DYN_TABLE_SIZE ((KILN_DYN_TABLE_NENT_TOTAL + 1u) * KILN_DYN_ENTRY_SIZE) // +1 for the DT_NULL terminator
 
 #define KILN_DYN_RELAENT_SIZE 24u // Elf64_Rela: {Elf64_Addr; Elf64_Xword info; Elf64_Sxword addend}
 #define KILN_DYN_RELA_ADDR (KILN_DYN_TABLE_ADDR + KILN_DYN_TABLE_SIZE)
-#define KILN_DYN_RELA_SIZE (KILN_DYN_RELAENT_SIZE * (unsigned)RUNTIME_IMPORT_COUNT_)
+#define KILN_DYN_RELA_SIZE (KILN_DYN_RELAENT_SIZE * KILN_DYN_TOTAL_IMPORTS)
 
 #define KILN_DYN_GLOBALS_ADDR (KILN_DYN_RELA_ADDR + KILN_DYN_RELA_SIZE)
-#define KILN_DYN_GLOBALS_SIZE (8 + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_ARGV_SIZE + KILN_MODSTATE_SIZE)
-#define KILN_DYN_MODSTATE_ADDR (KILN_DYN_GLOBALS_ADDR + 8 + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_ARGV_SIZE)
+#define KILN_DYN_GLOBALS_SIZE (8 + KILN_HEAP_LIMIT_SIZE + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_ARGV_SIZE + KILN_MODSTATE_SIZE)
+#define KILN_DYN_MODSTATE_ADDR (KILN_DYN_GLOBALS_ADDR + 8 + KILN_HEAP_LIMIT_SIZE + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_ARGV_SIZE)
 #define KILN_DYN_CODE_START_OFFSET (KILN_DYN_GLOBALS_ADDR + KILN_DYN_GLOBALS_SIZE - KILN_LOAD_BASE)
 
 // Absolute VA of `which`'s GOT slot -- loaded via a compile-time-known
 // immediate (kiln's executables are always fixed-base, same reasoning as
 // pe_import_addr) -- deref it and call through the result.
 uint64_t elf_dynamic_got_addr(RuntimeImport which);
+
+// Same idea, for the second needed library's imports -- their GOT slots
+// sit right after kiln's own RUNTIME_IMPORT_COUNT_ slots in the same
+// combined GOT region (KILN_DYN_TOTAL_IMPORTS above).
+uint64_t ash_gpu_dynamic_got_addr(AshGpuImport which);
 
 // Writes `machine_code` as a dynamically-linked ELF64 executable at
 // `path`, expecting libkilnrt.so to be installed at KILN_RPATH by the

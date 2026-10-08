@@ -114,7 +114,7 @@ optimizing native compiler.
 ### Performance notes
 
 - `len(s)`, `substring(s, i, j)` and `s[i]` are O(1) / O(length of the piece) on both engines (strings carry their length).
-- `s += x` copies `s`, so building a long string one piece at a time is quadratic in time and, since nothing is freed, in memory (and `kiln` has a fixed 16 MB heap). Collect the pieces in an array and `join(parts, "")` once - that is linear.
+- `s += x` copies `s`, so building a long string one piece at a time is quadratic in time and, since nothing is freed, in memory. Collect the pieces in an array and `join(parts, "")` once - that is linear. `kiln`'s heap grows as needed (64MB at a time, `brk` on Linux / `VirtualAlloc` on Windows) rather than crashing at a fixed size, but nothing is freed until the process exits either way.
 - `push` grows arrays geometrically (amortized O(1)); `sort` is a stable merge sort on `ashvm` and a stable insertion sort on `kiln`.
 - `kiln`'s Windows output is checked without a Windows machine: `kiln/tests/scripts/windows_emulated_check.sh` runs every test case as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. All of them, including the Windows file operations (`list_dir` via `FindFirstFileA`/`FindNextFileA`), match. `kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`), also with all cases matching. Neither is Windows itself.
 

@@ -39,7 +39,6 @@
 // milestone, not silently pretended-away here).
 
 static void power(void);
-static void emit_index_read(void);
 
 // A builtin name used as a value (`map(xs, str)`, `local f = len;`) becomes a
 // small wrapper lambda `forge (a0, ...) { yield name(a0, ...); }`, compiled by
@@ -137,7 +136,7 @@ static void primary(void) {
                 advance_token();
                 expect(TOKEN_IDENTIFIER, "expected field name after '.'");
                 codegen_string_literal_bytes(previous.start, previous.length);
-                emit_index_read();
+                codegen_index_read();
             }
             return;
         }
@@ -237,7 +236,7 @@ static void primary(void) {
 // Both the base and the index are already pushed (base deeper). Pops both and
 // pushes base[index] for an array, map or string. A string indexed by a string
 // is an error value's `.message`: it yields the string itself.
-static void emit_index_read(void) {
+void codegen_index_read(void) {
         emit_pop_reg(code, REG_RAX); // index payload
         emit_pop_reg(code, REG_RBX); // index tag
         emit_pop_reg(code, REG_RCX); // base payload
@@ -273,7 +272,7 @@ static void postfix(void) {
         advance_token();
         codegen_expression();
         expect(TOKEN_RBRACKET, "expected ']' after index");
-        emit_index_read();
+        codegen_index_read();
     }
 }
 

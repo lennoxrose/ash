@@ -126,7 +126,7 @@ static void emit_raise_routine(CodeBuf *code) {
         win_call_import(code, PE_IMPORT_EXIT_PROCESS);
     } else {
         emit_mov_reg_imm64(code, REG_RDI, 1); // exit status 1
-        emit_mov_reg_imm64(code, REG_RAX, 60); // syscall: exit
+        emit_mov_reg_imm64(code, REG_RAX, 231); // syscall: exit_group, not exit -- see runtime/print_int.c's codegen_exit0
         emit_syscall(code);
     }
 
@@ -192,7 +192,7 @@ void errors_emit_fatal(CodeBuf *code, const char *msg) {
         win_call_import(code, PE_IMPORT_EXIT_PROCESS);
     } else {
         emit_mov_reg_imm64(code, REG_RDI, 1);
-        emit_mov_reg_imm64(code, REG_RAX, 60);
+        emit_mov_reg_imm64(code, REG_RAX, 231); // syscall: exit_group, not exit -- see runtime/print_int.c's codegen_exit0
         emit_syscall(code);
     }
 }

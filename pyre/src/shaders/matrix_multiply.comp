@@ -1,0 +1,38 @@
+#version 450
+// GL_ARB_gpu_shader_fp64: ash_gpu's C ABI is `double` throughout
+// (pyre/src/H/runtime/ash_gpu.h), so this kernel has to match the CPU
+// backend's precision exactly rather than silently computing in float32.
+// Caveat, since there's no hardware here to measure it on: consumer
+// GPUs (including the RX 9070 XT this is meant to run on) typically run
+// fp64 at a small fraction of their fp32 throughput, so this kernel may
+// not actually beat the CPU backend -- that's a real open question for
+// whoever benchmarks it on real hardware, not assumed away here.
+#extension GL_ARB_gpu_shader_fp64 : require
+
+// One thread per output element, no shared-memory tiling. Deliberately
+// the simplest correct version, not a tuned one: nothing in this
+// sandbox can run a compute shader (no GPU, no ICD -- see
+// pyre/src/C/backends/vulkan/context.cpp), so a tiling bug introduced
+// here would be undetectable until someone runs it on real hardware.
+// Tile it once there's a real device to benchmark and debug against.
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer ABuf { double a[]; };
+layout(std430, set = 0, binding = 1) readonly buffer BBuf { double b[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer CBuf { double c[]; };
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+} pc;
+
+void main() {
+    uint row = gl_GlobalInvocationID.y;
+    uint col = gl_GlobalInvocationID.x;
+    if (row >= pc.n || col >= pc.n) return;
+
+    double sum = 0.0;
+    for (uint k = 0u; k < pc.n; k++) {
+        sum += a[row * pc.n + k] * b[k * pc.n + col];
+    }
+    c[row * pc.n + col] = sum;
+}

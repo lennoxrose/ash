@@ -29,13 +29,14 @@
 
 #define KILN_PE_GLOBALS_ADDR (KILN_PE_IMAGE_BASE + KILN_PE_SECTION_RVA)
 #define KILN_PE_HEAP_PTR_ADDR (KILN_PE_GLOBALS_ADDR + 0)
-#define KILN_PE_TRY_DEPTH_ADDR (KILN_PE_GLOBALS_ADDR + 8)
+#define KILN_PE_HEAP_LIMIT_ADDR (KILN_PE_GLOBALS_ADDR + 8)
+#define KILN_PE_TRY_DEPTH_ADDR (KILN_PE_HEAP_LIMIT_ADDR + KILN_HEAP_LIMIT_SIZE)
 #define KILN_PE_TRY_HANDLERS_ADDR (KILN_PE_TRY_DEPTH_ADDR + KILN_TRY_DEPTH_SIZE)
 // No argv slot: GetCommandLineA() can be called at any point, unlike
 // Linux's argv() which has to snapshot the kernel's original RSP before
 // anything else touches it (see codegen/C/io/argv_builtin.c).
 #define KILN_PE_MODSTATE_ADDR (KILN_PE_TRY_HANDLERS_ADDR + KILN_TRY_HANDLERS_SIZE)
-#define KILN_PE_GLOBALS_SIZE (8 + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_MODSTATE_SIZE)
+#define KILN_PE_GLOBALS_SIZE (8 + KILN_HEAP_LIMIT_SIZE + KILN_TRY_DEPTH_SIZE + KILN_TRY_HANDLERS_SIZE + KILN_MODSTATE_SIZE)
 
 // Every kernel32.dll function kiln's Windows codegen calls -- single list
 // in pe_imports.def, shared by this enum and pe_writer.c's actual table

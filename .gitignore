@@ -12,6 +12,14 @@ ashvm/benchmarks/loop_cpp
 ashvm/benchmarks/countdown_cpp
 ashvm/benchmarks/hashmap_cpp
 ashvm/benchmarks/native_jit
+pyre/benchmarks/*/run_benchmark
+pyre/tests/matrix_multiply_test
+pyre/tests/monte_carlo_test
+pyre/lib/
+# Generated from src/shaders/*.comp by glslc -mfmt=c (pyre/Makefile) --
+# the .comp source is tracked, the embedded-SPIR-V .h is not, same as
+# any other object code.
+pyre/src/H/backends/vulkan/*_spv.h
 
 # OS / editor cruft
 .DS_Store

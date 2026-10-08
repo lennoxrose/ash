@@ -22,8 +22,28 @@ static const char *const runtime_names[] = {
 #undef RUNTIME_EXPORT
 };
 
+static const char *const ash_gpu_names[] = {
+#define ASH_GPU_EXPORT(name, str) str,
+#include "codegen/H/emit/ash_gpu_exports.def"
+#undef ASH_GPU_EXPORT
+};
+
+// Every imported symbol's name, kiln's own RUNTIME_IMPORT_COUNT_ first
+// (indices [0, RUNTIME_IMPORT_COUNT_)) then Pyre's ASH_GPU_IMPORT_COUNT_
+// (indices [RUNTIME_IMPORT_COUNT_, KILN_DYN_TOTAL_IMPORTS)) -- one
+// combined hash/dynsym/GOT/rela table covering both needed libraries,
+// since ld.so resolves a symbol name against ALL of them regardless of
+// which table region declared it (see elf_dynamic.h's header comment).
+static const char *import_name(unsigned i) {
+    return i < (unsigned)RUNTIME_IMPORT_COUNT_ ? runtime_names[i] : ash_gpu_names[i - (unsigned)RUNTIME_IMPORT_COUNT_];
+}
+
 uint64_t elf_dynamic_got_addr(RuntimeImport which) {
     return KILN_DYN_GOT_ADDR + 8ULL * (uint64_t)which;
+}
+
+uint64_t ash_gpu_dynamic_got_addr(AshGpuImport which) {
+    return KILN_DYN_GOT_ADDR + 8ULL * ((uint64_t)RUNTIME_IMPORT_COUNT_ + (uint64_t)which);
 }
 
 static void put8(CodeBuf *f, uint8_t v) {
@@ -56,10 +76,11 @@ static uint32_t elf_hash(const char *name) {
 int elf_write_dynamic_executable(const char *path, const CodeBuf *machine_code) {
     // ---- pre-compute .dynstr layout (written after the code, but its
     // internal offsets are needed now for dynsym/dynamic/rela) ----
-    uint32_t dynstr_off[RUNTIME_IMPORT_COUNT_];
+    uint32_t dynstr_off[KILN_DYN_TOTAL_IMPORTS];
     uint32_t cursor = 1; // leading empty string at offset 0
-    for (int i = 0; i < RUNTIME_IMPORT_COUNT_; i++) { dynstr_off[i] = cursor; cursor += (uint32_t)strlen(runtime_names[i]) + 1; }
+    for (unsigned i = 0; i < KILN_DYN_TOTAL_IMPORTS; i++) { dynstr_off[i] = cursor; cursor += (uint32_t)strlen(import_name(i)) + 1; }
     uint32_t soname_off = cursor; cursor += (uint32_t)strlen(KILN_LIBKILNRT_SONAME) + 1;
+    uint32_t ashgpu_soname_off = cursor; cursor += (uint32_t)strlen(KILN_ASHGPU_SONAME) + 1;
     uint32_t rpath_off = cursor; cursor += (uint32_t)strlen(KILN_RPATH) + 1;
     uint32_t dynstr_size = cursor;
 
@@ -111,9 +132,9 @@ int elf_write_dynamic_executable(const char *path, const CodeBuf *machine_code) 
     // ---- .hash (SysV DT_HASH format: nbucket, nchain, bucket[], chain[]) ----
     uint32_t buckets[KILN_DYN_NBUCKET]; for (unsigned i = 0; i < KILN_DYN_NBUCKET; i++) buckets[i] = 0;
     uint32_t chains[KILN_DYN_NSYMS]; for (unsigned i = 0; i < KILN_DYN_NSYMS; i++) chains[i] = 0;
-    for (int i = 0; i < RUNTIME_IMPORT_COUNT_; i++) {
-        uint32_t sym_index = (uint32_t)i + 1;
-        uint32_t b = elf_hash(runtime_names[i]) % KILN_DYN_NBUCKET;
+    for (unsigned i = 0; i < KILN_DYN_TOTAL_IMPORTS; i++) {
+        uint32_t sym_index = i + 1;
+        uint32_t b = elf_hash(import_name(i)) % KILN_DYN_NBUCKET;
         chains[sym_index] = buckets[b];
         buckets[b] = sym_index;
     }
@@ -126,7 +147,7 @@ int elf_write_dynamic_executable(const char *path, const CodeBuf *machine_code) 
     // ld.so to go resolve it against a NEEDED library rather than treat
     // it as locally defined) ----
     put32(&f, 0); put8(&f, 0); put8(&f, 0); put16(&f, 0); put64(&f, 0); put64(&f, 0); // null symbol
-    for (int i = 0; i < RUNTIME_IMPORT_COUNT_; i++) {
+    for (unsigned i = 0; i < KILN_DYN_TOTAL_IMPORTS; i++) {
         put32(&f, dynstr_off[i]);          // st_name
         put8(&f, (1 << 4) | 2);            // st_info: STB_GLOBAL | STT_FUNC
         put8(&f, 0);                        // st_other
@@ -140,8 +161,9 @@ int elf_write_dynamic_executable(const char *path, const CodeBuf *machine_code) 
 
     // ---- .dynamic ----
     #define DT(tag, val) do { put64(&f, (uint64_t)(tag)); put64(&f, (uint64_t)(val)); } while (0)
-    DT(1, soname_off);                 // DT_NEEDED (index into .dynstr)
-    DT(15, rpath_off);                 // DT_RPATH
+    DT(1, soname_off);                 // DT_NEEDED (index into .dynstr) -- libkilnrt.so
+    DT(1, ashgpu_soname_off);          // DT_NEEDED -- libashgpu.so (ideas/assigned.md)
+    DT(15, rpath_off);                 // DT_RPATH -- shared by both NEEDED entries (libashgpu.so installs to the same rpath)
     DT(4, KILN_DYN_HASH_ADDR);         // DT_HASH
     DT(5, dynstr_addr);                // DT_STRTAB (after the code -- depends on its length)
     DT(6, KILN_DYN_SYMTAB_ADDR);       // DT_SYMTAB
@@ -154,7 +176,7 @@ int elf_write_dynamic_executable(const char *path, const CodeBuf *machine_code) 
     #undef DT
 
     // ---- .rela.dyn: one R_X86_64_GLOB_DAT per GOT slot ----
-    for (int i = 0; i < RUNTIME_IMPORT_COUNT_; i++) {
+    for (unsigned i = 0; i < KILN_DYN_TOTAL_IMPORTS; i++) {
         uint64_t sym_index = (uint64_t)i + 1;
         uint64_t r_info = (sym_index << 32) | 6ULL; // R_X86_64_GLOB_DAT = 6
         put64(&f, KILN_DYN_GOT_ADDR + 8ULL * (uint64_t)i); // r_offset
@@ -168,8 +190,9 @@ int elf_write_dynamic_executable(const char *path, const CodeBuf *machine_code) 
 
     // ---- .dynstr tail ----
     put8(&f, 0); // offset 0 = empty string
-    for (int i = 0; i < RUNTIME_IMPORT_COUNT_; i++) put_str(&f, runtime_names[i]);
+    for (unsigned i = 0; i < KILN_DYN_TOTAL_IMPORTS; i++) put_str(&f, import_name(i));
     put_str(&f, KILN_LIBKILNRT_SONAME);
+    put_str(&f, KILN_ASHGPU_SONAME);
     put_str(&f, KILN_RPATH);
 
     FILE *out = fopen(path, "wb");

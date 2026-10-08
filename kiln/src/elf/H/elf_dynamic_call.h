@@ -14,4 +14,12 @@
 // falls through -- harmless, and not worth a second code path here.
 void elf_dynamic_call(CodeBuf *code, RuntimeImport which);
 
+// Same mechanism, for the second needed library (libashgpu.so, see
+// elf_dynamic.h's header comment) -- `which`'s own SysV C calling
+// convention applies past the call (args in RDI/RSI/RDX/RCX/R8/R9),
+// unlike kiln's own runtime routines above which each define their own
+// ad hoc register convention; callers must marshal args accordingly
+// before this, see codegen/C/collections/matrix_mul.c.
+void ash_gpu_dynamic_call(CodeBuf *code, AshGpuImport which);
+
 #endif

@@ -135,15 +135,28 @@ static void ref_store_regs(VarRef r) {
     emit_store_mem_disp32(code, REG_RBP, var_slot_payload_offset(r.index), REG_RAX);
 }
 
-// IDENT[index] = expr ;  -- writes through an existing array OR map
-// variable (which one is only known at runtime -- see expr.c's postfix()
-// for the read-side version of this same dispatch).
+// IDENT[index] = expr ; / IDENT[i1][i2]...[iN] = expr ;  -- writes
+// through an existing array OR map variable (which one is only known at
+// runtime -- see expr.c's postfix() for the read-side version of this
+// same dispatch). Every index but the last is a READ (codegen_index_read,
+// the same primitive postfix() chains on the read side): C[i][j] = val
+// first reads C[i] to get the inner array, then stores val into THAT
+// array at [j] -- it never needs to write the outer container back,
+// since the inner array it just read out is the very same heap object
+// C[i] already points at (arrays/maps are reference values here, not
+// copied on read).
 static void index_assignment_statement(Token id) {
     ref_push(resolve_ref_or_error(id));
 
     advance_token(); // consume '['
     codegen_expression();
     expect(TOKEN_RBRACKET, "expected ']' after index");
+    while (current.type == TOKEN_LBRACKET) {
+        codegen_index_read(); // stack: [base] -> [base[index]]
+        advance_token(); // consume '['
+        codegen_expression();
+        expect(TOKEN_RBRACKET, "expected ']' after index");
+    }
     expect(TOKEN_EQUAL, "expected '=' after index");
     codegen_expression();
     expect(TOKEN_SEMICOLON, "expected ';' after assignment");

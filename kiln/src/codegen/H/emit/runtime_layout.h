@@ -1,6 +1,12 @@
 #ifndef KILN_RUNTIME_LAYOUT_H
 #define KILN_RUNTIME_LAYOUT_H
 
+// Second globals slot, right after heap_ptr: the current end of committed
+// heap memory (the Linux brk value / the Windows committed boundary). See
+// codegen/C/runtime/heap.c -- the bump allocator grows into fresh OS pages
+// once heap_ptr would cross this line, instead of the old fixed 16MB cap.
+#define KILN_HEAP_LIMIT_SIZE 8
+
 // OS-agnostic sizes for kiln's own hand-rolled attempt/handle handler stack
 // (see codegen/C/runtime/errors.c's raise routine, parser/C/statements/attempt_handle.c) -- the byte
 // layout is a kiln-internal invention, not tied to ELF or PE, so both

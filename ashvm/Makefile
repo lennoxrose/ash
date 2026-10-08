@@ -1,7 +1,21 @@
 CC = gcc
 .DEFAULT_GOAL := all
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc
-LDFLAGS = -lm
+# -I../pyre/src, -fopenmp and the ../pyre/lib/libashgpu.a/-ldl/-lvulkan/-lstdc++
+# below: matrix_mul (src/builtins/C/matrix.c) links against Pyre's CPU +
+# Vulkan backends, STATICALLY (the explicit .a path, not -lashgpu --
+# pyre/lib/ also holds libashgpu.so for kiln's --link=shared to find at
+# runtime, and a bare -lashgpu would silently prefer that .so over the
+# .a, turning ashvm from self-contained into "needs libashgpu.so
+# findable at runtime with no rpath to say where" -- found exactly that
+# way when pyre/Makefile grew the .so target). ashvm already links
+# against libc/libm normally, unlike kiln's hand-rolled, zero-dependency
+# ELF/PE output, so this one extra build-time dependency doesn't break
+# any existing promise (see ideas/assigned.md). -lstdc++ because
+# libashgpu.a's Vulkan backend is C++ (RAII) internally, even though
+# ash_gpu.h itself is a plain C ABI -- plain gcc as the final linker
+# needs that spelled out, g++ would do it automatically.
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../pyre/src -fopenmp
+LDFLAGS = -lm ../pyre/lib/libashgpu.a -fopenmp -ldl -lvulkan -lstdc++
 
 ASHVM_SRC = \
     src/app/C/main.c \
@@ -30,6 +44,7 @@ ASHVM_SRC = \
     src/builtins/C/core.c \
     src/builtins/C/file.c \
     src/builtins/C/string.c \
+    src/builtins/C/matrix.c \
     src/diagnostics/C/diagnostics.c
 
 # Objects and dependency files live in trees parallel to each C tree:
@@ -60,7 +75,10 @@ BIN = ../bin/ashvm
 
 all: $(BIN)
 
-$(BIN): $(ASHVM_OBJ)
+../pyre/lib/libashgpu.a:
+	$(MAKE) -C ../pyre lib
+
+$(BIN): $(ASHVM_OBJ) ../pyre/lib/libashgpu.a
 	mkdir -p ../bin
 	$(CC) $(CFLAGS) -o $(BIN) $(ASHVM_OBJ) $(LDFLAGS)
 

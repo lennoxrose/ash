@@ -34,6 +34,7 @@ KILN_SRC = \
     src/codegen/C/collections/keys_values.c \
     src/codegen/C/collections/maps.c \
     src/codegen/C/collections/maps_mutate.c \
+    src/codegen/C/collections/matrix_mul.c \
     src/codegen/C/emit/bytes.c \
     src/codegen/C/emit/emit.c \
     src/codegen/C/emit/emit_mem.c \
@@ -53,6 +54,7 @@ KILN_SRC = \
     src/codegen/C/io/write_file_builtins.c \
     src/codegen/C/platform/platform_console.c \
     src/codegen/C/platform/platform_file.c \
+    src/codegen/C/platform/linux_call.c \
     src/codegen/C/platform/win_call.c \
     src/codegen/C/platform/win_file_call.c \
     src/codegen/C/runtime/errors.c \

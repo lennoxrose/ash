@@ -8,5 +8,6 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc);
 VMValue vm_call_builtin_collection(int id, VMValue *args, int argc);
 VMValue vm_call_builtin_string(int id, VMValue *args, int argc);
 VMValue vm_call_builtin_file(int id, VMValue *args, int argc);
+VMValue vm_call_builtin_matrix(int id, VMValue *args, int argc);
 
 #endif

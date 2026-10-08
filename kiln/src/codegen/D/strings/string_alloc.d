@@ -6,7 +6,9 @@ src/codegen/O/strings/string_alloc.o: \
  src/codegen/H/emit/runtime_import_enum.h \
  src/codegen/H/emit/runtime_exports.def src/pe/H/pe_imports.def \
  src/elf/H/elf_dynamic_call.h src/elf/H/elf_dynamic.h \
- src/elf/H/elf_writer.h src/app/H/target.h
+ src/codegen/H/emit/ash_gpu_import_enum.h \
+ src/codegen/H/emit/ash_gpu_exports.def src/elf/H/elf_writer.h \
+ src/app/H/target.h
 src/codegen/H/strings/string_alloc.h:
 src/codegen/H/emit/emit.h:
 src/codegen/H/runtime/heap.h:
@@ -18,5 +20,7 @@ src/codegen/H/emit/runtime_exports.def:
 src/pe/H/pe_imports.def:
 src/elf/H/elf_dynamic_call.h:
 src/elf/H/elf_dynamic.h:
+src/codegen/H/emit/ash_gpu_import_enum.h:
+src/codegen/H/emit/ash_gpu_exports.def:
 src/elf/H/elf_writer.h:
 src/app/H/target.h:
