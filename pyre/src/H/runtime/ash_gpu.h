@@ -48,6 +48,32 @@ AshGpuInfo ash_gpu_detect(void);
 int ash_gpu_available(void);
 
 /*
+ * The manager's answer to "would you like me to take this over?", without
+ * doing the work. Every kernel call below asks the same question itself and
+ * acts on the answer (src/C/runtime/manager.c); these let a caller ask first,
+ * e.g. to skip converting its own data into flat buffers for a job Pyre
+ * would only hand straight back to the CPU.
+ *
+ * The prediction comes from what this machine has actually been seen to do
+ * at this workload size, learned from real calls (no calibration pass, no
+ * fixed threshold, nothing shipped; see H/runtime/manager.h). `backend` is
+ * where Pyre would run it right now (ASH_GPU_BACKEND_NONE = the CPU
+ * backend); est_seconds is the predicted time there and est_cpu_seconds the
+ * CPU backend's, both negative until that size has been measured. A GPU
+ * that is not up yet is never chosen unless the saving is known to beat
+ * its start-up; calls never wait for a start-up in flight.
+ */
+typedef struct {
+    AshGpuBackend backend;
+    double est_seconds;
+    double est_cpu_seconds;
+} AshGpuPlan;
+
+AshGpuPlan ash_gpu_plan_matrix_multiply(int n);
+AshGpuPlan ash_gpu_plan_chaos_iterate(int n, int iterations);
+AshGpuPlan ash_gpu_plan_monte_carlo_risk(long long iterations);
+
+/*
  * C = A * B, all three N x N, row-major, contiguous (flat, not an array
  * of row pointers -- see todo.md 2.A's "Contiguous Buffer Type": this is
  * the layout a future Ash-level Buffer/Tensor type would hand across

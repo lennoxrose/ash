@@ -433,7 +433,7 @@ void codegen_exit0(CodeBuf *code) {
     // CALLING thread, leaving the process alive until every thread
     // exits -- invisible as long as a kiln program is single-threaded,
     // which was every one of them until matrix_mul's --link=shared path
-    // started calling into libashgpu.so's OpenMP-based CPU backend
+    // started calling into libpyre.so's OpenMP-based CPU backend
     // (found by actually running that: the process hung forever after
     // printing its correct result, waiting on ghost worker threads).
     emit_mov_reg_imm64(code, REG_RAX, 231);

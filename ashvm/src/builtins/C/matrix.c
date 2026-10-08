@@ -14,7 +14,7 @@
 // dependency here isn't the architecture problem it would be for kiln --
 // see assigned.md for why kiln's own matrix_mul (codegen/C/collections/matrix_mul.c)
 // instead ports the same loop-order technique natively rather than
-// linking against libashgpu.
+// linking against libpyre.
 //
 // Below ASH_GPU_MIN_N, a plain local loop skips Pyre entirely: OpenMP's
 // own thread-launch overhead would dominate a handful of multiply-adds,

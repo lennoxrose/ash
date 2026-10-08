@@ -4,7 +4,7 @@
 // matrix_mul(a, b): only available under --link=shared (ideas/assigned.md
 // -- a --link=static binary stays the hand-rolled, zero-dependency ELF/PE
 // kiln otherwise always produces; this builtin's whole implementation is
-// a call through the GOT into libashgpu.so, which only exists under
+// a call through the GOT into libpyre.so, which only exists under
 // --link=shared at all). codegen/C/builtins/builtins.c's dispatch calls
 // this after parsing matrix_mul(...)'s arguments, same convention as
 // every other builtin in that file -- a and b already pushed

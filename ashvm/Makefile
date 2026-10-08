@@ -1,21 +1,23 @@
 CC = gcc
 .DEFAULT_GOAL := all
-# -I../pyre/src, -fopenmp and the ../pyre/lib/libashgpu.a/-ldl/-lvulkan/-lstdc++
+# -I../pyre/src, -fopenmp and the ../bin/extensions/pyre/libpyre.a/-ldl/-lvulkan/-lstdc++
 # below: matrix_mul (src/builtins/C/matrix.c) links against Pyre's CPU +
 # Vulkan backends, STATICALLY (the explicit .a path, not -lashgpu --
-# pyre/lib/ also holds libashgpu.so for kiln's --link=shared to find at
+# bin/extensions/pyre/ also holds libpyre.so for kiln's --link=shared to find at
 # runtime, and a bare -lashgpu would silently prefer that .so over the
-# .a, turning ashvm from self-contained into "needs libashgpu.so
+# .a, turning ashvm from self-contained into "needs libpyre.so
 # findable at runtime with no rpath to say where" -- found exactly that
 # way when pyre/Makefile grew the .so target). ashvm already links
 # against libc/libm normally, unlike kiln's hand-rolled, zero-dependency
 # ELF/PE output, so this one extra build-time dependency doesn't break
 # any existing promise (see ideas/assigned.md). -lstdc++ because
-# libashgpu.a's Vulkan backend is C++ (RAII) internally, even though
+# libpyre.a's Vulkan backend is C++ (RAII) internally, even though
 # ash_gpu.h itself is a plain C ABI -- plain gcc as the final linker
 # needs that spelled out, g++ would do it automatically.
+include ../pyre/cuda.mk
+
 CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../pyre/src -fopenmp
-LDFLAGS = -lm ../pyre/lib/libashgpu.a -fopenmp -ldl -lvulkan -lstdc++
+LDFLAGS = -lm ../bin/extensions/pyre/libpyre.a -fopenmp -ldl -lvulkan -lstdc++ $(CUDA_LIBS)
 
 ASHVM_SRC = \
     src/app/C/main.c \
@@ -75,10 +77,10 @@ BIN = ../bin/ashvm
 
 all: $(BIN)
 
-../pyre/lib/libashgpu.a:
+../bin/extensions/pyre/libpyre.a:
 	$(MAKE) -C ../pyre lib
 
-$(BIN): $(ASHVM_OBJ) ../pyre/lib/libashgpu.a
+$(BIN): $(ASHVM_OBJ) ../bin/extensions/pyre/libpyre.a
 	mkdir -p ../bin
 	$(CC) $(CFLAGS) -o $(BIN) $(ASHVM_OBJ) $(LDFLAGS)
 

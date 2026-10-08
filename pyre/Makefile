@@ -17,15 +17,27 @@
 # pyre/tools/install_deps.sh, never run end-to-end -- this sandbox has
 # no GPU at all).
 
+include cuda.mk
+
 CC = gcc
 CXX = g++
 .DEFAULT_GOAL := all
-CFLAGS = -Wall -Wextra -std=c11 -O3 -march=native -fopenmp -Isrc -fPIC
-CXXFLAGS = -Wall -Wextra -std=c++17 -O3 -Isrc -fPIC
-LDFLAGS = -fopenmp -lm -ldl -lvulkan
+CFLAGS = -Wall -Wextra -std=c11 -O3 -march=native -fopenmp -Isrc -fPIC -pthread $(CUDA_DEFINE)
+CXXFLAGS = -Wall -Wextra -std=c++17 -O3 -Isrc -fPIC -pthread
+LDFLAGS = -fopenmp -lm -ldl -lvulkan $(CUDA_LIBS)
+NVCCFLAGS = -std=c++17 -O3 $(CUDA_ARCH) -Isrc -Xcompiler -fPIC -Xcompiler -Wall
+
+# Built libraries land in the repo's top-level bin/, next to ashvm and kiln,
+# under extensions/ (Pyre is an optional add-on, not a core tool). ashvm links
+# the .a from here; kiln's --link=shared binaries find the .so here via an
+# rpath entry (see kiln/Makefile).
+EXT_DIR = ../bin/extensions/pyre
 
 PYRE_C_SRC = \
     src/C/runtime/device.c \
+    src/C/runtime/targets.c \
+    src/C/runtime/cost_model.c \
+    src/C/runtime/manager.c \
     src/C/backends/cpu/matrix_multiply.c \
     src/C/backends/cpu/monte_carlo.c \
     src/C/backends/cpu/chaos.c
@@ -33,14 +45,24 @@ PYRE_CPP_SRC = \
     src/C/backends/vulkan/context.cpp \
     src/C/backends/vulkan/matrix_multiply.cpp \
     src/C/backends/vulkan/chaos.cpp
+# NVIDIA-only CUDA backend (src/C/backends/cuda/*.cu), built only when
+# cuda.mk found nvcc; without it Pyre is Vulkan + CPU exactly as before.
+PYRE_CU_SRC = \
+    src/C/backends/cuda/context.cu \
+    src/C/backends/cuda/matrix_multiply.cu \
+    src/C/backends/cuda/chaos.cu \
+    src/C/backends/cuda/monte_carlo.cu
+ifeq ($(NVCC),)
+PYRE_CU_SRC =
+endif
 
 # Objects and dependency files live in trees parallel to C/:
 #   src/C/<feature>/x.c   -> src/O/<feature>/x.o   src/D/<feature>/x.d
 #   src/C/<feature>/x.cpp -> src/O/<feature>/x.o   src/D/<feature>/x.d
 obj_of = $(subst /C/,/O/,$(basename $(1)).o)
 dep_of = $(subst /C/,/D/,$(basename $(1)).d)
-PYRE_OBJ = $(foreach s,$(PYRE_C_SRC) $(PYRE_CPP_SRC),$(call obj_of,$(s)))
-PYRE_DEP = $(foreach s,$(PYRE_C_SRC) $(PYRE_CPP_SRC),$(call dep_of,$(s)))
+PYRE_OBJ = $(foreach s,$(PYRE_C_SRC) $(PYRE_CPP_SRC) $(PYRE_CU_SRC),$(call obj_of,$(s)))
+PYRE_DEP = $(foreach s,$(PYRE_C_SRC) $(PYRE_CPP_SRC) $(PYRE_CU_SRC),$(call dep_of,$(s)))
 
 # The Vulkan backend's one kernel so far needs its shader compiled to
 # SPIR-V and embedded as a C array (glslc -mfmt=c) rather than loaded
@@ -82,37 +104,73 @@ $(call obj_of,$(1)): $(1)
 endef
 $(foreach s,$(PYRE_CPP_SRC),$(eval $(call cpp_compile_rule,$(s))))
 
+define cu_compile_rule
+$(call obj_of,$(1)): $(1)
+	@mkdir -p $$(dir $$@) $$(dir $(call dep_of,$(1)))
+	$$(NVCC) $$(NVCCFLAGS) -MMD -MF $(call dep_of,$(1)) -MT $$@ -c $$< -o $$@
+endef
+$(foreach s,$(PYRE_CU_SRC),$(eval $(call cu_compile_rule,$(s))))
+
 -include $(PYRE_DEP)
 
-.PHONY: all clean test benchmark lib install
+.PHONY: all clean test benchmark lib install tool web
 
-all: test benchmark lib
+all: test benchmark lib tool web
 
-# Consumed by ashvm's Makefile (-Lpyre/lib -lashgpu) -- see
+# Consumed by ashvm's Makefile (../bin/extensions/pyre/libpyre.a) -- see
 # ashvm/src/builtins/C/matrix.c and ideas/assigned.md for why ashvm links
 # against this directly while kiln, whose own output is a hand-rolled,
 # zero-dependency ELF/PE binary, does not.
-lib/libashgpu.a: $(PYRE_OBJ)
-	mkdir -p lib
+$(EXT_DIR)/libpyre.a: $(PYRE_OBJ)
+	mkdir -p $(EXT_DIR)
 	ar rcs $@ $(PYRE_OBJ)
 
 # Consumed by kiln's --link=shared mode (elf/H/elf_dynamic.h's
 # KILN_ASHGPU_SONAME, same rpath as libkilnrt.so -- see ideas/assigned.md):
 # a real DT_NEEDED on a shared object built by the normal system
 # toolchain, not another hand-rolled kiln-side writer like libkilnrt.so.
-lib/libashgpu.so: $(PYRE_OBJ)
-	mkdir -p lib
+$(EXT_DIR)/libpyre.so: $(PYRE_OBJ)
+	mkdir -p $(EXT_DIR)
 	$(CXX) -shared -o $@ $(PYRE_OBJ) $(LDFLAGS)
 
-lib: lib/libashgpu.a lib/libashgpu.so
+lib: $(EXT_DIR)/libpyre.a $(EXT_DIR)/libpyre.so
 
-# Installs libashgpu.so at kiln's own rpath (KILN_RPATH, elf/H/elf_dynamic.h)
+# `pyre info|calibrate|plan ...`: inspect the manager (tools/pyre.c).
+tools/%.o: tools/%.c tools/dashboard.h tools/json_out.h tools/train.h
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -c $< -o $@
+
+$(EXT_DIR)/pyre: tools/pyre.o tools/dashboard.o tools/train.o $(PYRE_OBJ)
+	mkdir -p $(EXT_DIR)
+	$(CXX) $(CXXFLAGS) -fopenmp $^ -o $@ $(LDFLAGS)
+
+tool: $(EXT_DIR)/pyre
+
+# The dashboard UI (`pyre dashboard`): React + TypeScript in src/web, built
+# with pnpm to <bin>/extensions/pyre/web, which the pyre executable serves
+# fully offline. Node and pnpm are needed at BUILD time only (and network the
+# first time, to fetch packages); without them Pyre still builds and only the
+# dashboard UI is skipped, with a warning.
+WEB_SRC = src/web
+WEB_OUT = $(EXT_DIR)/web
+WEB_DEPS = $(shell find $(WEB_SRC)/src -type f) $(addprefix $(WEB_SRC)/,index.html package.json pnpm-lock.yaml vite.config.ts tsconfig.json)
+
+$(WEB_OUT)/index.html: $(WEB_DEPS)
+	@if command -v pnpm >/dev/null 2>&1; then \
+	    (cd $(WEB_SRC) && pnpm install --frozen-lockfile && pnpm build) \
+	    || echo "WARNING: dashboard UI build failed (offline first build? run 'pnpm install' in pyre/$(WEB_SRC) once with network); 'pyre dashboard' will say it is not built"; \
+	else \
+	    echo "WARNING: pnpm not found, skipping the dashboard UI (install Node + pnpm, then 'make web')"; \
+	fi
+
+web: $(WEB_OUT)/index.html
+
+# Installs libpyre.so at kiln's own rpath (KILN_RPATH, elf/H/elf_dynamic.h)
 # so a kiln --link=shared executable that imports an ash_gpu_* symbol can
 # actually find it at load time -- same spot `kiln --emit-runtime` installs
 # libkilnrt.so to by hand today (there's no kiln "make install" yet either).
-install: lib/libashgpu.so
+install: $(EXT_DIR)/libpyre.so
 	mkdir -p /usr/local/lib/kiln
-	cp lib/libashgpu.so /usr/local/lib/kiln/libashgpu.so
+	cp $(EXT_DIR)/libpyre.so /usr/local/lib/kiln/libpyre.so
 
 # Each test/benchmark main is plain C -- compiled with $(CC) into its own
 # .o (g++ would compile a .c file as C++ instead, which is stricter than
@@ -132,9 +190,13 @@ tests/matrix_multiply_test: tests/matrix_multiply_test.o $(PYRE_OBJ)
 tests/monte_carlo_test: tests/monte_carlo_test.o $(PYRE_OBJ)
 	$(CXX) $(CXXFLAGS) -fopenmp $^ -o $@ $(LDFLAGS)
 
-test: tests/matrix_multiply_test tests/monte_carlo_test
+tests/cuda_test: tests/cuda_test.o $(PYRE_OBJ)
+	$(CXX) $(CXXFLAGS) -fopenmp $^ -o $@ $(LDFLAGS)
+
+test: tests/matrix_multiply_test tests/monte_carlo_test tests/cuda_test
 	tests/matrix_multiply_test
 	tests/monte_carlo_test
+	tests/cuda_test
 
 benchmarks/matrix/run_benchmark: benchmarks/matrix/run_benchmark.o $(PYRE_OBJ)
 	$(CXX) $(CXXFLAGS) -fopenmp $^ -o $@ $(LDFLAGS)
@@ -154,7 +216,8 @@ clean:
 	find src -name '*.o' -delete
 	find src -name '*.d' -delete
 	rm -f src/H/backends/vulkan/matrix_multiply_spv.h src/H/backends/vulkan/chaos_spv.h
-	rm -f tests/*.o benchmarks/*/*.o
-	rm -f tests/matrix_multiply_test tests/monte_carlo_test
+	rm -f tests/*.o benchmarks/*/*.o tools/*.o $(EXT_DIR)/pyre
+	rm -rf $(WEB_OUT)
+	rm -f tests/matrix_multiply_test tests/monte_carlo_test tests/cuda_test
 	rm -f benchmarks/matrix/run_benchmark benchmarks/monte_carlo_no_pi/run_benchmark benchmarks/chaos/run_benchmark
-	rm -rf lib
+	rm -f $(EXT_DIR)/libpyre.a $(EXT_DIR)/libpyre.so

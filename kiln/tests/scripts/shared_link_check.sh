@@ -4,10 +4,10 @@
 # --link=shared had NO automated coverage at all before this (run_regression.sh
 # only ever compiles with kiln's default --link=static) -- this fills that
 # gap generally, and specifically covers matrix_mul (codegen/C/collections/matrix_mul.c,
-# elf/H/elf_dynamic.h's second DT_NEEDED for libashgpu.so), the one builtin
+# elf/H/elf_dynamic.h's second DT_NEEDED for libpyre.so), the one builtin
 # that only exists under --link=shared at all.
 #
-# 1. Rebuilds kiln, libkilnrt.so, and libashgpu.so, installing both at
+# 1. Rebuilds kiln, libkilnrt.so, and libpyre.so, installing both at
 #    kiln's hardcoded rpath (KILN_RPATH, elf/H/elf_dynamic.h) -- there is
 #    no env-var override, so this writes to /usr/local/lib/kiln for real,
 #    same as doing it by hand.
@@ -27,7 +27,7 @@ cd "$(dirname "$0")/../.." # -> kiln/
 
 make -s || { echo "build failed"; exit 1; }
 ../bin/kiln --emit-runtime -o /usr/local/lib/kiln/libkilnrt.so || { echo "emit-runtime failed"; exit 1; }
-(cd ../pyre && make -s install) || { echo "pyre install failed"; exit 1; }
+(cd ../pyre && make -s lib) || { echo "pyre build failed"; exit 1; }
 
 OUTDIR=/tmp/kiln_shared_check
 rm -rf "$OUTDIR"

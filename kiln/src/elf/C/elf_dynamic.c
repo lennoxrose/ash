@@ -162,8 +162,8 @@ int elf_write_dynamic_executable(const char *path, const CodeBuf *machine_code) 
     // ---- .dynamic ----
     #define DT(tag, val) do { put64(&f, (uint64_t)(tag)); put64(&f, (uint64_t)(val)); } while (0)
     DT(1, soname_off);                 // DT_NEEDED (index into .dynstr) -- libkilnrt.so
-    DT(1, ashgpu_soname_off);          // DT_NEEDED -- libashgpu.so (ideas/assigned.md)
-    DT(15, rpath_off);                 // DT_RPATH -- shared by both NEEDED entries (libashgpu.so installs to the same rpath)
+    DT(1, ashgpu_soname_off);          // DT_NEEDED -- libpyre.so (ideas/assigned.md)
+    DT(15, rpath_off);                 // DT_RPATH -- shared by both NEEDED entries (libpyre.so installs to the same rpath)
     DT(4, KILN_DYN_HASH_ADDR);         // DT_HASH
     DT(5, dynstr_addr);                // DT_STRTAB (after the code -- depends on its length)
     DT(6, KILN_DYN_SYMTAB_ADDR);       // DT_SYMTAB

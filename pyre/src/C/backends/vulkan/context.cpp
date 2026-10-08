@@ -25,9 +25,11 @@ void destroy_partial(AshGpuVulkanContext &ctx) {
     ctx = AshGpuVulkanContext{};
 }
 
-// First physical device with both a compute-capable queue family and
-// the shaderFloat64 feature (ash_gpu's ABI is `double` throughout, see
+// Best physical device with both a compute-capable queue family and the
+// shaderFloat64 feature (ash_gpu's ABI is `double` throughout, see
 // ash_gpu.h) -- a device that can only do fp32 compute isn't a match.
+// Among matches a discrete GPU beats an integrated one: Vulkan lists
+// devices in driver order, which on a hybrid laptop puts the iGPU first.
 bool pick_physical_device(VkInstance instance, VkPhysicalDevice *out_device, uint32_t *out_queue_family) {
     uint32_t count = 0;
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
@@ -35,10 +37,18 @@ bool pick_physical_device(VkInstance instance, VkPhysicalDevice *out_device, uin
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(instance, &count, devices.data());
 
+    bool found = false;
+    int best_rank = -1;
     for (VkPhysicalDevice dev : devices) {
         VkPhysicalDeviceFeatures features;
         vkGetPhysicalDeviceFeatures(dev, &features);
         if (!features.shaderFloat64) continue;
+
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(dev, &props);
+        int rank = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 2
+                 : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 1 : 0;
+        if (rank <= best_rank) continue;
 
         uint32_t qf_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(dev, &qf_count, nullptr);
@@ -49,11 +59,13 @@ bool pick_physical_device(VkInstance instance, VkPhysicalDevice *out_device, uin
             if (qfs[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
                 *out_device = dev;
                 *out_queue_family = i;
-                return true;
+                best_rank = rank;
+                found = true;
+                break;
             }
         }
     }
-    return false;
+    return found;
 }
 
 bool init_once(AshGpuVulkanContext &ctx) {

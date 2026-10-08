@@ -1,6 +1,7 @@
 CC = gcc
 .DEFAULT_GOAL := all
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc
+KILN_RPATH_LIST = $(abspath ../bin/extensions/pyre):/usr/local/lib/kiln
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -DKILN_RPATH='"$(KILN_RPATH_LIST)"'
 LDFLAGS =
 
 KILN_SRC = \

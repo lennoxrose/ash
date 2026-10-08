@@ -1,4 +1,5 @@
 #include "H/runtime/ash_gpu.h"
+#include "H/backends/cpu/monte_carlo.h"
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -23,7 +24,7 @@ static unsigned int splitmix32(unsigned int x) {
     return x ^ (x >> 16);
 }
 
-void ash_gpu_monte_carlo_risk(long long iterations, double threshold, unsigned int seed,
+void ash_gpu_cpu_monte_carlo_risk(long long iterations, double threshold, unsigned int seed,
                                long long *out_risky, double *out_probability) {
     long long risky = 0;
 

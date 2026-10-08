@@ -4,7 +4,7 @@
 #include "elf/H/elf_dynamic_call.h"
 
 // SysV x86-64 calling convention wrapper for calling into a SECOND
-// needed library's real, normally-compiled function (libashgpu.so --
+// needed library's real, normally-compiled function (libpyre.so --
 // see elf/H/elf_dynamic.h) -- new territory the same way win_call.h was
 // for libkilnrt.dll's imports, but for a different reason: kiln's OWN
 // runtime routines (heap_alloc, print_top, ...), the only things

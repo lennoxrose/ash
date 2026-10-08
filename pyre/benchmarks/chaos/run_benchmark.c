@@ -14,6 +14,9 @@
 #include "H/runtime/ash_gpu.h"
 #include "H/backends/cpu/chaos.h"
 #include "H/backends/vulkan/context.h"
+#ifdef ASH_GPU_HAVE_CUDA
+#include "H/backends/cuda/context.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -44,33 +47,59 @@ int main(void) {
     double cpu_seconds = now_seconds() - t0;
     printf("CPU backend:  %.3fs\n", cpu_seconds);
 
-    AshGpuInfo info = ash_gpu_detect();
-    if (info.backend == ASH_GPU_BACKEND_NONE) {
-        printf("GPU backend:  unavailable (%s)\n", info.device_name);
+    int exit_code = 0;
+
+#ifdef ASH_GPU_HAVE_CUDA
+    /* CUDA first (NVIDIA only): a warm-up call so context creation and the
+     * first kernel's JIT/load aren't charged to the measurement. */
+    if (ash_gpu_cuda_init()) {
+        double warm = 0.5;
+        ash_gpu_cuda_chaos_iterate(&warm, 1, 1);
+
+        double *data_cuda = malloc((size_t)n * sizeof(double));
+        for (int i = 0; i < n; i++) data_cuda[i] = (double)(i % 1000) * 0.001;
+        t0 = now_seconds();
+        int ran = ash_gpu_cuda_chaos_iterate(data_cuda, n, iterations);
+        double cuda_seconds = now_seconds() - t0;
+        if (ran) {
+            double max_diff = 0.0;
+            for (int i = 0; i < n; i++) {
+                double d = data_cpu[i] - data_cuda[i];
+                if (d < 0) d = -d;
+                if (d > max_diff) max_diff = d;
+            }
+            printf("CUDA backend: %.3fs (%s)  speedup: %.2fx  max |CPU - CUDA|: %g\n",
+                   cuda_seconds, ash_gpu_cuda_device_name(), cpu_seconds / cuda_seconds, max_diff);
+            if (max_diff != 0.0) exit_code = 1;
+        } else {
+            printf("CUDA backend: launch failed\n");
+        }
+        free(data_cuda);
+    }
+#endif
+
+    if (!ash_gpu_vulkan_init()) {
+        printf("Vulkan backend: unavailable\n");
         free(data_cpu);
         free(data_gpu);
-        return 0;
+        return exit_code;
     }
 
     t0 = now_seconds();
     ash_gpu_vulkan_chaos_iterate(data_gpu, n, iterations);
     double gpu_seconds = now_seconds() - t0;
-    printf("GPU backend:  %.3fs (%s)\n", gpu_seconds, info.device_name);
-    printf("speedup: %.2fx\n", cpu_seconds / gpu_seconds);
+    printf("Vulkan backend: %.3fs (%s)  speedup: %.2fx\n",
+           gpu_seconds, ash_gpu_vulkan_device_name(), cpu_seconds / gpu_seconds);
 
-    /* Both backends run the identical recurrence -- results must match
-     * (within fp rounding-order slack, since the GPU evaluates per
-     * thread independently same as the CPU's OpenMP loop does, both
-     * single-precision-free, double throughout). */
     double max_diff = 0.0;
     for (int i = 0; i < n; i++) {
         double diff = data_cpu[i] - data_gpu[i];
         if (diff < 0) diff = -diff;
         if (diff > max_diff) max_diff = diff;
     }
-    printf("max |CPU - GPU| difference: %g\n", max_diff);
+    printf("max |CPU - Vulkan| difference: %g\n", max_diff);
 
     free(data_cpu);
     free(data_gpu);
-    return 0;
+    return exit_code;
 }

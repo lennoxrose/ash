@@ -1,4 +1,4 @@
-// x-macro list of libashgpu.so's exported symbols kiln's --link=shared
+// x-macro list of libpyre.so's exported symbols kiln's --link=shared
 // codegen calls (elf/C/elf_dynamic.c's executable-side GOT/hash/dynsym,
 // alongside kiln's own runtime_exports.def entries -- see that file's
 // header comment and ideas/assigned.md for why this is a SECOND needed

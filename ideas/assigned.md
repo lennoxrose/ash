@@ -34,7 +34,7 @@ this file directly if any rule below doesn't match intent.
    constructs.
 4. **Kiln integration** -- "Kiln emits calls to ash-gpu for suitable
    workloads," *only after the runtime is solid*. **Done**: kiln's
-   generated code really does call into `libashgpu.so` through a GOT
+   generated code really does call into `libpyre.so` through a GOT
    slot now -- see "kiln" below for how. Found and fixed one real,
    previously-invisible bug this way (kiln's own `exit`-syscall choice),
    which is exactly the value of actually running this instead of
@@ -52,7 +52,7 @@ this file directly if any rule below doesn't match intent.
 program, so one more build-time dependency (Pyre's CPU backend needs
 OpenMP/libgomp, `runtime/device.c` needs libdl for its detection probe)
 doesn't break any promise ashvm makes. ashvm's own Makefile links
-`../pyre/lib/libashgpu.a` unconditionally -- there's no "Pyre not
+`../pyre/lib/libpyre.a` unconditionally -- there's no "Pyre not
 installed" fallback path today; if that matters later (packaging ashvm
 without Pyre), add a `HAVE_PYRE` build switch then, not speculatively now.
 
@@ -82,8 +82,8 @@ How: `--link=shared` already had a real, working example of exactly
 this shape -- it emits a dynamically-linked ELF with a `PT_INTERP`, so
 the real system `ld.so` resolves calls into a second binary
 (`libkilnrt.so`) at load time (`elf/C/elf_dynamic.c`, `elf/C/elf_so_writer.c`).
-Extended that same machinery to also declare `libashgpu.so` as a SECOND
-needed library: one more `DT_NEEDED`, and `libashgpu.so`'s one export
+Extended that same machinery to also declare `libpyre.so` as a SECOND
+needed library: one more `DT_NEEDED`, and `libpyre.so`'s one export
 (`ash_gpu_matrix_multiply`) folded into the SAME combined hash/dynsym/GOT/rela
 table as kiln's own runtime imports (`KILN_DYN_TOTAL_IMPORTS`,
 `elf/H/elf_dynamic.h`) rather than a second parallel set of tables --
@@ -150,7 +150,7 @@ having more than two data points.
 
 - ashvm: always, unconditionally, once `N >= ASH_GPU_MIN_N` -- no
   separate opt-in, because ashvm never promised zero dependencies.
-- kiln: always under `--link=shared` (once `libashgpu.so` is installed
+- kiln: always under `--link=shared` (once `libpyre.so` is installed
   at `KILN_RPATH`, same as `libkilnrt.so`); never under the default
   `--link=static`, which keeps working with nothing installed beyond
   kiln itself, unconditionally, forever.

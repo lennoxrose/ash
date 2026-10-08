@@ -19,22 +19,27 @@
 // "executable" with PT_INTERP/PT_DYNAMIC/GOT/RELA, loaded and resolved
 // correctly by /lib64/ld-linux-x86-64.so.2) -- this header encodes that
 // same validated structure, not a first attempt.
+// Colon-separated search list. kiln/Makefile overrides it to also name the
+// repo's bin/extensions/pyre (where Pyre builds libpyre.so) ahead of the
+// system install dir.
+#ifndef KILN_RPATH
 #define KILN_RPATH "/usr/local/lib/kiln"
+#endif
 #define KILN_LIBKILNRT_SONAME "libkilnrt.so"
 // ideas/assigned.md: a SECOND needed library, Pyre's compute runtime --
 // kept as a parallel DT_NEEDED next to libkilnrt.so's, never merged into
-// it (libkilnrt.so is kiln's own hand-rolled routines; libashgpu.so is a
+// it (libkilnrt.so is kiln's own hand-rolled routines; libpyre.so is a
 // normal gcc/g++-built shared object this project doesn't build). ld.so
 // resolves each imported symbol name against ALL needed libraries, so
 // the two don't need separate hash/dynsym/GOT regions -- one combined
 // table (KILN_DYN_TOTAL_IMPORTS below) covering both libraries' symbols
 // is correct and the much smaller change.
-#define KILN_ASHGPU_SONAME "libashgpu.so"
+#define KILN_ASHGPU_SONAME "libpyre.so"
 #define KILN_INTERP_STR "/lib64/ld-linux-x86-64.so.2"
 
 // Every symbol this executable needs resolved, from EITHER needed
 // library -- kiln's own (RUNTIME_IMPORT_COUNT_, from libkilnrt.so) then
-// Pyre's (ASH_GPU_IMPORT_COUNT_, from libashgpu.so), in that order.
+// Pyre's (ASH_GPU_IMPORT_COUNT_, from libpyre.so), in that order.
 #define KILN_DYN_TOTAL_IMPORTS ((unsigned)RUNTIME_IMPORT_COUNT_ + (unsigned)ASH_GPU_IMPORT_COUNT_)
 
 // nsyms includes the mandatory null 0th symbol.
@@ -67,7 +72,7 @@
 #define KILN_DYN_GOT_SIZE (8u * KILN_DYN_TOTAL_IMPORTS)
 
 #define KILN_DYN_ENTRY_SIZE 16u // Elf64_Dyn: {Elf64_Sxword d_tag; union d_val/d_ptr;}
-// NEEDED(libkilnrt.so),NEEDED(libashgpu.so),RPATH,HASH,STRTAB,SYMTAB,STRSZ,SYMENT,RELA,RELASZ,RELAENT,NULL(12, see .c)
+// NEEDED(libkilnrt.so),NEEDED(libpyre.so),RPATH,HASH,STRTAB,SYMTAB,STRSZ,SYMENT,RELA,RELASZ,RELAENT,NULL(12, see .c)
 #define KILN_DYN_TABLE_NENT_TOTAL 11u
 #define KILN_DYN_TABLE_ADDR (KILN_DYN_GOT_ADDR + KILN_DYN_GOT_SIZE)
 #define KILN_DYN_TABLE_SIZE ((KILN_DYN_TABLE_NENT_TOTAL + 1u) * KILN_DYN_ENTRY_SIZE) // +1 for the DT_NULL terminator

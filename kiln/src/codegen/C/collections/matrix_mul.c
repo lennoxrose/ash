@@ -9,7 +9,7 @@
 #include "app/H/target.h"
 
 // matrix_mul(a, b) -- real Phase 4 integration (ideas/gpu_acceleration.md,
-// ideas/assigned.md): calls INTO libashgpu.so's ash_gpu_matrix_multiply
+// ideas/assigned.md): calls INTO libpyre.so's ash_gpu_matrix_multiply
 // through the GOT slot elf/C/elf_dynamic.c's --link=shared writer lays
 // out, rather than reimplementing the algorithm in kiln's own hand-rolled
 // x86-64 the way the CPU backend itself does -- that distinction is the
@@ -223,7 +223,7 @@ static void unflatten_result(CodeBuf *code) {
 
 void codegen_builtin_matrix_mul(void) {
     if (kiln_get_link_mode() != KILN_LINK_SHARED) {
-        parse_error("matrix_mul requires --link=shared (it calls into libashgpu.so; "
+        parse_error("matrix_mul requires --link=shared (it calls into libpyre.so; "
                     "--link=static stays kiln's zero-dependency default -- see ideas/assigned.md)");
     }
 
