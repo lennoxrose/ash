@@ -65,8 +65,10 @@ int cmd_add(const char *project_dir, int argc, char **argv) {
 
     Manifest m;
     if (!manifest_load(project_dir, &m)) {
-        ui_err("no %s here -- run 'forgepack init' first", MANIFEST_FILE);
-        return 1;
+        char project_name[MANIFEST_NAME_LEN];
+        infer_project_name(project_name, sizeof(project_name));
+        manifest_init_default(&m, project_name);
+        ui_info("no %s here, creating one", MANIFEST_FILE);
     }
     if (!manifest_set_dependency(&m, name, source)) {
         ui_err("dependency table full (max %d)", MANIFEST_MAX_DEPS);
