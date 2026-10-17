@@ -198,7 +198,7 @@ Complete this table and implement it consistently:
 | D12 | One shared front end (lexer, parser, AST, type checker) lives in `front/` and is linked by both `ashvm` and `kiln`. |
 | D13 | Primitive boolean type is spelled `bool`. |
 | D14 | Checked exceptions are enforced (Exception subclasses not under RuntimeException must be caught or declared with `throws`). |
-| D15 | Performance (CLAUDE.md law): no change may make the recorded baselines slower. Baselines are recorded in `docs/performance-baseline.md` before runtime changes. |
+| D15 | Performance (CLAUDE.md law): no change may make the recorded baselines slower. Baselines are recorded in `spec/performance-baseline.md` before runtime changes. |
 
 ## Specification
 
@@ -291,7 +291,7 @@ Four spaces, `{` same line, `}` own line except `} else`/`} catch`/`} finally`/`
 
 1. Old front end remains runnable (D2); the regression suites for old tests must stay byte-identical until the old path is deleted.
 2. New tests live beside old ones in `tests/cases/<feature>/` with names ending `_j.ash`.
-3. Before runtime changes, `docs/performance-baseline.md` records `fib(30)` and sum-to-20M for `ashvm`; they are re-measured after each major runtime change.
+3. Before runtime changes, `spec/performance-baseline.md` records `fib(30)` and sum-to-20M for `ashvm`; they are re-measured after each major runtime change.
 
 ## Migration phases
 
