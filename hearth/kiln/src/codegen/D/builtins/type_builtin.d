@@ -3,11 +3,11 @@ src/codegen/O/builtins/type_builtin.o: \
  src/codegen/H/builtins/type_builtin.h src/codegen/H/strings/strings.h \
  src/codegen/H/emit/emit_internal.h src/codegen/H/emit/emit.h \
  src/codegen/H/emit/value.h src/parser/H/core/parser.h \
- src/lexer/H/lexer.h
+ ../front/src/ir/H/ir_lex.h
 src/codegen/H/builtins/type_builtin.h:
 src/codegen/H/strings/strings.h:
 src/codegen/H/emit/emit_internal.h:
 src/codegen/H/emit/emit.h:
 src/codegen/H/emit/value.h:
 src/parser/H/core/parser.h:
-src/lexer/H/lexer.h:
+../front/src/ir/H/ir_lex.h:

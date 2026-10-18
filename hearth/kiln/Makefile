@@ -1,21 +1,17 @@
 CC = gcc
 .DEFAULT_GOAL := all
 KILN_RPATH_LIST = $(abspath ../../bin/extensions/pyre):/usr/local/lib/kiln
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -DKILN_RPATH='"$(KILN_RPATH_LIST)"'
-LDFLAGS =
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -DKILN_RPATH='"$(KILN_RPATH_LIST)"'
+LDFLAGS = ../../bin/libashfront.a
 
 KILN_SRC = \
     src/app/C/main.c \
     src/app/C/target.c \
-    src/lexer/C/lexer.c \
-    src/lexer/C/lexer_import.c \
     src/parser/C/core/parser.c \
     src/parser/C/declarations/constants.c \
     src/parser/C/declarations/functions.c \
     src/parser/C/declarations/module_state.c \
     src/parser/C/declarations/vars.c \
-    src/parser/C/imports/import_paths.c \
-    src/parser/C/imports/imports.c \
     src/parser/C/statements/each_loop.c \
     src/parser/C/statements/loop_stack.c \
     src/parser/C/statements/parser_control.c \
@@ -108,7 +104,14 @@ BIN = ../../bin/kiln
 
 all: $(BIN)
 
-$(BIN): $(KILN_OBJ)
+# The shared front end (lexer, parser, type checker, lowering) is the only frontend kiln has;
+# front's own Makefile decides whether the library is up to date.
+../../bin/libashfront.a: FORCE
+	$(MAKE) -C ../front
+
+FORCE:
+
+$(BIN): $(KILN_OBJ) ../../bin/libashfront.a
 	mkdir -p ../../bin
 	$(CC) $(CFLAGS) -o $(BIN) $(KILN_OBJ) $(LDFLAGS)
 

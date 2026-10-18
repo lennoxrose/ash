@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "parser/H/declarations/functions.h"
 #include "parser/H/core/parser.h"
-#include "lexer/H/lexer.h"
+#include "ir/H/ir_lex.h"
 #include "codegen/H/emit/emit.h"
 #include "codegen/H/emit/layout.h"
 

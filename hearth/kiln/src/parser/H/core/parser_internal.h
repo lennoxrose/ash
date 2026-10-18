@@ -12,12 +12,6 @@ void forge_statement(void);
 void attempt_statement(void);
 void each_statement(void);
 
-// statement() itself (parser.c's dispatcher) also needs to be callable
-// from imports.c's parse_imported_file_body(), which drives the same
-// top-level "while not EOF, parse a statement" loop for a recursively
-// parsed imported file -- so it's declared here rather than staying
-// static to parser.c.
 void statement(void);
-void import_statement(void);
 
 #endif

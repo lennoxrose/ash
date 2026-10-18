@@ -1,6 +1,6 @@
 #ifndef KILN_CODEGEN_EXPR_H
 #define KILN_CODEGEN_EXPR_H
-#include "lexer/H/lexer.h"
+#include "ir/H/ir_lex.h"
 
 // Parses one expression and emits real x86-64 code for it via the
 // shared `code` buffer (see parser/H/core/parser.h) -- consumes tokens

@@ -7,7 +7,7 @@ src/codegen/O/io/argv_builtin_windows.o: \
  src/codegen/H/emit/runtime_layout.h \
  src/codegen/H/emit/runtime_import_enum.h \
  src/codegen/H/emit/runtime_exports.def src/pe/H/pe_imports.def \
- src/parser/H/core/parser.h src/lexer/H/lexer.h \
+ src/parser/H/core/parser.h ../front/src/ir/H/ir_lex.h \
  src/parser/H/declarations/vars.h
 src/codegen/H/io/argv_builtin_internal.h:
 src/codegen/H/emit/emit.h:
@@ -22,5 +22,5 @@ src/codegen/H/emit/runtime_import_enum.h:
 src/codegen/H/emit/runtime_exports.def:
 src/pe/H/pe_imports.def:
 src/parser/H/core/parser.h:
-src/lexer/H/lexer.h:
+../front/src/ir/H/ir_lex.h:
 src/parser/H/declarations/vars.h:

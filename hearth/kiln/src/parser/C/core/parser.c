@@ -7,7 +7,6 @@
 #include "parser/H/declarations/module_state.h"
 #include "parser/H/statements/loop_stack.h"
 #include "parser/H/declarations/functions.h"
-#include "parser/H/imports/imports.h"
 #include "parser/H/declarations/constants.h"
 #include "codegen/H/expressions/expr.h"
 #include "codegen/H/emit/emit_sse.h"
@@ -40,12 +39,10 @@ void expect(TokenType type, const char *message) {
 }
 
 // statement() is shared between top-level parsing (compile_program's own
-// loop, and imports.c's parse_imported_file_body()) and here, inside a
-// forge/given/during/each/attempt body -- block_depth distinguishes the
-// two so the "only forge/local at an imported file's top level" guard in
-// statement() only fires for genuinely top-level statements, never for an
-// ordinary `yield`/`given`/etc. nested inside an imported function's own
-// body.
+// loop) and here, inside a forge/given/during/each/attempt body --
+// block_depth distinguishes the two so the "only forge/local at the unit's
+// top level" guard in statement() only fires for genuinely top-level
+// statements.
 static int block_depth = 0;
 
 void block(void) {
@@ -380,9 +377,6 @@ static void next_statement(void) {
 // condition parens -- anything else is a parse error, per the project rule
 // that malformed input always fails cleanly)
 void statement(void) {
-    if (current.type == TOKEN_IMPORT) { import_statement(); return; }
-    imports_close_block();
-
     const char *ns; int ns_len;
     get_import_namespace(&ns, &ns_len);
     if (ns_len > 0 && block_depth == 0 && current.type != TOKEN_FORGE && current.type != TOKEN_LOCAL) {
@@ -407,16 +401,22 @@ void statement(void) {
     if (current.type == TOKEN_NEXT) { next_statement(); return; }
     if (current.type == TOKEN_RAISE) { raise_statement(); return; }
     if (current.type == TOKEN_IDENTIFIER) { assignment_statement(); return; }
-    parse_error("expected 'say', 'local', 'given', 'during', 'forge', 'yield', 'attempt', 'each', 'stop', 'next', 'raise', '@import', or an assignment");
+    parse_error("expected 'say', 'local', 'given', 'during', 'forge', 'yield', 'attempt', 'each', 'stop', 'next', 'raise', or an assignment");
 }
 
-void compile_program(const char *source, const char *source_path, CodeBuf *out) {
+// The IR is one unit of top-level `forge` and `local` declarations (see
+// ir/H/ir_lex.h) that lives in a single module namespace; the program runs
+// by calling its `start` function. The lowering owns the unit, so there is no
+// import machinery: only this one namespace exists.
+#define IR_NAMESPACE "g"
+
+void compile_program(const char *source, CodeBuf *out) {
     code = out;
     code_init(code);
+    set_import_namespace(IR_NAMESPACE, (int)strlen(IR_NAMESPACE));
     prescan_functions(source);
     lexer_init(source);
     advance_token();
-    imports_init(source_path);
 
     // The kernel hands a freshly-started process RSP pointing at
     // [argc, argv[0], ..., NULL, envp...] -- this is the ONLY point in
@@ -450,5 +450,9 @@ void compile_program(const char *source, const char *source_path, CodeBuf *out) 
 
     while (current.type != TOKEN_EOF) statement();
     check_all_functions_defined();
+    set_import_namespace(NULL, 0);
+    KilnFunction *start = resolve_function(IR_NAMESPACE ".start", (int)strlen(IR_NAMESPACE ".start"));
+    if (start == NULL) parse_error("program has no entry point");
+    emit_call_back(code, start->code_offset);
     codegen_exit0(code);
 }

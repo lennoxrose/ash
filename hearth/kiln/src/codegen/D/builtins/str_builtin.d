@@ -5,7 +5,7 @@ src/codegen/O/builtins/str_builtin.o: \
  src/codegen/H/runtime/heap.h src/codegen/H/runtime/errors.h \
  src/codegen/H/strings/strings.h src/codegen/H/runtime/number_format.h \
  src/codegen/H/emit/bytes.h src/parser/H/core/parser.h \
- src/lexer/H/lexer.h
+ ../front/src/ir/H/ir_lex.h
 src/codegen/H/builtins/convert_builtins.h:
 src/codegen/H/emit/emit.h:
 src/codegen/H/emit/emit_sse.h:
@@ -16,4 +16,4 @@ src/codegen/H/strings/strings.h:
 src/codegen/H/runtime/number_format.h:
 src/codegen/H/emit/bytes.h:
 src/parser/H/core/parser.h:
-src/lexer/H/lexer.h:
+../front/src/ir/H/ir_lex.h:

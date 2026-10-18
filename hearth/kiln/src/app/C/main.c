@@ -9,23 +9,11 @@
 #include "pe/H/pe_writer.h"
 #include "pe/H/pe_dll_writer.h"
 #include "diagnostics/H/diagnostics.h"
+#include "jdriver/H/jdriver.h"
 #include "app/H/target.h"
 
-static char *read_file(const char *path) {
-    FILE *file = fopen(path, "rb");
-    if (!file) { fprintf(stderr, "kiln: could not open file: %s\n", path); exit(1); }
-    fseek(file, 0L, SEEK_END);
-    long size = ftell(file);
-    rewind(file);
-    char *buffer = malloc((size_t)size + 1);
-    fread(buffer, 1, (size_t)size, file);
-    buffer[size] = '\0';
-    fclose(file);
-    return buffer;
-}
-
 static void usage(const char *prog) {
-    fprintf(stderr, "usage: %s <file.ash> -o <output> [--target=linux|windows] [--link=static|shared]\n", prog);
+    fprintf(stderr, "usage: %s <file.ash> -o <output> [--target=linux|windows] [--link=static|shared] [--wrap-int]\n", prog);
     fprintf(stderr, "       %s --emit-runtime -o <libkilnrt.so|libkilnrt.dll> [--target=linux|windows]\n", prog);
     exit(1);
 }
@@ -65,14 +53,16 @@ int main(int argc, char *argv[]) {
             : elf_write_shared_runtime(argv[3]);
     }
 
-    if (argc < 4 || argc > 6) usage(argv[0]);
+    if (argc < 4 || argc > 7) usage(argv[0]);
     if (strcmp(argv[2], "-o") != 0) usage(argv[0]);
 
     const char *input_path = argv[1];
     const char *output_path = argv[3];
 
+    int wrap_int = 0;
     for (int i = 4; i < argc; i++) {
-        if (strncmp(argv[i], "--target=", 9) == 0) kiln_set_target(parse_target(argv[i], argv[0]));
+        if (strcmp(argv[i], "--wrap-int") == 0) wrap_int = 1;
+        else if (strncmp(argv[i], "--target=", 9) == 0) kiln_set_target(parse_target(argv[i], argv[0]));
         else if (strncmp(argv[i], "--link=", 7) == 0) kiln_set_link_mode(parse_link(argv[i], argv[0]));
         else usage(argv[0]);
     }
@@ -92,12 +82,12 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    char *source = read_file(input_path);
-    diagnostics_set_source(source, input_path);
+    char *ir = jdriver_compile_file(input_path, wrap_int);
+    if (!ir) return 1;
+    diagnostics_set_source(ir, "<internal ir>");
 
     CodeBuf machine_code;
-    compile_program(source, input_path, &machine_code);
-    free(source);
+    compile_program(ir, &machine_code);
 
     int status;
     if (kiln_get_target() == KILN_TARGET_WINDOWS) {
