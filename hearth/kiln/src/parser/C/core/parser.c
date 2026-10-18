@@ -75,10 +75,10 @@ static void local_statement(void) {
     // that file's own functions -- the sibling guard further down in
     // statement() already gets this right, this one didn't.
     if (ns_len > 0 && block_depth == 0) {
-        // A top-level `local` of an imported file is a module-level variable: the
-        // expression runs once, at the point of the `@import`, and the value lives
-        // in a global slot every function of that file (and `ns.NAME`) can read,
-        // and `NAME = ...;` can update (see parser/H/declarations/module_state.h).
+        // A top-level `local` of the IR unit is a module-level variable: the
+        // expression runs once, at program start, and the value lives in a global
+        // slot every function of the unit can read and `NAME = ...;` can update
+        // (see parser/H/declarations/module_state.h).
         int state_slot = module_state_declare(name, len);
         codegen_expression();
         expect(TOKEN_SEMICOLON, "expected ';' after statement");
