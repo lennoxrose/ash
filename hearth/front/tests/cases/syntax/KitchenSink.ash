@@ -92,7 +92,7 @@ public class KitchenSink extends Animal<String> implements Runnable {
         x = x >>> 2 << 1;
         List<Map<String, Integer>> nested = new ArrayList<>();
         int r = flag ? 1 : 2;
-        String s = (String) null;
+        String? s = (String?) null;
         int cast = (int) d;
         if (x > 3) {
             x++;
@@ -131,7 +131,7 @@ public class KitchenSink extends Animal<String> implements Runnable {
         } catch (IllegalArgumentException | IllegalStateException e) {
             System.out.println(e.getMessage());
         } catch (Exception e) {
-            throw e;
+            throw new RuntimeException("rethrown", e);
         } finally {
             x = 0;
         }

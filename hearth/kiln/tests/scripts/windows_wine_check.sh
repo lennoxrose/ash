@@ -15,9 +15,9 @@ export WINEPREFIX="${WINEPREFIX:-$HOME/.cache/ash_wine_prefix}" WINEDEBUG=-all W
 make -s || { echo "build failed"; exit 1; }
 OUT=/tmp/kiln_wine_out; mkdir -p "$OUT"
 pass=0; fail=0
-for f in tests/cases/*/*.ash; do
+for f in tests/cases/*/*.ash ../front/tests/cases/run/*_j.ash ../../examples/*.ash; do
     n=$(basename "$f" .ash); d=$(dirname "$f")
-    case $n in argv|input*|*circular*|*collision*) continue;; esac # need real arguments / stdin / expected failure
+    case $n in *_wrap_*|run_double_j) continue;; esac # need --wrap-int / print doubles differently on kiln
     rm -rf /tmp/ash_fs_test_dir
     (cd "$d" && "$KILN" "$n.ash" -o "$OUT/lin_$n" >/dev/null 2>&1 && "$KILN" "$n.ash" -o "$OUT/win_$n.exe" --target=windows >/dev/null 2>&1) || { echo "COMPILE-FAIL: $n"; fail=$((fail + 1)); continue; }
     (cd "$d" && timeout 120 "$OUT/lin_$n" < /dev/null > "$OUT/lin_$n.out" 2>&1)

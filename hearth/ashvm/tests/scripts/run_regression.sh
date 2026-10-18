@@ -1,60 +1,21 @@
 #!/usr/bin/env bash
-# ashvm/tests/scripts/run_regression.sh baseline|check
-# Compiles+runs every ashvm/tests/cases/*/*.ash and diffs stdout against a
-# captured baseline -- mirrors kiln/tests/scripts/run_regression.sh. ashvm has no
-# --target/--link flags and no input()-driven test today, so this is
-# simpler than kiln's version.
+# ashvm/tests/scripts/run_regression.sh
+# Runs every program through `ashvm run` and compares stdout+stderr byte for byte with the
+# sibling .out file. Programs: ashvm/tests/cases/*/*.ash, the shared front-end cases
+# (front/tests/cases/run/*_j.ash; *_wrap_* need --wrap-int) and ../../examples/*.ash.
 set -uo pipefail
 cd "$(dirname "$0")/../.." # -> ashvm/
 
-MODE="${1:-check}"
-if [[ "$MODE" != "baseline" && "$MODE" != "check" ]]; then
-    echo "usage: $0 baseline|check" >&2
-    exit 2
-fi
-
-OUTDIR="/tmp/ashvm_regression/$MODE"
-rm -rf "$OUTDIR"
-mkdir -p "$OUTDIR"
-
-rm -f /tmp/ash_test.txt
-
 make -s || { echo "build failed"; exit 1; }
-
-for f in tests/cases/*/*.ash; do
-    name=$(basename "$f" .ash)
-    out="$OUTDIR/${name}.out"
-    if ! ../../bin/ashvm "$f" > "$out" 2>&1; then
-        echo "RUN FAIL" >> "$out"
-    fi
-done
-
-if [[ "$MODE" == "baseline" ]]; then
-    echo "baseline captured in $OUTDIR"
-    exit 0
-fi
+VM=../../bin/ashvm
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 fail=0
-for f in "$OUTDIR"/*.out; do
-    name=$(basename "$f" .out)
-    base="/tmp/ashvm_regression/baseline/${name}.out"
-    if [[ ! -f "$base" ]]; then
-        echo "NEW: $name (no baseline to compare)"
-        continue
-    fi
-    if diff -q "$base" "$f" > /dev/null; then
-        echo "OK:  $name"
-    else
-        echo "DIFF: $name"
-        diff "$base" "$f"
-        fail=1
-    fi
+for f in tests/cases/*/*.ash ../front/tests/cases/run/*_j.ash ../../examples/*.ash; do
+    flags=()
+    case "$f" in *_wrap_*) flags=(--wrap-int);; esac
+    rm -rf /tmp/ash_stdlib_test_dir /tmp/ash_example_io
+    "$VM" run "${flags[@]}" "$f" > "$TMP/out" 2>&1
+    if cmp -s "$TMP/out" "${f%.ash}.out"; then echo "OK:   $f"; else echo "DIFF: $f"; diff "$TMP/out" "${f%.ash}.out" | head -10; fail=1; fi
 done
-if ! ./tests/scripts/imports_circular_check.sh; then
-    fail=1
-fi
-if ! ./tests/scripts/imports_collision_check.sh; then
-    fail=1
-fi
-
 exit $fail

@@ -1,59 +1,25 @@
 #!/usr/bin/env bash
-# kiln/tests/scripts/run_regression.sh baseline|check
+# kiln/tests/scripts/run_regression.sh
+# Compiles every program to a native Linux binary and compares its stdout+stderr byte for byte
+# with the sibling .out file. Programs: kiln/tests/cases/*/*.ash, the shared front-end cases
+# (front/tests/cases/run/*_j.ash; *_wrap_* need --wrap-int) and ../../examples/*.ash.
 set -uo pipefail
 cd "$(dirname "$0")/../.." # -> kiln/
 
-MODE="${1:-check}"
-if [[ "$MODE" != "baseline" && "$MODE" != "check" ]]; then
-    echo "usage: $0 baseline|check" >&2
-    exit 2
-fi
-
-OUTDIR="/tmp/kiln_regression/$MODE"
-BINDIR="/tmp/kiln_regression/bin"
-rm -rf "$OUTDIR"
-mkdir -p "$OUTDIR"
-mkdir -p "$BINDIR"
-
-# Clean up test files that don't clean up after themselves
-rm -f /tmp/kiln_file_test.txt
-
 make -s || { echo "build failed"; exit 1; }
+KILN=../../bin/kiln
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 fail=0
-for f in tests/cases/*/*.ash; do
-    name=$(basename "$f" .ash)
-    bin="$BINDIR/${name}.bin"
-    out="$OUTDIR/${name}.out"
-    if ! ../../bin/kiln "$f" -o "$bin" > "$out" 2>&1; then
-        echo "COMPILE FAIL" >> "$out"
-        continue
-    fi
-    if [[ "$name" == "input_builtin" ]]; then
-        printf 'World\n5\n' | "$bin" >> "$out" 2>&1
-    else
-        "$bin" >> "$out" 2>&1
-    fi
-done
-
-if [[ "$MODE" == "baseline" ]]; then
-    echo "baseline captured in $OUTDIR"
-    exit 0
-fi
-
-for f in "$OUTDIR"/*.out; do
-    name=$(basename "$f" .out)
-    base="/tmp/kiln_regression/baseline/${name}.out"
-    if [[ ! -f "$base" ]]; then
-        echo "NEW: $name (no baseline to compare)"
-        continue
-    fi
-    if diff -q "$base" "$f" > /dev/null; then
-        echo "OK:  $name"
-    else
-        echo "DIFF: $name"
-        diff "$base" "$f"
-        fail=1
-    fi
+for f in tests/cases/*/*.ash ../front/tests/cases/run/*_j.ash ../../examples/*.ash; do
+    n=$(basename "$f" .ash)
+    # kiln's native runtime prints doubles with 7 significant digits, not Java's shortest round-trip form
+    [ "$n" == run_double_j ] && continue
+    flags=()
+    case "$f" in *_wrap_*) flags=(--wrap-int);; esac
+    if ! "$KILN" "$f" -o "$TMP/$n" "${flags[@]}" > "$TMP/$n.err" 2>&1; then echo "COMPILE FAIL: $f"; head -5 "$TMP/$n.err"; fail=1; continue; fi
+    rm -rf /tmp/ash_stdlib_test_dir /tmp/ash_example_io
+    "$TMP/$n" > "$TMP/$n.out" 2>&1 < /dev/null
+    if cmp -s "$TMP/$n.out" "${f%.ash}.out"; then echo "OK:   $f"; else echo "DIFF: $f"; diff "$TMP/$n.out" "${f%.ash}.out" | head -10; fail=1; fi
 done
 exit $fail

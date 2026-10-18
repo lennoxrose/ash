@@ -2,10 +2,12 @@ CC = gcc
 .DEFAULT_GOAL := all
 CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -DASH_STDLIB_DIR=\"$(abspath stdlib)\"
 
-# Shared front end for new (Java-like) Ash: lexer, parser, AST, type checker and
-# lowering, linked by both ashvm and kiln (see MIGRATION.md, decision D12).
+# Shared front end for Ash: lexer, parser, AST, type checker, lowering and the internal IR
+# lexer, built as libashfront.a and linked by both ashvm and kiln (see MIGRATION.md, D12).
+# There is no front-end executable: ashvm and kiln are the user-facing tools.
 # Same layout rule as the other subprojects: src/<sub>/C/x.c -> src/<sub>/O/x.o.
 FRONT_SRC = \
+    src/ir/C/ir_lex.c \
     src/jcommon/C/jcommon.c \
     src/jlex/C/jlex.c \
     src/jparse/C/jparse_decl.c \
@@ -22,42 +24,35 @@ FRONT_SRC = \
     src/jlower/C/lower_class.c \
     src/jlower/C/lower_prelude.c \
     src/jlower/C/lower_prelude_long.c \
-    src/jlower/C/lower_prune.c
+    src/jlower/C/lower_prune.c \
+    src/jdriver/C/jdriver.c \
+    src/jrepl/C/jrepl.c
 
 obj_of = $(patsubst %.c,%.o,$(subst /C/,/O/,$(1)))
 dep_of = $(patsubst %.c,%.d,$(subst /C/,/D/,$(1)))
 FRONT_OBJ = $(foreach s,$(FRONT_SRC),$(call obj_of,$(s)))
-APP_SRC = src/app/C/main.c
-APP_OBJ = $(foreach s,$(APP_SRC),$(call obj_of,$(s)))
-ALL_DEP = $(foreach s,$(FRONT_SRC) $(APP_SRC),$(call dep_of,$(s)))
+ALL_DEP = $(foreach s,$(FRONT_SRC),$(call dep_of,$(s)))
 
 define compile_rule
 $(call obj_of,$(1)): $(1)
 	@mkdir -p $$(dir $$@) $$(dir $(call dep_of,$(1)))
 	$$(CC) $$(CFLAGS) -MMD -MP -MF $(call dep_of,$(1)) -MT $$@ -c $$< -o $$@
 endef
-$(foreach s,$(FRONT_SRC) $(APP_SRC),$(eval $(call compile_rule,$(s))))
+$(foreach s,$(FRONT_SRC),$(eval $(call compile_rule,$(s))))
 
 LIB = ../../bin/libashfront.a
-TOOL = ../../bin/ashfront
 
-all: $(LIB) $(TOOL)
-
-lib: $(LIB)
+all: $(LIB)
 
 $(LIB): $(FRONT_OBJ)
 	mkdir -p ../../bin
 	ar rcs $@ $(FRONT_OBJ)
-
-$(TOOL): $(APP_OBJ) $(LIB)
-	mkdir -p ../../bin
-	$(CC) $(CFLAGS) -o $@ $(APP_OBJ) $(LIB)
 
 -include $(ALL_DEP)
 
 clean:
 	find src -name '*.o' -delete
 	find src -name '*.d' -delete
-	rm -f $(LIB) $(TOOL)
+	rm -f $(LIB)
 
-.PHONY: all lib clean
+.PHONY: all clean
