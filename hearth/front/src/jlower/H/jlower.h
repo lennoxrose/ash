@@ -3,9 +3,9 @@
 
 #include "jtypes/H/jtypes.h"
 
-/* Lowering of a checked new-Ash program to old-Ash source for the existing ashvm
- * (MIGRATION.md Phase 4). The result is an *imported module* (top-level `local`s of an
- * imported file are visible to its functions) plus a two-line driver.
+/* Lowering of a checked new-Ash program to the internal IR (ir/H/ir_lex.h) that ashvm and kiln consume.
+ * The result is one unit of top-level `forge` and `local` declarations; `forge start()` is the program
+ * entry, and the consumer calls it. The IR is a compiler-internal representation, not Ash source.
  *
  * Ownership: all returned strings live in the front end's arena and are never freed.
  * Errors: constructs the backend cannot express yet are reported through cerr(); the
@@ -17,8 +17,5 @@ extern int jl_wrap_int;
 
 /* Lowers every loaded class; `entry` supplies the class holding main. Returns the module text. */
 char *jlower_program(JClass *entry);
-
-/* The two-line driver that imports the module file `module_name` and starts it. */
-char *jlower_driver(const char *module_name);
 
 #endif

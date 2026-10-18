@@ -53,7 +53,7 @@ JType *check_expr_ex(Ctx *cx, Node *n, JType *expected, int allow_type); /* allo
 JType *check_cond(Ctx *cx, Node *n);
 int check_assignable(Ctx *cx, Node *expr, JType *from, JType *to, const char *what);
 void check_coerce(Ctx *cx, Node *expr, JType *to, const char *what); /* check_expr + assign check */
-JLocal *declare_local(Ctx *cx, Node *at, const char *name, JType *t, int flags, int is_param);
+JLocal *jt_declare_local(Ctx *cx, Node *at, const char *name, JType *t, int flags, int is_param);
 JLocal *lookup_local(Ctx *cx, const char *name);
 void report_throw(Ctx *cx, Node *at, JType *exc);
 int accessible(Ctx *cx, JClass *owner, int flags);

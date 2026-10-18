@@ -119,7 +119,7 @@ static void check_local(Ctx *cx, Node *n) {
         }
     }
     n->type = t;
-    JLocal *l = declare_local(cx, n, n->name, t, n->flags, 0);
+    JLocal *l = jt_declare_local(cx, n, n->name, t, n->flags, 0);
     l->has_init = n->b != NULL;
     n->sym = l;
     n->rk = R_LOCAL;
@@ -202,7 +202,7 @@ JType *check_switch(Ctx *cx, Node *n, JType *expected) {
                     }
                     j_list_push(&type_seen, pt->cls);
                 }
-                JLocal *l = declare_local(cx, lb, lb->name, ty_with_null(pt, 0), 0, 0);
+                JLocal *l = jt_declare_local(cx, lb, lb->name, ty_with_null(pt, 0), 0, 0);
                 l->has_init = 1;
                 lb->sym = l;
             } else if (lb->kind == N_LIT_NULL) {
@@ -339,7 +339,7 @@ static void check_try(Ctx *cx, Node *n) {
         int mark;
         push_scope(cx, &mark);
         if (vt) {
-            JLocal *l = declare_local(cx, c, c->name, vt, 0, 0);
+            JLocal *l = jt_declare_local(cx, c, c->name, vt, 0, 0);
             l->has_init = 1;
         }
         check_block_body(cx, c->b);
@@ -469,7 +469,7 @@ void check_stmt(Ctx *cx, Node *n) {
             }
             int mark;
             push_scope(cx, &mark);
-            JLocal *l = declare_local(cx, n, n->name, vt, 0, 0);
+            JLocal *l = jt_declare_local(cx, n, n->name, vt, 0, 0);
             l->has_init = 1;
             n->sym = l;
             n->type = vt;

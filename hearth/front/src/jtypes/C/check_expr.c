@@ -75,7 +75,7 @@ JLocal *lookup_local(Ctx *cx, const char *name) {
     return NULL;
 }
 
-JLocal *declare_local(Ctx *cx, Node *at, const char *name, JType *t, int flags, int is_param) {
+JLocal *jt_declare_local(Ctx *cx, Node *at, const char *name, JType *t, int flags, int is_param) {
     for (int i = cx->locals.count - 1; i >= 0; i--) {
         JLocal *o = cx->locals.items[i];
         if (strcmp(o->name, name) == 0) {
@@ -657,7 +657,7 @@ JType *check_lambda(Ctx *cx, Node *lam, JType *target, JType **result) {
         } else if (pt->kind == TY_TVAR && pt->tv->owner_m) {
             pt = ty_erase_bound(pt); /* uninferred method type variable */
         }
-        JLocal *l = declare_local(cx, p, p->name, pt, p->flags, 1);
+        JLocal *l = jt_declare_local(cx, p, p->name, pt, p->flags, 1);
         l->has_init = 1;
     }
     JList rts = {0};
@@ -1223,7 +1223,7 @@ static JType *check_instanceof(Ctx *cx, Node *n) {
         else if (!castable(e, t)) cerr(n, "incompatible types: %s can never be an instance of %s", ty_str(e), ty_str(t));
     }
     if (n->name) {
-        JLocal *l = declare_local(cx, n, n->name, ty_with_null(t, 0), 0, 0);
+        JLocal *l = jt_declare_local(cx, n, n->name, ty_with_null(t, 0), 0, 0);
         l->is_temp = 1;
         l->has_init = 1;
         n->sym = l;

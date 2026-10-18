@@ -208,7 +208,7 @@ void check_method_body(JClass *c, JMethod *m) {
     for (int i = 0; i < m->params.count; i++) {
         JParam *p = m->params.items[i];
         Node *pn = (d->l1.count > i) ? d->l1.items[i] : d;
-        JLocal *l = declare_local(&cx, pn, p->name, p->type, (d->l1.count > i) ? pn->flags : 0, 1);
+        JLocal *l = jt_declare_local(&cx, pn, p->name, p->type, (d->l1.count > i) ? pn->flags : 0, 1);
         l->has_init = 1;
     }
     Node *body = d->b;

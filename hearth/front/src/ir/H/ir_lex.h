@@ -1,5 +1,10 @@
-#ifndef LEXER_H
-#define LEXER_H
+#ifndef ASH_IR_LEX_H
+#define ASH_IR_LEX_H
+
+/* Lexer for the internal IR: the text form hearth/front lowers new Ash to and
+ * that the ashvm compiler and the kiln code generator consume. It is not Ash
+ * source syntax and no tool reads it from a file or from the user; the only
+ * producer is jlower. Shared by ashvm and kiln so neither carries its own lexer. */
 
 typedef enum {
     TOKEN_SAY,
@@ -9,7 +14,6 @@ typedef enum {
     TOKEN_DURING,
     TOKEN_EACH,
     TOKEN_IN,
-    TOKEN_IMPORT,
     TOKEN_FORGE,
     TOKEN_YIELD,
     TOKEN_ATTEMPT,
@@ -22,7 +26,6 @@ typedef enum {
     TOKEN_NONE,
     TOKEN_IDENTIFIER,
     TOKEN_STRING,
-    TOKEN_IMPORT_PATH,
     TOKEN_EQUAL,
     TOKEN_EQUAL_EQUAL,
     TOKEN_BANG_EQUAL,
@@ -60,6 +63,7 @@ typedef enum {
     TOKEN_SLASH_EQUAL,
     TOKEN_PLUS_PLUS,
     TOKEN_MINUS_MINUS,
+    TOKEN_STAR_STAR,
     TOKEN_NUMBER,
     TOKEN_SEMICOLON,
     TOKEN_EOF,
@@ -73,17 +77,15 @@ typedef struct {
     int line;
 } Token;
 
-void lexer_init(const char *source);
-Token lexer_next_token(void);
-
 typedef struct {
     const char *start;
     const char *current;
     int line;
 } LexerState;
 
+void lexer_init(const char *source);
+Token lexer_next_token(void);
 LexerState lexer_save_state(void);
 void lexer_restore_state(LexerState state);
-Token lexer_scan_import_path(void);
 
 #endif
