@@ -13,26 +13,12 @@ import ash.util.HashMap;
 //   [x] Phase 0  specification locked (MIGRATION.md decisions D1-D15)
 //   [x] Phase 1  lexer: new keywords, // /* */ /// comments
 //   [x] Phase 2  parser + AST: everything in this file parses
-//   [x] Phase 3  type checker: `ashfront --check main.ash` passes
+//   [x] Phase 3  type checker: `ashvm check main.ash` passes
 //                (types, nullability, generics, overloads, exceptions, switch)
-//   [x] Phase 4  lowering: `ashfront --run main.ash` (ashvm), `--build` (kiln native)
+//   [x] Phase 4  lowering: `ashvm run main.ash`, `kiln main.ash -o main` (native)
 //   [x] Phase 5  stdlib: lang util io json math cli test time concurrent net web game desktop
 //                (the last five are pure-Ash models; real OS access needs new VM builtins)
-//   [x] Phase 6  examples/ (17 programs), README, API docs on every stdlib declaration
-//
-// Old                      New
-//   local x = 5;           int x = 5;  /  var x = 5;
-//   say x;                 System.out.println(x);
-//   given / otherwise      if / else
-//   during                 while
-//   each x in xs           for (int x : xs)
-//   stop; next;            break; continue;
-//   forge f(a) { yield }   int f(int a) { return ...; }
-//   attempt / handle       try / catch
-//   raise v;               throw new SomeException(...);
-//   yes / no / none        true / false / null
-//   @import <f.ash>;       import pkg.Type;
-//   and / or / not         && / || / !
+//   [x] Phase 6  examples/ (18 programs), README, API docs on every stdlib declaration
 // ---------------------------------------------------------------------------
 
 /// A sealed interface with a default method.

@@ -185,7 +185,7 @@ Complete this table and implement it consistently:
 | ID | Decision |
 |---|---|
 | D1 | `import ... as` is dropped. Imports name a type or package: `import ash.util.List;`, `import ash.util.*;`. |
-| D2 | The old front end stays frozen and runnable (`.ash` files without a `package`/`class` header go through it) until the new front end reaches parity; then it is deleted. New front end is selected per file by syntax detection (a file whose first token is `package`, `import`, `public`, `class`, `interface`, `enum`, `record`, `abstract`, `final` or `sealed` is new Ash). |
+| D2 | The old front end is deleted (executed 2026-10-18): `ashvm` and `kiln` accept only new Ash. Old-syntax source is rejected by the new front end with migration messages (D3). |
 | D3 | Old syntax is diagnosed by context (e.g. `say` followed by an expression start at statement position), not by reserving the words. `next`, `stop`, `each`, `no`, `in`, `as`, `say` ... are ordinary identifiers in new Ash. |
 | D4 | `T[]` is the surface array syntax; `Array<T>` is its canonical type name. |
 | D5 | `System.out.println` is the print API. `Console.println` is removed from the spec. |
@@ -198,7 +198,7 @@ Complete this table and implement it consistently:
 | D12 | One shared front end (lexer, parser, AST, type checker) lives in `hearth/front/` and is linked by both `ashvm` and `kiln`. |
 | D13 | Primitive boolean type is spelled `bool`. |
 | D14 | Checked exceptions are enforced (Exception subclasses not under RuntimeException must be caught or declared with `throws`). |
-| D2a | **Amendment (2026-10-17, taken so the migration could proceed; revert by saying so).** Old Ash is kept as the *internal IR* the new front end lowers to, because that is how one front end feeds both `ashvm` and `kiln` without touching either VM. It is no longer a supported application language: `ashfront` rejects it with migration messages. Physically deleting it needs a direct emitter from the typed AST. |
+| D2a | **Resolved (2026-10-18).** The old-Ash-shaped text the front end lowers to is kept as a compiler-internal IR, owned by `hearth/front/src/ir` (one shared IR lexer) and passed in memory from `hearth/front/src/jdriver` to the `ashvm` compiler and the `kiln` code generator. It is not Ash source: no tool reads it from a file, there is no `@import` in it (the lowering emits one unit and the consumer calls its `start`), and no CLI, REPL, example, test or document presents it as a language. Replacing it with a binary IR driven directly by the typed AST remains possible but is not required. |
 | D15 | Performance (CLAUDE.md law): no change may make the recorded baselines slower. Baselines are recorded in `spec/performance-baseline.md` before runtime changes. |
 
 ## Specification
@@ -232,7 +232,7 @@ Contextual: `var`, `record`, `sealed`, `permits`. `else if` is `else` followed b
 
 ### Numerics
 
-- `int` is 32-bit two's complement, `long` 64-bit, `short` 16, `byte` 8, `char` 16-bit unsigned, `float` 32-bit IEEE, `double` 64-bit IEEE. Integer overflow wraps (`int` exactly with `ashfront --wrap-int`; `long` exactly with the same flag; without it `long` is limited to 2^53). Division by zero for integers throws `ArithmeticException`; for floating point it yields inf/NaN.
+- `int` is 32-bit two's complement, `long` 64-bit, `short` 16, `byte` 8, `char` 16-bit unsigned, `float` 32-bit IEEE, `double` 64-bit IEEE. Integer overflow wraps (`int` exactly with `--wrap-int`; `long` exactly with the same flag; without it `long` is limited to 2^53). Division by zero for integers throws `ArithmeticException`; for floating point it yields inf/NaN.
 - Integer `/` truncates toward zero; `%` takes the sign of the dividend (`-7 % 3 == -1`).
 - Mixed arithmetic widens: byte/short/char -> int -> long -> float -> double. Narrowing needs an explicit cast.
 - Literals: `42` int, `42L` long, `1.5` double, `1.5f` float, `1e3` double, `0x1F`, `'a'` char, escapes `\n \t \r \\ \" \' \0 \xHH`.
@@ -290,10 +290,10 @@ Four spaces, `{` same line, `}` own line except `} else`/`} catch`/`} finally`/`
 
 ### Runtime representation (as implemented)
 
-| Ash value | Old-Ash runtime value |
+| Ash value | VM runtime value |
 |---|---|
 | `int long short byte float double char` | number (char is its code point; ints are exact below 2^53, see limits table) |
-| `bool`, `null` | `yes`/`no`, `none` |
+| `bool`, `null` | IR booleans, IR none |
 | `String` | string; `Integer`, `Double`, `Boolean`... are the same unboxed values (no allocation) |
 | `T[]`, `List<T>`, `Stream<T>` | array |
 | `Map`, `Set` | map keyed by a string form of the key, entries `[key, value]` |
@@ -305,14 +305,10 @@ Four spaces, `{` same line, `}` own line except `} else`/`} catch`/`} finally`/`
 
 Startup and memory requirements for games and desktop apps: startup cost is proportional to the *reachable* classes only (tree-shaken module, no stdlib loaded unless used); there is no garbage collector yet, so a long-running program must bound its allocation (reuse objects, avoid building strings in loops) or its memory grows until exit. A collector is the prerequisite for unbounded-lifetime programs and is not part of this migration. Memory: allocation never frees until exit (D11 until a collector exists). Concurrency: no threads on this VM; `ash.concurrent.Executor` runs tasks to completion on the caller, there is no `async/await`.
 
-### Open decision (D2 versus the lowering design)
-
-D2 said the old front end is deleted once the new one reaches parity. The implemented design lowers new Ash **to old-Ash source**, so the old language is now the **internal IR** that `ashvm` and `kiln` consume; deleting it would require either a new bytecode/native emitter driven directly by the typed AST or renaming the IR. Until that is decided, "no old keywords remain" is true for the *application language* (the new front end rejects them with migration messages) but not for the VM-facing IR.
-
 ### Transition and performance protocol
 
-1. Old front end remains runnable (D2); the regression suites for old tests must stay byte-identical until the old path is deleted.
-2. New tests live beside old ones in `tests/cases/<feature>/` with names ending `_j.ash`.
+1. The old front end is deleted (D2). Old-syntax tests were deleted or migrated; the regression suites compare every program with its `.out` file.
+2. Shared runtime tests live in `hearth/front/tests/cases/run/` with names ending `_j.ash`; project-specific ones in `<project>/tests/cases/<feature>/`.
 3. Before runtime changes, `spec/performance-baseline.md` records `fib(30)` and sum-to-20M for `ashvm`; they are re-measured after each major runtime change.
 
 ## Migration phases
@@ -367,7 +363,7 @@ D2 said the old front end is deleted once the new one reaches parity. The implem
 
 ### Phase 3 — Type system
 
-Implemented in `hearth/front/src/jtypes` (`check_expr.c`, `check_stmt.c`, `check_class.c`), driven by `ashfront --check`. Covered by `hearth/front/tests/cases/types/*_j.ash`, run with `hearth/front/tests/scripts/check_types.sh`. Generics use erasure with argument-driven inference; wildcards are approximated (see `jtypes.h`).
+Implemented in `hearth/front/src/jtypes` (`check_expr.c`, `check_stmt.c`, `check_class.c`), driven by `ashvm check`. Covered by `hearth/front/tests/cases/types/*_j.ash`, run with `hearth/front/tests/scripts/check_types.sh`. Generics use erasure with argument-driven inference; wildcards are approximated (see `jtypes.h`).
 
 - [x] Implement primitive type checking.
 - [x] Implement class and interface type checking.
@@ -383,7 +379,7 @@ Implemented in `hearth/front/src/jtypes` (`check_expr.c`, `check_stmt.c`, `check
 
 ### Phase 4 — Compiler/VM execution
 
-Implemented in `hearth/front/src/jlower` as a **lowering to old Ash** that runs unchanged on `ashvm` and compiles natively with `kiln` (no VM change, so the performance law holds by construction). The program becomes an imported module plus a two-line driver; objects are maps with a flat vtable, methods are top-level functions, `instanceof`/`catch` use per-class supertype tables, and native stdlib methods are `@Lower("...")` templates over the old builtins. `ashfront --run file.ash` executes on `ashvm`, `ashfront --build file.ash -o out` compiles with `kiln`. Covered by `hearth/front/tests/cases/run/*_j.ash` and `examples/`, both run on both engines by `hearth/front/tests/scripts/run_cases.sh`.
+Implemented in `hearth/front/src/jlower` as a **lowering to the internal IR** (see D2a) that `ashvm` runs and `kiln` compiles natively (no VM change, so the performance law holds by construction). The program becomes one IR unit whose `start` function is called by the consumer; objects are maps with a flat vtable, methods are top-level functions, `instanceof`/`catch` use per-class supertype tables, and native stdlib methods are `@Lower("...")` templates over the old builtins. `ashvm run file.ash` executes on `ashvm`, `kiln file.ash -o out` compiles natively. Covered by `hearth/front/tests/cases/run/*_j.ash` and `examples/`, run on both engines by `hearth/ashvm/tests/scripts/run_regression.sh` and `hearth/kiln/tests/scripts/run_regression.sh`.
 
 - [x] Compile or interpret class declarations.
 - [x] Compile or interpret constructors.
@@ -442,8 +438,8 @@ What still differs from the spec, and why. Everything else in the Numerics, Exce
 
 | Area | Current behaviour | Spec says | To lift it |
 |---|---|---|---|
-| `int` overflow | **exact Java 32-bit wrap with `ashfront --wrap-int`** (`+ - * << >>>`, unary `-`, `++ --`, compound assignment, narrowing casts; `(int) double` saturates). Default is off because it costs about 2x on arithmetic-heavy loops (the performance law); for-loop counters bounded by their own condition never pay it | wraps | none needed; choose the flag |
-| `long` | **exact 64-bit with `ashfront --wrap-int`**: a plain number while it fits in 2^53, an exact two-halves value beyond (`+ - * / % << >> >>> & | ^ ~`, comparisons, casts, `Long.parse`, printing, `Long.MAX_VALUE/MIN_VALUE`), checked against an independent 64-bit model. Without the flag it is a double (exact below 2^53, printed correctly) so default speed is unchanged | 64-bit | none needed; choose the flag |
+| `int` overflow | **exact Java 32-bit wrap with `--wrap-int`** (`ashvm run --wrap-int`, `kiln --wrap-int`) (`+ - * << >>>`, unary `-`, `++ --`, compound assignment, narrowing casts; `(int) double` saturates). Default is off because it costs about 2x on arithmetic-heavy loops (the performance law); for-loop counters bounded by their own condition never pay it | wraps | none needed; choose the flag |
+| `long` | **exact 64-bit with `--wrap-int`**: a plain number while it fits in 2^53, an exact two-halves value beyond (`+ - * / % << >> >>> & | ^ ~`, comparisons, casts, `Long.parse`, printing, `Long.MAX_VALUE/MIN_VALUE`), checked against an independent 64-bit model. Without the flag it is a double (exact below 2^53, printed correctly) so default speed is unchanged | 64-bit | none needed; choose the flag |
 | `double` / `float` | Java's shortest round-trip printing for both (`7.068577499999999`, `1.0E-4`, `3.3000002`), verified against independent oracles; `float` operations round to 24 bits after every operation; every finite value, including denormals and `Double.MAX_VALUE`, via an exact big-integer expansion for exponents outside -5..22 (`Double.MIN_VALUE` prints `4.9E-324`, as in Java) | same | none |
 | Assignment, `++`, `--` inside expressions | supported with Java evaluation order (`a[k] = k++`, `x = y = 5`, `while ((n += 3) < 10)`) | allowed | none |
 | `switch` | full Java semantics: fallthrough, `default` anywhere, early `break`, `continue` through a switch (simple switches stay a plain if-chain) | same | none |
@@ -459,7 +455,7 @@ What still differs from the spec, and why. Everything else in the Numerics, Exce
 
 The migration is complete when:
 
-- [x] No old Ash keywords remain in the supported language. (the application language rejects them; the old syntax survives only as the internal IR, see D2 amendment)
+- [x] No old Ash keywords remain in the supported language. (both tools reject them; the old-shaped text survives only as the internal IR, see D2a)
 - [x] All examples use the new enterprise Java-like syntax.
 - [x] The lexer, parser, type checker, and runtime support the new model.
 - [x] Every public API has explicit types.

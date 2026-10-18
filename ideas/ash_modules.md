@@ -1,5 +1,7 @@
 # Ash Modules — a package manager for Ash
 
+> **Status note (2026-10-18):** this design predates the Java-like migration. `@import <name>;` no longer exists; dependencies are now source roots for `import package.Type;` (set `ASH_PATH` to an installed root). The sections below describe the original `@import`-based design and are kept for the manifest and layout decisions only.
+
 > **TL;DR:** An npm-like package manager for Ash. Packages get fetched into a project-local `@ash-modules/` folder (same idea as `node_modules`). A manifest file (`ash.pkg`) declares dependencies and versions. `@import <name>;` — which already works for local `ash.libs/` folders — gets extended to also search `@ash-modules/`, so existing code and syntax don't change.
 
 ---

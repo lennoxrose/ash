@@ -8,9 +8,9 @@
 
 ---
 
-## New Ash (Java-like, statically typed)
-
-Ash is being redesigned into an enterprise-style language: packages, classes, interfaces, enums, records, generics, `T?` null safety, checked exceptions, lambdas. The design contract is `MIGRATION.md`; the old scripting syntax below stays runnable until the new front end replaces it.
+Ash is an enterprise-style, statically typed, Java-like language built from scratch in C with no
+external dependencies: packages, classes, interfaces, enums, records, generics, `T?` null safety,
+checked exceptions, lambdas. The design contract is `MIGRATION.md`.
 
 ```java
 package demo;
@@ -31,78 +31,51 @@ public class Main {
 }
 ```
 
+## Getting started
+
 ```bash
-make @front                          # builds bin/ashfront (plus: make @ashvm, make @kiln)
-bin/ashfront --check Main.ash       # type-check only
-bin/ashfront --run Main.ash         # lower and run on ashvm
-bin/ashfront --build Main.ash -o main   # compile natively with kiln
-bin/ashfront --run --wrap-int Main.ash         # Java's 32-bit int overflow (slower arithmetic)
+make                                    # builds bin/ashvm, bin/kiln and the rest (`make @ashvm`, `make @kiln` for one)
+
+bin/ashvm run Main.ash                  # run a program on the VM
+bin/ashvm run --wrap-int Main.ash       # Java's 32-bit int overflow (slower arithmetic loops)
+bin/ashvm check Main.ash                # parse and type-check only
+bin/ashvm                               # interactive REPL
+
+bin/kiln Main.ash -o main               # compile to a native ELF binary (no VM, no libc)
+bin/kiln Main.ash -o main --target=windows --link=shared --wrap-int
 ```
 
-`examples/` has 17 runnable programs (classes, enums, records, generics, collections, lambdas, exceptions, file I/O, JSON, CLI, game, server, desktop-style); `hearth/front/tests/scripts/run_cases.sh` runs them on both engines. The standard library lives in `hearth/front/stdlib` (`ash.lang`, `ash.util`, `ash.io`, `ash.json`, `ash.math`, `ash.cli`, `ash.test`, `ash.time`, `ash.concurrent`, `ash.net`, `ash.web`, `ash.game`, `ash.desktop`; the last five are pure-Ash models because the VM has no threads, sockets, windows or clock). Old-syntax code (`local`, `say`, `given`, `forge`, ...) is rejected with a message naming the new construct. Known limits of the current backend are tabulated in `MIGRATION.md`.
+`ashvm` and `kiln` are the only front doors. Both link the one shared front end in `hearth/front`
+(lexer, parser, AST, type checker, lowering) and differ only in the back end: a bytecode VM
+versus a native code generator. Source written in the removed pre-migration scripting syntax
+(`local`, `say`, `given`, `forge`, ...) is rejected with a message naming the new construct.
 
----
+`examples/` has 18 runnable programs (classes, enums, records, generics, collections, lambdas,
+exceptions, file I/O, JSON, CLI, game, server, desktop-style); `hearth/ashvm/tests/scripts/run_regression.sh`
+and `hearth/kiln/tests/scripts/run_regression.sh` run them on both engines. The standard library lives in
+`hearth/front/stdlib` (`ash.lang`, `ash.util`, `ash.io`, `ash.json`, `ash.math`, `ash.cli`, `ash.test`,
+`ash.time`, `ash.concurrent`, `ash.net`, `ash.web`, `ash.game`, `ash.desktop`; the last five are pure-Ash
+models because the VM has no threads, sockets, windows or clock). Known limits of the current backend are
+tabulated in `MIGRATION.md`.
 
-Ash is a small programming language built from scratch in C - lexer,
-compiler, and a bytecode VM, all hand-written with no external dependencies.
-It has closures, hash maps, first-class functions, real floating-point
-numbers, `attempt`/`handle`, and a colorized compiler that points straight at
-your mistakes.
+### REPL
 
-```ash
-forge make_adder(x) {
-    yield forge(y) { yield x + y; };
-}
-
-local add5 = make_adder(5);
-say add5(3); // 8
-
-local nums = [1, 2, 3, 4, 5];
-local evens = filter(nums, forge(n) { yield n % 2 == 0; });
-say evens; // [2, 4]
-
-attempt {
-    local m = {"name": "Ash"};
-    say m["missing"];
-} handle (e) {
-    say "caught: " + e;
-}
-
-// conditions can drop the parens, and logical operators read as words
-given add5(3) > 7 and not (evens[0] == 1) {
-    say "Lua-alike, not a Lua copy";
-}
-
-each n in evens {
-    say n;
-}
-
-// stop/next, compound assignment, ternary, bitwise ops, and/none
-local total = 0;
-local i = 0;
-during i < 10 {
-    i += 1;
-    given i == 3 { next; }
-    given i == 7 { stop; }
-    total += i;
-}
-say total > 0 ? "positive" : "zero or less"; // ternary
-say (5 & 3) | (1 << 2); // bitwise: and, or, shift
-
-local maybe = none;
-say maybe == none ? "nothing there" : "something there";
-```
+`ashvm` with no arguments starts a Java-like REPL. Imports, type declarations (`class`, `interface`,
+`enum`, `record`), static methods (`int sq(int a) { return a * a; }`) and statements persist between
+lines; a line without a trailing `;` or `}` is evaluated and printed (`x + 2`). Each line is checked and
+run in a child process, so a compile error or uncaught exception leaves the session intact.
+Limits: session state is rebuilt by replaying earlier lines (output suppressed), so non-idempotent side
+effects such as file writes, stdin reads and clocks repeat; a variable name can be declared only once;
+diagnostic line numbers refer to the generated wrapper, not to what you typed.
 
 ## Engine
 
-Ash compiles to real bytecode and runs it on a stack-based VM (`ashvm`) with
-computed-goto instruction dispatch and a handful of hand-fused
-"superinstructions" for common patterns like `x = x + y` and `during (i < n)`
-that collapse several bytecode ops into one. Ash used to ship a second,
-slower tree-walk interpreter (`ashc`) as the place new features were
-prototyped first - it has since been retired now that the VM has full
-feature parity, including real `double` number semantics and Rust-style
-runtime diagnostics.
+Ash lowers to an internal representation that `ashvm` compiles to real bytecode and runs on a
+stack-based VM with computed-goto instruction dispatch and a handful of hand-fused
+"superinstructions" for common patterns like `x = x + y` and `while (i < n)` that collapse several
+bytecode ops into one. `kiln` compiles the same representation straight to machine code.
+That representation is a compiler internal (`hearth/front/src/ir`), not Ash source; no tool reads it
+from a file.
 
 ## Performance
 
@@ -110,92 +83,43 @@ Benchmarked against equivalent programs in C++ (`g++ -O2`) on the same machine:
 
 | Benchmark | C++ | `ashvm` |
 |---|---|---|
-| `fib(30)` (recursive) | 0.005s | 0.06s (~12x slower) |
-| Sum of 0..20,000,000 | 0.004s | 0.12s (~30x slower) |
+| `fib(30)` (recursive) | 0.005s | 0.25s |
+| Sum of 0..20,000,000 | 0.004s | 1.5s |
 
-That speed comes from three things layered on top of each other: compiling
-to real bytecode instead of re-parsing source on every loop iteration,
-computed-goto instruction dispatch instead of a `switch` statement, and
-those hand-fused superinstructions. A hand-written x86-64 JIT experiment
-(`benchmarks/native_jit.c`) that skips bytecode entirely gets within ~2x of
-raw C++, which is roughly the ceiling for anything short of a full
-optimizing native compiler.
-
-## Language features
-
-- Numbers (real doubles, with `1e3`-style literals), strings (with escape sequences), arrays, hash maps, `none`
-- A real boolean type: `yes` / `no`, and everything that answers a question (`==`, `<`, `not`, `and`, `or`, `has`, `contains`, `file_exists`, ...) produces one. They print as `yes` / `no`, `type(yes)` is `"boolean"`, and `yes == 1` is false. Conditions accept booleans, numbers and `none`; a string, array, map or function in a condition is an error
-- `and` / `or` short-circuit; strings compare bytewise with `< <= > >=`
-- Maps keep insertion order (`keys`, `values`, printing); `delete` closes the gap
-- Functions, recursion, closures with by-value capture, and forward declarations: a function can be called before its `forge` appears, so mutual recursion just works
-- First-class functions - pass them around, store them in variables, call them indirectly. Builtins are values too: `map(xs, str)`, `local f = len;`
-- Builtins:
-  - core: `len type str num exit sqrt abs floor chr ord`
-  - collections: `push pop insert slice delete sort keys values has map filter reduce` (`delete(array, i)` removes an index, `sort(array)` / `sort(array, cmp)` sorts in place and is stable; `cmp(a, b)` returns a number, `> 0` meaning `a` goes after `b`)
-  - strings: `split join substring indexOf contains starts_with ends_with replace repeat upper lower trim`
-  - files: `read_file write_file append_file file_exists rename_file delete_file make_dir list_dir`
-- One number-to-text format on both engines: integers print plainly up to 1e15, other values with up to 6 fraction digits, and anything beyond that (or below 1e-6) in scientific form (`1e+21`, `1.5e-07`)
-- `attempt` / `handle` error handling. Built-in errors raise a string with the same wording on both engines (`index out of bounds`, `key not found`, `invalid operand type in '+'`, ...); `raise expr;` raises any value, so a map gives a structured error. `e.message` (more generally `var.field`, same as `var["field"]`) reads a field of a raised map, and on a plain string error it is the string itself, so `e.message` works for every error
-- `each (x in array)` and `during` loops, with `stop` / `next` for early exit and skip-to-next-iteration (leaving an `attempt` block that way pops its handler)
-- Compound assignment (`+= -= *= /=`) and `++` / `--`
-- Ternary `cond ? a : b`
-- Bitwise operators: `& | ^ ~ << >>`
-- Imports: `@import <./file.ash>;` makes the file's functions callable as `file.name(...)`; `@import <./file.ash> as alias;` picks the namespace. Imports are transitive (a file imported by a file you import is callable by its own namespace too) and each file is loaded once. A top-level `local` in an imported file is a module-level variable: its expression runs once at import, and the file's functions can read and update it (`NAME = ...;`, `NAME += ...;`, `NAME[i] = ...;`); outside, `file.NAME` reads it
-- `exit(code)` ends the program with that status; an uncaught error exits with status 1
-- Colorized, Rust-style diagnostics for both compile-time and runtime
-  errors: file:line:column, a source snippet, a caret, and a contextual hint
-- An interactive REPL with persistent variables across lines
+(`hearth/ashvm/benchmarks`, run with `ashvm run`; the numbers include about 4 ms of start-up for
+loading and lowering the reachable standard library.) The speed comes from compiling to bytecode
+instead of re-parsing source on every loop iteration, computed-goto dispatch instead of a `switch`,
+and the fused superinstructions. A hand-written x86-64 JIT experiment
+(`benchmarks/native_jit.c`) that skips bytecode entirely gets within ~2x of raw C++, which is
+roughly the ceiling for anything short of a full optimizing native compiler.
 
 ### Performance notes
 
-- `len(s)`, `substring(s, i, j)` and `s[i]` are O(1) / O(length of the piece) on both engines (strings carry their length).
-- `s += x` copies `s`, so building a long string one piece at a time is quadratic in time and, since nothing is freed, in memory. Collect the pieces in an array and `join(parts, "")` once - that is linear. `kiln`'s heap grows as needed (64MB at a time, `brk` on Linux / `VirtualAlloc` on Windows) rather than crashing at a fixed size, but nothing is freed until the process exits either way.
-- `push` grows arrays geometrically (amortized O(1)); `sort` is a stable merge sort on `ashvm` and a stable insertion sort on `kiln`.
-- `kiln`'s Windows output is checked without a Windows machine: `hearth/kiln/tests/scripts/windows_emulated_check.sh` runs every test case as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. All of them, including the Windows file operations (`list_dir` via `FindFirstFileA`/`FindNextFileA`), match. `hearth/kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`), also with all cases matching. Neither is Windows itself.
-
-## Getting started
-
-```bash
-make @ashvm                 # builds bin/ashvm  (plain `make` builds every project)
-
-bin/ashvm script.ash   # run a script
-bin/ashvm              # start the REPL
-```
-
-`kiln` (compiles `.ash` straight to a native ELF/PE binary) and `forgepack`
-(the package manager) build the same way: `make @kiln` / `make @forgepack`.
+- Building a long string one piece at a time with `+=` copies each time, so it is quadratic in time and, since nothing is freed by default, in memory. Collect the pieces and join them once (`StringBuilder`, `String.join`).
+- `kiln`'s heap grows as needed (64MB at a time, `brk` on Linux / `VirtualAlloc` on Windows) rather than crashing at a fixed size, but nothing is freed until the process exits. `ashvm` has an opt-in collector (`make GC=1`).
+- `kiln`'s Windows output is checked without a Windows machine: `hearth/kiln/tests/scripts/windows_emulated_check.sh` runs every test program as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. `hearth/kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`). Neither is Windows itself.
 
 ## Project structure
+
 Every project lives in `hearth/` and builds into `bin/`; the repository root only holds
 documentation, `examples/` and the build entry point.
 
-hearth/ashvm/   the engine - everything below is self-contained inside here
-src/
-lexer/        tokenizer
-value/        VMValue tagged type, hash map
-vm/           bytecode Chunk format, dispatch loop, error handling, public API
-compiler/     single-pass compiler: parser/emitter state, expression chain,
-call/lambda emission, statement compilation
-builtins/     len, map, filter, reduce, string/file ops
-diagnostics/  shared Rust-style error reporting (compile-time and runtime)
+```
+hearth/front/     the only frontend: lexer, parser, AST, type checker, lowering, internal IR lexer,
+                  REPL session model and the standard library (stdlib/). Built as libashfront.a,
+                  linked by ashvm and kiln. There is no front-end executable.
+hearth/ashvm/     the VM engine: compiler (IR -> bytecode), value, vm, builtins, diagnostics, app (CLI + REPL)
+hearth/kiln/      the native compiler: IR -> machine code -> ELF/PE (no VM, no libc)
+hearth/forgepack/ package manager: forgepack init/add/install/list, dependencies fetched from GitHub
+                  into a project-local @ash-modules/ folder; point ASH_PATH at an installed source root
+                  to compile against it (see ideas/ash_modules.md)
+hearth/pyre/      GPU/CPU compute backends (C ABI)
+```
 
-Every subsystem keeps sources in `C/`, headers in `H/`, build output in a
-mirrored `O/` tree, and generated dependency files in `D/` (so editing a
-shared header correctly triggers a rebuild of everything that includes it),
-e.g. `src/vm/C/dispatch.c` includes `src/vm/H/vm.h` and builds to
+Every subsystem keeps sources in `C/`, headers in `H/`, build output in a mirrored `O/` tree, and
+generated dependency files in `D/` (so editing a shared header correctly triggers a rebuild of
+everything that includes it), e.g. `src/vm/C/dispatch.c` includes `src/vm/H/vm.h` and builds to
 `src/vm/O/dispatch.o` with `src/vm/D/dispatch.d` tracking the header.
-app/          main.c entry point (file mode + REPL)
-benchmarks/     .ash and .cpp benchmark programs, plus the x86-64 JIT experiment
-tests/          cases/<feature>/*.ash programs covering each language feature; scripts/ holds the regression runners
-
-hearth/kiln/    a second, independent implementation: compiles .ash straight to a
-native ELF/PE binary (no VM, no libc), same language, full feature parity
-with ashvm, cross-validated against it directly (see CHANGELOG.md).
-
-hearth/forgepack/ package manager -- `forgepack init/add/install/list`, dependencies
-fetched from GitHub into a project-local @ash-modules/ folder (same idea
-as node_modules). `@import <name>;` already works with it. No registry
-yet -- see ideas/ash_modules.md for the full design and what's next.
 
 ## Editor support
 

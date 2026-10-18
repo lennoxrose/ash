@@ -11,30 +11,21 @@ hand-encodes x86-64 machine code and writes its own ELF executables
 directly, the same "every line hand-written" rule that built `ashc` and
 `ashvm`.
 
-## Status: milestone 1 done (Linux only)
-
-`kiln file.ash -o out` compiles `say <expr>;` programs (integer literals,
-`+ - * /`, unary `-`, parens, multiple statements) straight to a real,
-standalone, freestanding ELF64 executable - no libc, raw syscalls only.
+## Usage
 
 ```bash
-cd kiln && make          # builds ../bin/kiln
-../bin/kiln tests/cases/basics/hello.ash -o /tmp/hello
-/tmp/hello                # prints 7  (1 + 2 * 3)
+make @kiln                                   # builds ../bin/kiln
+bin/kiln examples/HelloWorld.ash -o /tmp/hello
+/tmp/hello                                   # Hello, Ash!
+
+kiln <file.ash> -o <output> [--target=linux|windows] [--link=static|shared] [--wrap-int]
+kiln --emit-runtime -o <libkilnrt.so|libkilnrt.dll> [--target=linux|windows]
 ```
 
-## What's deliberately not built yet
-
-- Everything beyond numeric `say` statements - variables, functions,
-  strings, arrays, control flow, closures
-- Multi-object linking (the whole program is one self-contained object
-  right now; there's no symbol-resolution step yet)
-- The actual shared-runtime-library dedup feature goal 2 is ultimately
-  about - that needs real dynamic linking (PIC codegen, dynamic symbol
-  table, PLT/GOT, ELF dynamic sections), a substantial milestone of its
-  own, deliberately not tackled alongside "does codegen produce a runnable
-  binary at all"
-- Windows PE output, macOS Mach-O output
+Kiln compiles Java-like Ash (packages, classes, generics, ...) to native ELF (Linux) or PE (Windows)
+executables. It has no frontend of its own: `hearth/front` (lexer, parser, type checker, lowering) is
+linked in and hands kiln the internal IR (`hearth/front/src/ir`), which `src/parser` turns into machine
+code in one pass. Old pre-migration scripting syntax is rejected by the front end.
 
 ## Layout
 
@@ -43,12 +34,10 @@ kiln/
   Makefile                builds ../bin/kiln
   src/                    each subsystem: C/ (sources), H/ (headers), D/ (deps), O/ (objects), mirrored
     app/                   main.c argv parsing, drives the pipeline; target.c/.h
-    lexer/                 tokenizer (own copy, same shape as ashvm's)
-    parser/C/ H/ D/ O/
+    parser/C/ H/ D/ O/     one-pass IR -> machine code (the IR lexer lives in front/src/ir)
       core/                  parser entry, shared parser state
-      statements/            control flow, each loops, attempt/handle, loop stack
+      statements/            control flow, loops, try/catch lowering, loop stack
       declarations/          variables, functions, constants
-      imports/               import resolution
     codegen/C/ H/ D/ O/    (same feature folders in each tree)
       emit/                  raw x86-64 encoding, byte buffers, memory layout, value tags
       expressions/           expression -> arithmetic instructions, calls, booleans
@@ -62,5 +51,6 @@ kiln/
     elf/                   ELF executable and shared-object writers
     pe/                    PE executable and DLL writers
     diagnostics/           error reporting
-  tests/                  cases/<feature>/*.ash programs (+ scripts/run_regression.sh)
+  tests/                  cases/<feature>/*.ash programs (+ scripts/run_regression.sh, which also runs
+                          hearth/front/tests/cases/run and examples/)
 ```

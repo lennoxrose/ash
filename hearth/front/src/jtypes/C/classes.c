@@ -47,7 +47,7 @@ void jt_init_default_roots(const char *entry_path, const char *entry_pkg) {
         }
     }
     jt_add_root(root);
-    /* dependency roots (forgepack): <root>/ash.libs/<lib>, <root>/@ash-modules/<lib>/src/main/ash */
+    /* extra source roots, e.g. forgepack-installed dependencies: ASH_PATH=dir1:dir2 */
     const char *env = getenv("ASH_PATH");
     if (env) {
         char *e = j_strdup(env);
