@@ -1,0 +1,15 @@
+11 true
+false
+io: no such file or directory: /tmp/ash_stdlib_test_dir/note.txt
+ash 3
+[1,2.5,true,null]
+{"k":"v"}
+json: unterminated array
+true false true 2 true
+ten two false
+12
+here false fallback 4
+1024 6 10 3
+90500
+fast true dflt 1
+expected 1 but was 2

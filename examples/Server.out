@@ -1,0 +1,3 @@
+/hello -> 200 hello via GET
+/boom -> 500 error: exploded
+/missing -> 404 not found: /missing

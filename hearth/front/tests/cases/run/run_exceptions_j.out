@@ -1,0 +1,11 @@
+finally 1
+ok 1
+finally 5
+failed too big: 5 code 5
+arith / by zero
+-3 -1 1
+index
+outer <- inner
+parse failed
+cast failed
+8

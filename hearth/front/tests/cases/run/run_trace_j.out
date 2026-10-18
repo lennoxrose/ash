@@ -1,0 +1,9 @@
+ash.lang.RuntimeException: wrapped
+    at t.RunTrace.outer(run_trace_j.ash:18)
+Caused by: ash.lang.IllegalStateException: deep
+    at t.RunTrace.inner(run_trace_j.ash:11)
+a+b 2
+1 true
+network access is not available on this runtime: http://example.org
+Exception in thread "main" ash.lang.IllegalArgumentException: fatal
+    at t.RunTrace.main(run_trace_j.ash:42)

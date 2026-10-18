@@ -1,0 +1,7 @@
+checked 42
+age 42
+checked abc
+age invalid: not a number: abc
+checked 200
+age invalid: out of range: 200
+index out of range

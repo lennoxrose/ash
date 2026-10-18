@@ -8,6 +8,41 @@
 
 ---
 
+## New Ash (Java-like, statically typed)
+
+Ash is being redesigned into an enterprise-style language: packages, classes, interfaces, enums, records, generics, `T?` null safety, checked exceptions, lambdas. The design contract is `MIGRATION.md`; the old scripting syntax below stays runnable until the new front end replaces it.
+
+```java
+package demo;
+
+import ash.util.List;
+import ash.util.ArrayList;
+
+public class Main {
+    record Point(int x, int y) { }
+
+    public static void main(String[] args) {
+        List<Point> points = new ArrayList<>();
+        points.add(new Point(1, 2));
+        for (Point p : points) {
+            System.out.println(p + " " + (p.x() + p.y()));
+        }
+    }
+}
+```
+
+```bash
+make @front                          # builds bin/ashfront (plus: make @ashvm, make @kiln)
+bin/ashfront --check Main.ash       # type-check only
+bin/ashfront --run Main.ash         # lower and run on ashvm
+bin/ashfront --build Main.ash -o main   # compile natively with kiln
+bin/ashfront --run --wrap-int Main.ash         # Java's 32-bit int overflow (slower arithmetic)
+```
+
+`examples/` has 17 runnable programs (classes, enums, records, generics, collections, lambdas, exceptions, file I/O, JSON, CLI, game, server, desktop-style); `hearth/front/tests/scripts/run_cases.sh` runs them on both engines. The standard library lives in `hearth/front/stdlib` (`ash.lang`, `ash.util`, `ash.io`, `ash.json`, `ash.math`, `ash.cli`, `ash.test`, `ash.time`, `ash.concurrent`, `ash.net`, `ash.web`, `ash.game`, `ash.desktop`; the last five are pure-Ash models because the VM has no threads, sockets, windows or clock). Old-syntax code (`local`, `say`, `given`, `forge`, ...) is rejected with a message naming the new construct. Known limits of the current backend are tabulated in `MIGRATION.md`.
+
+---
+
 Ash is a small programming language built from scratch in C - lexer,
 compiler, and a bytecode VM, all hand-written with no external dependencies.
 It has closures, hash maps, first-class functions, real floating-point
@@ -116,23 +151,25 @@ optimizing native compiler.
 - `len(s)`, `substring(s, i, j)` and `s[i]` are O(1) / O(length of the piece) on both engines (strings carry their length).
 - `s += x` copies `s`, so building a long string one piece at a time is quadratic in time and, since nothing is freed, in memory. Collect the pieces in an array and `join(parts, "")` once - that is linear. `kiln`'s heap grows as needed (64MB at a time, `brk` on Linux / `VirtualAlloc` on Windows) rather than crashing at a fixed size, but nothing is freed until the process exits either way.
 - `push` grows arrays geometrically (amortized O(1)); `sort` is a stable merge sort on `ashvm` and a stable insertion sort on `kiln`.
-- `kiln`'s Windows output is checked without a Windows machine: `kiln/tests/scripts/windows_emulated_check.sh` runs every test case as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. All of them, including the Windows file operations (`list_dir` via `FindFirstFileA`/`FindNextFileA`), match. `kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`), also with all cases matching. Neither is Windows itself.
+- `kiln`'s Windows output is checked without a Windows machine: `hearth/kiln/tests/scripts/windows_emulated_check.sh` runs every test case as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. All of them, including the Windows file operations (`list_dir` via `FindFirstFileA`/`FindNextFileA`), match. `hearth/kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`), also with all cases matching. Neither is Windows itself.
 
 ## Getting started
 
 ```bash
-cd ashvm && make          # builds ../bin/ashvm
+make @ashvm                 # builds bin/ashvm  (plain `make` builds every project)
 
-../bin/ashvm script.ash   # run a script
-../bin/ashvm              # start the REPL
+bin/ashvm script.ash   # run a script
+bin/ashvm              # start the REPL
 ```
 
 `kiln` (compiles `.ash` straight to a native ELF/PE binary) and `forgepack`
-(the package manager) build the same way, each from its own directory:
-`cd kiln && make` / `cd forgepack && make`.
+(the package manager) build the same way: `make @kiln` / `make @forgepack`.
 
 ## Project structure
-ashvm/          the engine - everything below is self-contained inside here
+Every project lives in `hearth/` and builds into `bin/`; the repository root only holds
+documentation, `examples/` and the build entry point.
+
+hearth/ashvm/   the engine - everything below is self-contained inside here
 src/
 lexer/        tokenizer
 value/        VMValue tagged type, hash map
@@ -151,11 +188,11 @@ app/          main.c entry point (file mode + REPL)
 benchmarks/     .ash and .cpp benchmark programs, plus the x86-64 JIT experiment
 tests/          cases/<feature>/*.ash programs covering each language feature; scripts/ holds the regression runners
 
-kiln/           a second, independent implementation: compiles .ash straight to a
+hearth/kiln/    a second, independent implementation: compiles .ash straight to a
 native ELF/PE binary (no VM, no libc), same language, full feature parity
 with ashvm, cross-validated against it directly (see CHANGELOG.md).
 
-forgepack/      package manager -- `forgepack init/add/install/list`, dependencies
+hearth/forgepack/ package manager -- `forgepack init/add/install/list`, dependencies
 fetched from GitHub into a project-local @ash-modules/ folder (same idea
 as node_modules). `@import <name>;` already works with it. No registry
 yet -- see ideas/ash_modules.md for the full design and what's next.

@@ -13,9 +13,12 @@ import ash.util.HashMap;
 //   [x] Phase 0  specification locked (MIGRATION.md decisions D1-D15)
 //   [x] Phase 1  lexer: new keywords, // /* */ /// comments
 //   [x] Phase 2  parser + AST: everything in this file parses
-//   [ ] Phase 3  type checker   (in progress: types, class registry done)
-//   [ ] Phase 4  lowering to ashvm / kiln
-//   [ ] Phase 5  standard library
+//   [x] Phase 3  type checker: `ashfront --check main.ash` passes
+//                (types, nullability, generics, overloads, exceptions, switch)
+//   [x] Phase 4  lowering: `ashfront --run main.ash` (ashvm), `--build` (kiln native)
+//   [x] Phase 5  stdlib: lang util io json math cli test time concurrent net web game desktop
+//                (the last five are pure-Ash models; real OS access needs new VM builtins)
+//   [x] Phase 6  examples/ (17 programs), README, API docs on every stdlib declaration
 //
 // Old                      New
 //   local x = 5;           int x = 5;  /  var x = 5;
@@ -81,7 +84,20 @@ public class Main {
         return n < 2 ? n : fib(n - 1) + fib(n - 2);
     }
 
+    static String name(Shape s) {
+        return switch (s) {
+            case Circle c -> "circle " + c.radius();
+            case Square q -> "square " + q.side();
+        };
+    }
+
+    static <T> T pick(T a, T b, bool first) {
+        return first ? a : b;
+    }
+
     public static void main(String[] args) {
+        Function<Integer, Integer> twice = v -> v * 2;
+        System.out.println(name(new Circle(1.0)) + " " + twice.apply(pick(2, 3, true)));
         List<Shape> shapes = new ArrayList<>();
         shapes.add(new Circle(1.5));
         shapes.add(new Square(2.0));
