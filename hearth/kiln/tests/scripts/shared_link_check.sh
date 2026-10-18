@@ -11,6 +11,8 @@
 #    GOT/hash/dynsym table didn't disturb kiln's own runtime imports (heap_alloc, print_top, ...).
 set -uo pipefail
 cd "$(dirname "$0")/../.." # -> kiln/
+# the optional standard library (ash-stdlib) is a sibling checkout unless ASH_PATH says otherwise
+export ASH_PATH="${ASH_PATH:-$PWD/../../../ash-stdlib/src/main/ash}"
 
 make -s || { echo "build failed"; exit 1; }
 ../../bin/kiln --emit-runtime -o /usr/local/lib/kiln/libkilnrt.so || { echo "emit-runtime failed"; exit 1; }

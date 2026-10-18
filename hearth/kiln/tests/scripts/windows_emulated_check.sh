@@ -6,6 +6,8 @@
 # Needs python3 with `unicorn` and `pefile`; a venv is created in /tmp/kiln_winemu on first use.
 set -uo pipefail
 cd "$(dirname "$0")/../.." # -> kiln/
+# the optional standard library (ash-stdlib) is a sibling checkout unless ASH_PATH says otherwise
+export ASH_PATH="${ASH_PATH:-$PWD/../../../ash-stdlib/src/main/ash}"
 KILN="$PWD/../../bin/kiln"
 SCRIPTS="$PWD/tests/scripts"
 VENV=/tmp/kiln_winemu

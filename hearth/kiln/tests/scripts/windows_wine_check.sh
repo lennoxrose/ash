@@ -8,6 +8,8 @@
 # https://github.com/Kron4ek/Wine-Builds (unpack the amd64 tarball, point WINE at bin/wine).
 set -uo pipefail
 cd "$(dirname "$0")/../.." # -> kiln/
+# the optional standard library (ash-stdlib) is a sibling checkout unless ASH_PATH says otherwise
+export ASH_PATH="${ASH_PATH:-$PWD/../../../ash-stdlib/src/main/ash}"
 KILN="$PWD/../../bin/kiln"
 WINE="${WINE:-wine}"
 command -v "$WINE" >/dev/null 2>&1 || [ -x "$WINE" ] || { echo "wine not found (set WINE=/path/to/wine)"; exit 1; }

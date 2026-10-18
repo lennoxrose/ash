@@ -3,6 +3,8 @@
 # print every "// expect: <text>" line of the file.
 set -u
 cd "$(dirname "$0")/../.."
+# the optional standard library (ash-stdlib) is a sibling checkout unless ASH_PATH says otherwise
+export ASH_PATH="${ASH_PATH:-$PWD/../../../ash-stdlib/src/main/ash}"
 VM=../../bin/ashvm
 dir=tests/cases/types
 fail=0

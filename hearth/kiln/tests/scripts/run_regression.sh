@@ -5,6 +5,8 @@
 # (front/tests/cases/run/*_j.ash; *_wrap_* need --wrap-int) and ../../examples/*.ash.
 set -uo pipefail
 cd "$(dirname "$0")/../.." # -> kiln/
+# the optional standard library (ash-stdlib) is a sibling checkout unless ASH_PATH says otherwise
+export ASH_PATH="${ASH_PATH:-$PWD/../../../ash-stdlib/src/main/ash}"
 
 make -s || { echo "build failed"; exit 1; }
 KILN=../../bin/kiln

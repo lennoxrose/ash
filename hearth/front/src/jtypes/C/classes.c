@@ -4,12 +4,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <dirent.h>
+
+#include "jcore/H/jcore.h"
 #include "jparse/H/jparse.h"
 #include "jtypes/H/jtypes.h"
-
-#ifndef ASH_STDLIB_DIR
-#define ASH_STDLIB_DIR "stdlib"
-#endif
 
 static JList roots;      /* char* */
 static JList all_classes; /* JClass* */
@@ -31,6 +30,21 @@ void jt_add_root(const char *dir) { j_list_push(&roots, j_strdup(dir)); }
 
 static int dir_exists(const char *d) { return access(d, F_OK) == 0; }
 
+/* Packages installed by forgepack: each child C of <project>/@ash-modules and <project>/ash.libs is a
+ * source root, at C/src/main/ash when that exists and at C itself otherwise. */
+static void add_package_roots(const char *project, const char *folder) {
+    char *dir = j_fmt("%s/%s", project, folder);
+    DIR *d = opendir(dir);
+    if (!d) return;
+    for (struct dirent *e = readdir(d); e; e = readdir(d)) {
+        if (e->d_name[0] == '.') continue;
+        char *pkg = j_fmt("%s/%s", dir, e->d_name);
+        char *main_dir = j_fmt("%s/src/main/ash", pkg);
+        jt_add_root(dir_exists(main_dir) ? main_dir : pkg);
+    }
+    closedir(d);
+}
+
 void jt_init_default_roots(const char *entry_path, const char *entry_pkg) {
     /* source root = entry file path minus its package directories */
     char *dir = j_strdup(entry_path);
@@ -47,15 +61,14 @@ void jt_init_default_roots(const char *entry_path, const char *entry_pkg) {
         }
     }
     jt_add_root(root);
-    /* extra source roots, e.g. forgepack-installed dependencies: ASH_PATH=dir1:dir2 */
+    add_package_roots(".", "@ash-modules");
+    add_package_roots(".", "ash.libs");
+    /* extra source roots: ASH_PATH=dir1:dir2 (for example a checkout of ash-stdlib/src/main/ash) */
     const char *env = getenv("ASH_PATH");
     if (env) {
         char *e = j_strdup(env);
         for (char *tok = strtok(e, ":"); tok; tok = strtok(NULL, ":")) jt_add_root(tok);
     }
-    const char *std = getenv("ASH_STDLIB");
-    jt_add_root(std ? std : ASH_STDLIB_DIR);
-    (void)dir_exists;
 }
 
 /* ---------------------------------------------------------------- registry */
@@ -124,11 +137,18 @@ static int path_has_decl(const char *file, const char *simple) { (void)file; (vo
 JClass *jt_find_class(const char *qname) {
     JClass *c = registry_find(qname);
     if (c) return c;
-    /* try to load <root>/<a/b/C>.ash; for nested names load the outer file */
+    /* try to load <a/b/C>.ash from the compiler's core types, then from the source roots;
+     * for nested names load the outer file */
     char *copy = j_strdup(qname);
     for (;;) {
         char *file = j_strdup(copy);
         for (char *p = file; *p; p++) if (*p == '.') *p = '/';
+        const char *core = jcore_source(file);
+        if (core) {
+            jt_load_unit(j_fmt("<core>/%s.ash", file), core);
+            c = registry_find(qname);
+            if (c) return c;
+        }
         for (int i = 0; i < roots.count; i++) {
             char *full = j_fmt("%s/%s.ash", (char *)roots.items[i], file);
             char *src = j_read_file(full);
@@ -147,7 +167,7 @@ JClass *jt_find_class(const char *qname) {
 JClass *jt_well_known(const char *qname) {
     JClass *c = jt_find_class(qname);
     if (!c) {
-        fprintf(stderr, "error: standard library type '%s' not found (looked in the Ash stdlib; set ASH_STDLIB)\n", qname);
+        fprintf(stderr, "error: core type '%s' not found\n", qname);
         exit(1);
     }
     return c;
@@ -283,7 +303,10 @@ JType *jt_resolve_type(Node *tn, JClass *ctx, JMethod *mctx, int report) {
             if (!c) c = jt_find_class(tn->name);
         }
         if (!c) {
-            if (report) cerr(tn, "cannot find type '%s'", tn->name);
+            if (report) {
+                if (!jt_find_class("ash.util.List")) cerr(tn, "cannot find type '%s' (the standard library is the optional ash-stdlib package: install it with forgepack or point ASH_PATH at its src/main/ash)", tn->name);
+                else cerr(tn, "cannot find type '%s'", tn->name);
+            }
             return ty_error();
         }
         JType **args = NULL;

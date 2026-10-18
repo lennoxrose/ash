@@ -45,6 +45,14 @@ bin/kiln Main.ash -o main               # compile to a native ELF binary (no VM,
 bin/kiln Main.ash -o main --target=windows --link=shared --wrap-int
 ```
 
+The standard library is not built into the compiler. The compiler only contains the types it cannot work
+without (`ash.lang`, the functional interfaces, `ash.util.Iterator`); `ash.util` (collections, `Optional`,
+`Stream`), `ash.io`, `ash.json`, `ash.math`, `ash.time`, `ash.cli`, `ash.test` and the model packages live
+in the separate `ash-stdlib` package. Install it with forgepack (`forgepack add ash-stdlib github:<user>/ash-stdlib`,
+which lands in `./@ash-modules/ash-stdlib` and is found automatically), or set
+`ASH_PATH=/path/to/ash-stdlib/src/main/ash`. Without it, programs that only use `ash.lang` still work and
+anything else reports a `cannot find type` error that names the package.
+
 `ashvm` and `kiln` are the only front doors. Both link the one shared front end in `hearth/front`
 (lexer, parser, AST, type checker, lowering) and differ only in the back end: a bytecode VM
 versus a native code generator. Source written in the removed pre-migration scripting syntax
@@ -52,10 +60,11 @@ versus a native code generator. Source written in the removed pre-migration scri
 
 `examples/` has 18 runnable programs (classes, enums, records, generics, collections, lambdas,
 exceptions, file I/O, JSON, CLI, game, server, desktop-style); `hearth/ashvm/tests/scripts/run_regression.sh`
-and `hearth/kiln/tests/scripts/run_regression.sh` run them on both engines. The standard library lives in
-`hearth/front/stdlib` (`ash.lang`, `ash.util`, `ash.io`, `ash.json`, `ash.math`, `ash.cli`, `ash.test`,
-`ash.time`, `ash.concurrent`, `ash.net`, `ash.web`, `ash.game`, `ash.desktop`; the last five are pure-Ash
-models because the VM has no threads, sockets, windows or clock). Known limits of the current backend are
+and `hearth/kiln/tests/scripts/run_regression.sh` run them on both engines. The standard library is the
+`ash-stdlib` package (`ash.util`, `ash.io`, `ash.json`, `ash.math`, `ash.cli`, `ash.test`, `ash.time`,
+`ash.concurrent`, `ash.net`, `ash.web`, `ash.game`, `ash.desktop`; the last five are pure-Ash
+models because the VM has no threads, sockets, windows or clock); the test scripts expect it as a sibling
+checkout (`../ash-stdlib`) or via `ASH_PATH`. Known limits of the current backend are
 tabulated in `MIGRATION.md`.
 
 ### REPL
@@ -106,8 +115,8 @@ documentation, `examples/` and the build entry point.
 
 ```
 hearth/front/     the only frontend: lexer, parser, AST, type checker, lowering, internal IR lexer,
-                  REPL session model and the standard library (stdlib/). Built as libashfront.a,
-                  linked by ashvm and kiln. There is no front-end executable.
+                  REPL session model and the compiler's core types (src/jcore, compiled in as C data).
+                  Built as libashfront.a, linked by ashvm and kiln. There is no front-end executable.
 hearth/ashvm/     the VM engine: compiler (IR -> bytecode), value, vm, builtins, diagnostics, app (CLI + REPL)
 hearth/kiln/      the native compiler: IR -> machine code -> ELF/PE (no VM, no libc)
 hearth/forgepack/ package manager: forgepack init/add/install/list, dependencies fetched from GitHub

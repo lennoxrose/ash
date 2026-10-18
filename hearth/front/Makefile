@@ -1,6 +1,6 @@
 CC = gcc
 .DEFAULT_GOAL := all
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -DASH_STDLIB_DIR=\"$(abspath stdlib)\"
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc 
 
 # Shared front end for Ash: lexer, parser, AST, type checker, lowering and the internal IR
 # lexer, built as libashfront.a and linked by both ashvm and kiln (see MIGRATION.md, D12).
@@ -9,6 +9,9 @@ CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -DASH_STDLIB_DIR=\"$(abspath stdlib)\"
 FRONT_SRC = \
     src/ir/C/ir_lex.c \
     src/jcommon/C/jcommon.c \
+    src/jcore/C/jcore.c \
+    src/jcore/C/core_lang.c \
+    src/jcore/C/core_function.c \
     src/jlex/C/jlex.c \
     src/jparse/C/jparse_decl.c \
     src/jparse/C/jparse_expr.c \

@@ -6,6 +6,8 @@
 # so it is left as `make @ashvm` would leave it (no collector).
 set -uo pipefail
 cd "$(dirname "$0")/../.." # -> ashvm/
+# the optional standard library (ash-stdlib) is a sibling checkout unless ASH_PATH says otherwise
+export ASH_PATH="${ASH_PATH:-$PWD/../../../ash-stdlib/src/main/ash}"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 make clean >/dev/null 2>&1; make >/dev/null 2>&1 || { echo "default build failed"; exit 1; }
