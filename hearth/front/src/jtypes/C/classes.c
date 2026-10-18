@@ -31,7 +31,7 @@ void jt_add_root(const char *dir) { j_list_push(&roots, j_strdup(dir)); }
 static int dir_exists(const char *d) { return access(d, F_OK) == 0; }
 
 /* Packages installed by apm: each child C of <project>/@ash-modules and <project>/ash.libs is a
- * source root, at C/src/main/ash when that exists and at C itself otherwise. */
+ * source root at C/src/main/ash (every Ash module keeps its sources there). */
 static void add_package_roots(const char *project, const char *folder) {
     char *dir = j_fmt("%s/%s", project, folder);
     DIR *d = opendir(dir);
@@ -40,7 +40,7 @@ static void add_package_roots(const char *project, const char *folder) {
         if (e->d_name[0] == '.') continue;
         char *pkg = j_fmt("%s/%s", dir, e->d_name);
         char *main_dir = j_fmt("%s/src/main/ash", pkg);
-        jt_add_root(dir_exists(main_dir) ? main_dir : pkg);
+        if (dir_exists(main_dir)) jt_add_root(main_dir);
     }
     closedir(d);
 }

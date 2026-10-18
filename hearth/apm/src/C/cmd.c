@@ -5,6 +5,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
+#include <dirent.h>
+#include <stdarg.h>
 #include "H/cmd.h"
 #include "H/manifest.h"
 #include "H/install.h"
@@ -22,6 +24,204 @@ static void infer_project_name(char *out, int out_size) {
     if (len >= out_size) len = out_size - 1;
     memcpy(out, base, (size_t)len);
     out[len] = '\0';
+}
+
+// Package id for a module name: lowercase, every non-alphanumeric run becomes '_' ("My-Lib" -> "my_lib").
+static void package_id(const char *name, char *out, int out_size) {
+    int n = 0;
+    for (const char *c = name; *c && n < out_size - 2; c++) {
+        char ch = *c;
+        if (ch >= 'A' && ch <= 'Z') ch = (char)(ch - 'A' + 'a');
+        int word = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+        if (word) out[n++] = ch;
+        else if (n > 0 && out[n - 1] != '_') out[n++] = '_';
+    }
+    while (n > 0 && out[n - 1] == '_') n--;
+    if (n == 0 || (out[0] >= '0' && out[0] <= '9')) { memmove(out + 1, out, (size_t)n); out[0] = '_'; n++; }
+    out[n] = '\0';
+}
+
+// Class name for a package id: "my_lib" -> "MyLib".
+static void class_id(const char *pkg, char *out, int out_size) {
+    int n = 0, up = 1;
+    for (const char *c = pkg; *c && n < out_size - 1; c++) {
+        if (*c == '_') { up = 1; continue; }
+        out[n++] = (up && *c >= 'a' && *c <= 'z') ? (char)(*c - 'a' + 'A') : *c;
+        up = 0;
+    }
+    out[n] = '\0';
+}
+
+static int write_file(const char *path, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static int write_file(const char *path, const char *fmt, ...) {
+    FILE *f = fopen(path, "w");
+    if (!f) { ui_err("could not write %s", path); return 0; }
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fclose(f);
+    return 1;
+}
+
+// apm new <name>
+//   scaffolds ./<name>/ as an Ash module. Every module has the same shape: the source root is
+//   src/main/ash, and a type in package p is src/main/ash/p/<Type>.ash, so users write `import p.Type;`.
+int cmd_new(const char *project_dir, int argc, char **argv) {
+    if (argc != 1 || argv[0][0] == '\0' || strchr(argv[0], '/')) {
+        ui_err("usage: apm new <name>");
+        return 1;
+    }
+    const char *name = argv[0];
+    char pkg[MANIFEST_NAME_LEN], cls[MANIFEST_NAME_LEN];
+    package_id(name, pkg, sizeof(pkg));
+    class_id(pkg, cls, sizeof(cls));
+
+    char root[1024], src[1100], path[1200];
+    snprintf(root, sizeof(root), "%s/%s", project_dir, name);
+    if (fsutil_dir_exists(root)) { ui_err("%s already exists", root); return 1; }
+    snprintf(src, sizeof(src), "%s/src/main/ash/%s", root, pkg);
+    if (!fsutil_mkdir_p(src)) { ui_err("could not create %s", src); return 1; }
+
+    Manifest m;
+    manifest_init_default(&m, name);
+    snprintf(m.main, sizeof(m.main), "%s.%s", pkg, cls);
+    snprintf(m.description, sizeof(m.description), "TODO: describe %s", name);
+    entry_set(&m.scripts, "build", "for f in $(find src/main/ash -name '*.ash'); do ASH_PATH=src/main/ash ashvm check \"$f\" || exit 1; done");
+    if (!manifest_save(root, &m)) return 1;
+
+    snprintf(path, sizeof(path), "%s/%s.ash", src, cls);
+    if (!write_file(path,
+            "package %s;\n\n/// Entry point of %s.\npublic final class %s {\n"
+            "    private %s() { }\n\n    public static String name() {\n        return \"%s\";\n    }\n}\n",
+            pkg, name, cls, cls, name)) return 1;
+    snprintf(path, sizeof(path), "%s/README.md", root);
+    if (!write_file(path,
+            "# %s\n\n```sh\napm add github:<user>/%s\n```\n\n```ash\nimport %s.%s;\n```\n",
+            name, name, pkg, cls)) return 1;
+    snprintf(path, sizeof(path), "%s/.gitignore", root);
+    if (!write_file(path, "@ash-modules/\n")) return 1;
+
+    ui_ok("created %s (import %s.%s;)", root, pkg, cls);
+    return 0;
+}
+
+// ---- apm check --------------------------------------------------------------------------------
+// Module conventions, so every Ash module looks the same:
+//   ash.pkg has name, version, description, license; README.md and LICENSE exist;
+//   sources live under src/main/ash; every .ash file is <Type>.ash (UpperCamelCase), declares
+//   `package a.b;` matching its directory a/b, and declares a type named like the file.
+typedef struct { int problems; } Check;
+
+static void check_fail(Check *c, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void check_fail(Check *c, const char *fmt, ...) {
+    char msg[1400];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+    ui_err("%s", msg);
+    c->problems++;
+}
+
+static int has_suffix(const char *s, const char *suffix) {
+    size_t a = strlen(s), b = strlen(suffix);
+    return a >= b && strcmp(s + a - b, suffix) == 0;
+}
+
+static int file_exists(const char *dir, const char *name) {
+    char p[1100];
+    snprintf(p, sizeof(p), "%s/%s", dir, name);
+    return access(p, F_OK) == 0;
+}
+
+// first `package x.y;` of the file, as a path "x/y" ("" = none)
+static void read_package(const char *path, char *out, int out_size) {
+    out[0] = '\0';
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "package ", 8) != 0) continue;
+        char *semi = strchr(line, ';');
+        if (!semi) break;
+        *semi = '\0';
+        snprintf(out, (size_t)out_size, "%s", line + 8);
+        for (char *c = out; *c; c++) if (*c == '.') *c = '/';
+        break;
+    }
+    fclose(f);
+}
+
+static int file_declares_type(const char *path, const char *type) {
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char line[512], want[160];
+    int found = 0;
+    while (!found && fgets(line, sizeof(line), f)) {
+        const char *kws[] = { "class ", "interface ", "enum ", "record " };
+        for (int i = 0; i < 4 && !found; i++) {
+            snprintf(want, sizeof(want), "%s%s", kws[i], type);
+            const char *at = strstr(line, want);
+            char after = at ? at[strlen(want)] : 0;
+            if (at && (after == ' ' || after == '<' || after == '{' || after == '(' || after == '\n' || after == '\0')) found = 1;
+        }
+    }
+    fclose(f);
+    return found;
+}
+
+static void check_tree(Check *c, const char *root, const char *rel) {
+    char dir[1100];
+    if (rel[0]) snprintf(dir, sizeof(dir), "%s/%s", root, rel); else snprintf(dir, sizeof(dir), "%s", root);
+    DIR *d = opendir(dir);
+    if (!d) return;
+    for (struct dirent *e = readdir(d); e; e = readdir(d)) {
+        if (e->d_name[0] == '.') continue;
+        char sub[1100];
+        snprintf(sub, sizeof(sub), "%s/%s", dir, e->d_name);
+        char subrel[1100];
+        if (rel[0]) snprintf(subrel, sizeof(subrel), "%s/%s", rel, e->d_name); else snprintf(subrel, sizeof(subrel), "%s", e->d_name);
+        if (fsutil_dir_exists(sub)) { check_tree(c, root, subrel); continue; }
+        if (!has_suffix(e->d_name, ".ash")) continue;
+
+        char type[160];
+        snprintf(type, sizeof(type), "%s", e->d_name);
+        type[strlen(type) - 4] = '\0';
+        if (type[0] < 'A' || type[0] > 'Z') check_fail(c, "%s: file name must be UpperCamelCase (<Type>.ash)", subrel);
+        char pkg[512];
+        read_package(sub, pkg, sizeof(pkg));
+        char expect[1100] = "";
+        if (rel[0]) snprintf(expect, sizeof(expect), "%s", rel);
+        if (strcmp(pkg, expect) != 0) check_fail(c, "%s: package must match its directory ('%s')", subrel, expect);
+        else if (!file_declares_type(sub, type)) check_fail(c, "%s: must declare a type named %s", subrel, type);
+    }
+    closedir(d);
+}
+
+int cmd_check(const char *project_dir, int argc, char **argv) {
+    (void)argc; (void)argv;
+    Check c = { 0 };
+    Manifest m;
+    if (!manifest_load(project_dir, &m)) {
+        ui_err("no %s here -- run 'apm init' or 'apm new' first", MANIFEST_FILE);
+        return 1;
+    }
+    if (!m.name[0]) check_fail(&c, "%s: missing name", MANIFEST_FILE);
+    if (!m.version[0]) check_fail(&c, "%s: missing version", MANIFEST_FILE);
+    if (!m.description[0]) check_fail(&c, "%s: missing description", MANIFEST_FILE);
+    if (!m.license[0]) check_fail(&c, "%s: missing license (apm license <id>)", MANIFEST_FILE);
+    if (!file_exists(project_dir, "README.md")) check_fail(&c, "missing README.md");
+    if (!file_exists(project_dir, "LICENSE")) check_fail(&c, "missing LICENSE (apm license <id>)");
+
+    char root[1100];
+    snprintf(root, sizeof(root), "%s/src/main/ash", project_dir);
+    if (!fsutil_dir_exists(root)) check_fail(&c, "missing source root src/main/ash");
+    else check_tree(&c, root, "");
+
+    if (c.problems) { ui_err("%d problem%s", c.problems, c.problems == 1 ? "" : "s"); return 1; }
+    ui_ok("%s follows the module conventions", m.name);
+    return 0;
 }
 
 int cmd_init(const char *project_dir, int argc, char **argv) {

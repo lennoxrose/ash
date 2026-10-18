@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 void *j_alloc(size_t n) {
     void *p = calloc(1, n ? n : 1);
@@ -108,10 +109,23 @@ static const char *find_source(const char *path) {
     return NULL;
 }
 
+#define COL_RED   "\033[38;5;203m"
+#define COL_CYAN  "\033[38;5;117m"
+#define COL_GRAY  "\033[38;5;242m"
+#define COL_RESET "\033[0m"
+#define COL_BOLD  "\033[1m"
+
+static int use_color(void) {
+    return isatty(STDERR_FILENO) && !getenv("NO_COLOR");
+}
+
 static void report(const char *path, int line, int col, const char *fmt, va_list ap) {
-    fprintf(stderr, "error: ");
+    int color = use_color();
+    const char *bold = color ? COL_BOLD : "", *red = color ? COL_RED : "", *cyan = color ? COL_CYAN : "";
+    const char *gray = color ? COL_GRAY : "", *reset = color ? COL_RESET : "";
+    fprintf(stderr, "%s%serror%s%s: ", bold, red, reset, bold);
     vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n  --> %s:%d:%d\n", path ? path : "<unknown>", line, col);
+    fprintf(stderr, "%s\n%s  --> %s:%d:%d%s\n", reset, cyan, path ? path : "<unknown>", line, col, reset);
     const char *text = path ? find_source(path) : NULL;
     if (text && line > 0) {
         const char *p = text;
@@ -120,9 +134,9 @@ static void report(const char *path, int line, int col, const char *fmt, va_list
         }
         const char *end = p;
         while (*end && *end != '\n') end++;
-        fprintf(stderr, "   |\n%3d| %.*s\n   | ", line, (int)(end - p), p);
+        fprintf(stderr, "%s   |%s\n%s%3d|%s %.*s\n%s   |%s ", gray, reset, gray, line, reset, (int)(end - p), p, gray, reset);
         for (int i = 1; i < col; i++) fputc(' ', stderr);
-        fprintf(stderr, "^\n");
+        fprintf(stderr, "%s^%s\n", red, reset);
     }
 }
 
@@ -144,7 +158,8 @@ void j_error_soft(const char *path, int line, int col, const char *fmt, ...) {
 
 void j_abort_if_errors(void) {
     if (errors) {
-        fprintf(stderr, "%d error%s\n", errors, errors == 1 ? "" : "s");
+        int color = use_color();
+        fprintf(stderr, "%s%d error%s%s\n", color ? COL_BOLD COL_RED : "", errors, errors == 1 ? "" : "s", color ? COL_RESET : "");
         exit(1);
     }
 }

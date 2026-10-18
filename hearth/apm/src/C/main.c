@@ -6,6 +6,8 @@
 static void print_usage(void) {
     printf("apm -- the Ash package manager (github: sources only, for now)\n\n");
     printf("usage:\n");
+    printf("  apm new <name>        scaffold a module: ash.pkg + src/main/ash/<package>/<Class>.ash\n");
+    printf("  apm check             verify the module follows the Ash module conventions\n");
     printf("  apm init\n");
     printf("  apm add github:<user>/<repo>[@ref] [--as <name>] [--dev]\n");
     printf("  apm install\n");
@@ -22,6 +24,8 @@ int main(int argc, char **argv) {
     char **rest_argv = argv + 2;
     const char *project_dir = ".";
 
+    if (strcmp(command, "new") == 0) return cmd_new(project_dir, rest_argc, rest_argv);
+    if (strcmp(command, "check") == 0) return cmd_check(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "init") == 0) return cmd_init(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "add") == 0) return cmd_add(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "install") == 0) return cmd_install(project_dir, rest_argc, rest_argv);

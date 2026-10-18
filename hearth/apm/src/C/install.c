@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "H/install.h"
 #include "H/fsutil.h"
 #include "H/git_fetch.h"
@@ -25,6 +26,15 @@ int install_dependency(const char *project_dir, const Dependency *dep) {
 
     ui_info("fetching %s (%s)", dep->name, dep->value);
     if (!git_fetch_github(dep->value, dest)) return 0;
+    char root[1100];
+    snprintf(root, sizeof(root), "%s/src/main/ash", dest);
+    if (!fsutil_dir_exists(root)) {
+        ui_err("'%s' has no src/main/ash source root -- every Ash module must keep its sources there (apm new scaffolds one)", dep->name);
+        char rm[1200];
+        snprintf(rm, sizeof(rm), "rm -rf '%s'", dest);
+        if (system(rm) != 0) ui_err("could not remove %s", dest);
+        return 0;
+    }
     ui_ok("%s installed", dep->name);
     return 1;
 }
