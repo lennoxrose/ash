@@ -18,6 +18,7 @@ KILN_SRC = \
     src/parser/C/statements/attempt_handle.c \
     src/codegen/C/builtins/builtins.c \
     src/codegen/C/builtins/exit_builtin.c \
+    src/codegen/C/builtins/proc_builtins.c \
     src/codegen/C/builtins/filter_builtin.c \
     src/codegen/C/builtins/map_builtin.c \
     src/codegen/C/builtins/type_builtin.c \

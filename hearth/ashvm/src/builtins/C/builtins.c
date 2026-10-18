@@ -12,7 +12,8 @@ static const char *builtin_names[] = {
     "pop", "insert", "slice", "sort",
     "rename_file", "delete_file", "make_dir", "list_dir",
     "contains", "starts_with", "ends_with", "repeat",
-    "exit", "matrix_mul"
+    "exit", "matrix_mul",
+    "sys_fork", "sys_wait", "sys_exec"
 };
 // Argument count each builtin is wrapped with when used as a value
 // (`map(xs, str)`); same order as builtin_names.
@@ -25,7 +26,8 @@ static const int builtin_arity[] = {
     1, 3, 3, 1,
     2, 1, 1, 1,
     2, 2, 2, 2,
-    1, 2
+    1, 2,
+    0, 1, 2
 };
 #define NUM_BUILTINS (int)(sizeof(builtin_names) / sizeof(builtin_names[0]))
 
@@ -49,5 +51,6 @@ VMValue vm_call_builtin(int id, VMValue *args, int argc) {
     if (id >= 34 && id <= 37) return vm_call_builtin_file(id, args, argc); // rename_file, delete_file, make_dir, list_dir
     if (id >= 30 && id <= 33) return vm_call_builtin_collection(id, args, argc); // pop, insert, slice, sort
     if (id == 43) return vm_call_builtin_matrix(id, args, argc); // matrix_mul
+    if (id >= 44 && id <= 46) return vm_call_builtin_proc(id, args, argc); // sys_fork, sys_wait, sys_exec
     vm_runtime_error("unknown builtin id: %d\n", id);
 }

@@ -14,6 +14,7 @@
 #include "codegen/H/io/argv_builtin.h"
 #include "codegen/H/builtins/type_builtin.h"
 #include "codegen/H/builtins/exit_builtin.h"
+#include "codegen/H/builtins/proc_builtins.h"
 #include "parser/H/core/parser.h"
 
 int codegen_try_builtin_call(const char *name, int len) {
@@ -118,6 +119,9 @@ int codegen_try_builtin_call(const char *name, int len) {
     if (len == 9 && strncmp(name, "ends_with", 9) == 0) { codegen_builtin_ends_with(); return 1; }
     if (len == 6 && strncmp(name, "repeat", 6) == 0) { codegen_builtin_repeat(); return 1; }
     if (len == 4 && strncmp(name, "exit", 4) == 0) { codegen_builtin_exit(); return 1; }
+    if (len == 8 && strncmp(name, "sys_fork", 8) == 0) { codegen_builtin_sys_fork(); return 1; }
+    if (len == 8 && strncmp(name, "sys_wait", 8) == 0) { codegen_builtin_sys_wait(); return 1; }
+    if (len == 8 && strncmp(name, "sys_exec", 8) == 0) { codegen_builtin_sys_exec(); return 1; }
     if (len == 4 && strncmp(name, "sort", 4) == 0) {
         codegen_builtin_sort();
         return 1;
@@ -261,6 +265,7 @@ int codegen_builtin_arity(const char *name, int len) {
         {"type", 1}, {"chr", 1}, {"ord", 1}, {"pop", 1}, {"insert", 3}, {"slice", 3}, {"sort", 1},
         {"rename_file", 2}, {"delete_file", 1}, {"make_dir", 1}, {"list_dir", 1},
         {"contains", 2}, {"starts_with", 2}, {"ends_with", 2}, {"repeat", 2}, {"exit", 1}, {"argv", 0},
+        {"sys_fork", 0}, {"sys_wait", 1}, {"sys_exec", 2},
     };
     for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
         if ((int)strlen(table[i].name) == len && strncmp(table[i].name, name, (size_t)len) == 0) return table[i].arity;

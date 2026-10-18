@@ -27,7 +27,8 @@ static const char *reserved[] = {
     "num", "exit", "sqrt", "abs", "floor", "chr", "ord", "push", "pop", "insert", "slice", "delete", "sort",
     "keys", "values", "has", "map", "filter", "reduce", "split", "join", "substring", "indexOf", "contains",
     "starts_with", "ends_with", "replace", "repeat", "upper", "lower", "trim", "input", "read_file",
-    "write_file", "append_file", "file_exists", "rename_file", "delete_file", "make_dir", "list_dir", NULL
+    "write_file", "append_file", "file_exists", "rename_file", "delete_file", "make_dir", "list_dir",
+    "sys_fork", "sys_wait", "sys_exec", NULL
 };
 
 char *sname(const char *n) {
