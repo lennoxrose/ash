@@ -1,0 +1,11 @@
+error: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/ownership/OwnMovedKeep.ash:11:28
+   |
+ 11|         System.out.println(a + back);     // error
+   |                            ^
+error: use of moved value 'c': it was moved earlier by an assignment or by passing it to a call; lend it with &c, clone it, or assign a new value first
+  --> tests/cases/ownership/OwnMovedKeep.ash:15:28
+   |
+ 15|         System.out.println(c);            // error
+   |                            ^
+2 error(s)

@@ -4,11 +4,49 @@
 #include <string.h>
 
 #include "jlower/H/jlower_internal.h"
+#include "jown/H/own.h"
 
 /* Expression lowering: new-Ash typed AST -> old-Ash expression text. */
 
 LState L;
 int jl_wrap_int = 0;
+int jl_drops = 0;
+
+static int is_map_type(JType *t) {
+    if (!t || t->kind != TY_CLASS) return 0;
+    const char *q = t->cls->qname;
+    return !strcmp(q, "ash.util.HashMap") || !strcmp(q, "ash.util.Map") || !strcmp(q, "ash.util.HashSet") || !strcmp(q, "ash.util.Set");
+}
+
+const char *jl_drop_fn(JType *t) {
+    if (is_map_type(t)) return "mem_free_map";
+    if (t && (t->kind == TY_ARRAY || is_array_list(t))) return "mem_free_arr";
+    if (t && t->kind == TY_CLASS && !ty_is_string(t)) return "mem_free_obj";
+    return "mem_free";
+}
+
+void jl_emit_drop(JBuf *b, int ind, JType *t, const char *var, int elems) {
+    if (t && t->kind == TY_CLASS && !ty_is_string(t) && t->cls && !is_array_list(t) && !is_map_type(t)) {
+        /* the object exclusively owns these fields' values, so they die with it */
+        JField **fs;
+        int nf = jown_owned_fields(t->cls, &fs);
+        for (int i = 0; i < nf; i++) {
+            if (!jl_drop_ok(fs[i]->type)) continue;
+            if (jown_field_elems(fs[i]) && (jl_drops & JL_DROP_ELEMS)) emit_line(b, ind, "mem_free_elems(%s[%s]);", var, quote_str(fs[i]->name));
+            emit_line(b, ind, "%s(%s[%s]);", jl_drop_fn(fs[i]->type), var, quote_str(fs[i]->name));
+        }
+    }
+    if (elems && (jl_drops & JL_DROP_ELEMS)) emit_line(b, ind, "mem_free_elems(%s);", var);   /* the Strings only this container holds */
+    emit_line(b, ind, "%s(%s);", jl_drop_fn(t), var);
+}
+
+int jl_drop_ok(JType *t) {
+    if (!jl_drops || !L.cls || !L.cls->mem_on || !t) return 0;
+    if (is_map_type(t)) return (jl_drops & JL_DROP_MAPS) != 0;
+    if (t->kind == TY_ARRAY || (t->kind == TY_CLASS && is_array_list(t))) return (jl_drops & JL_DROP_ARRAYS) != 0;
+    if (ty_is_string(t)) return (jl_drops & JL_DROP_STRINGS) != 0;
+    return t->kind == TY_CLASS && (jl_drops & JL_DROP_OBJECTS) != 0;
+}
 
 void lerr(Node *at, const char *fmt, ...) {
     va_list ap;
@@ -28,7 +66,7 @@ static const char *reserved[] = {
     "keys", "values", "has", "map", "filter", "reduce", "split", "join", "substring", "indexOf", "contains",
     "starts_with", "ends_with", "replace", "repeat", "upper", "lower", "trim", "input", "read_file",
     "write_file", "append_file", "file_exists", "rename_file", "delete_file", "make_dir", "list_dir",
-    "sys_fork", "sys_wait", "sys_exec", NULL
+    "sys_fork", "sys_wait", "sys_exec", "mem_free", "mem_free_arr", "mem_free_obj", "mem_free_map", "mem_free_elems", "mem_newarr1", "mem_cat", "mem_release", NULL
 };
 
 char *sname(const char *n) {
@@ -412,6 +450,15 @@ static char *binop(const char *op, JType *lt, JType *rt, const char *a, const ch
         if (!strcmp(op, ">>>")) return j_fmt("__wg(__ushr(%s, %s & 31))", a, b);
     }
     if (!strcmp(op, "+") && (ty_is_string(lt) || ty_is_string(rt))) {
+        if ((jl_drops & JL_DROP_STRINGS) && L.cls && L.cls->mem_on && at) {
+            /* operands that are temporaries (an inner concatenation, str(int)) die with this one: free them */
+            Node *ln = at->kind == N_BINARY ? at->a : NULL, *rn = at->kind == N_BINARY || at->kind == N_ASSIGN ? at->b : NULL;
+            int fl = ln && jown_is_fresh_string(ln) ? 1 : 0;
+            JType *ur = ty_unbox(rt);
+            if (rn && ((jown_is_fresh_string(rn) && ty_is_string(rt)) ||
+                       (!ty_is_string(rt) && !rt->nullable && (ur->kind == TY_INT || ur->kind == TY_SHORT || ur->kind == TY_BYTE)))) fl |= 2;
+            if (fl && ty_is_string(lt) && !lt->nullable) return j_fmt("mem_cat(%s, %s, %d)", a, str_of(rt, b), fl);
+        }
         return j_fmt("(%s + %s)", str_of(lt, a), str_of(rt, b));
     }
     if (!strcmp(op, "/") && integral_t(lt) && integral_t(rt)) return j_fmt("__idiv(%s, %s)", a, b);
@@ -528,6 +575,23 @@ void emit_assign_stmt(JBuf *b, Node *e, int ind) {
             rhs = binop(op, e->a->type, e->b->type, lhs, rhs, e);
         }
         flush_pre(b, ind);
+        if (e->a->kind == N_NAME && e->a->rk == R_LOCAL && e->a->sym && ((JLocal *)e->a->sym)->drop && jl_drop_ok(((JLocal *)e->a->sym)->type)) {
+            /* sole owner: the old value is unreachable once the new one is computed */
+            char *t = new_temp();
+            emit_line(b, ind, "local %s = %s;", t, unparen(rhs));
+            jl_emit_drop(b, ind, ((JLocal *)e->a->sym)->type, lhs, jown_local_elems(e->a->sym));
+            emit_line(b, ind, "%s = %s;", lhs, t);
+            return;
+        }
+        if (jown_field_assign_frees(e->a) && jl_drop_ok(((JField *)e->a->sym)->type)) {
+            /* the object owns the field's value exclusively: the old one dies when the new one is stored */
+            char *t = new_temp();
+            emit_line(b, ind, "local %s = %s;", t, unparen(rhs));
+            if (jown_field_elems(e->a->sym) && (jl_drops & JL_DROP_ELEMS)) emit_line(b, ind, "mem_free_elems(%s);", lhs);
+            emit_line(b, ind, "%s(%s);", jl_drop_fn(((JField *)e->a->sym)->type), lhs);
+            emit_line(b, ind, "%s = %s;", lhs, t);
+            return;
+        }
         emit_line(b, ind, "%s = %s;", lhs, unparen(rhs));
         return;
     }
@@ -722,6 +786,10 @@ static char *lower_array(Node *n) {
     JType *t = n->type;
     for (int i = 0; i < n->l1.count; i++) t = t->elem;
     char *dims = NULL;
+    if (n->l1.count == 1 && (jl_drops & JL_DROP_ARRAYS) && L.cls && L.cls->mem_on) {
+        /* no temporary dims array to leak: the array itself is what a sole owner frees */
+        return j_fmt("%s(%s, %s)", (jl_drops & JL_NATIVE_NEWARR) ? "mem_newarr1" : "__newarr1", lx(n->l1.items[0]), default_value(t));
+    }
     JBuf b = {0};
     j_buf_addc(&b, '[');
     for (int i = 0; i < n->l1.count; i++) {
@@ -866,7 +934,7 @@ char *lx(Node *e) {
         case N_UNARY:
             if (!strcmp(e->name, "!")) return j_fmt("(not %s)", lx(e->a));
             if (!strcmp(e->name, "++") || !strcmp(e->name, "--")) return assign_value(e);
-            if (!strcmp(e->name, "+")) return lx(e->a);
+            if (!strcmp(e->name, "+") || e->name[0] == '&') return lx(e->a);   /* a borrow is the variable itself at run time */
             if (jl_wrap_int && !strcmp(e->name, "-") && ty_unbox(e->a->type)->kind == TY_INT) return j_fmt("__w(-%s)", lx(e->a));
             if (jl_wrap_int && !strcmp(e->name, "-") && is_long_t(e->a->type)) return j_fmt("__lneg(%s)", lx(e->a));
             if (jl_wrap_int && !strcmp(e->name, "~") && is_long_t(e->a->type)) return j_fmt("__lxor(%s, -1)", lx(e->a));

@@ -1,9 +1,9 @@
 CC = gcc
 .DEFAULT_GOAL := all
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc 
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I.. 
 
 # Shared front end for Ash: lexer, parser, AST, type checker, lowering and the internal IR
-# lexer, built as libashfront.a and linked by both ashvm and kiln.
+# lexer, built as front.a and linked by both ashvm and kiln.
 # There is no front-end executable: ashvm and kiln are the user-facing tools.
 # Same layout rule as the other subprojects: src/<sub>/C/x.c -> src/<sub>/O/x.o.
 FRONT_SRC = \
@@ -22,6 +22,7 @@ FRONT_SRC = \
     src/jtypes/C/check_expr.c \
     src/jtypes/C/check_stmt.c \
     src/jtypes/C/check_class.c \
+    src/jown/C/own.c \
     src/jlower/C/lower_expr.c \
     src/jlower/C/lower_stmt.c \
     src/jlower/C/lower_class.c \
@@ -43,12 +44,12 @@ $(call obj_of,$(1)): $(1)
 endef
 $(foreach s,$(FRONT_SRC),$(eval $(call compile_rule,$(s))))
 
-LIB = ../../bin/libashfront.a
+LIB = ../../bin/lib/front.a
 
 all: $(LIB)
 
 $(LIB): $(FRONT_OBJ)
-	mkdir -p ../../bin
+	mkdir -p ../../bin/lib
 	ar rcs $@ $(FRONT_OBJ)
 
 -include $(ALL_DEP)

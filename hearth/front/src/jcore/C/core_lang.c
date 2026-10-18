@@ -533,6 +533,9 @@ const JCoreEntry jcore_lang[] = {
     "    public static final InputStream in = new InputStream();\n"
     "    /// Ends the program with the given status.\n"
     "    @Lower(\"exit($1)\") public static native void exit(int status);\n"
+    "    /// Frees a String, array or object. Only for projects with `memory-safety: off`; the value must be\n"
+    "    /// unreachable afterwards, or the program is on its own.\n"
+    "    @Lower(\"mem_release($1)\") public static native void free(Object o);\n"
     "}\n" },
   { "ash/lang/Throwable",
     "package ash.lang;\n"

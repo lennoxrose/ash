@@ -3,6 +3,7 @@
 #include "codegen/H/platform/win_call.h"
 #include "elf/H/elf_dynamic_call.h"
 #include "app/H/target.h"
+#include "codegen/H/emit/value.h"
 
 // Chunk-based growth, replacing the old single fixed 16MB grab: the arena
 // starts with one chunk and the alloc routine below grows it by another
@@ -47,6 +48,123 @@ static int alloc_routine_offset = -1;
 // RBX/RCX/RDX (borrowed as scratch) around that one-off syscall/API call,
 // instead of changing the contract for the other ~26 sites that never hit
 // the slow path at all.
+// ---- optional free lists (static Linux builds of programs that free; see heap.h) ----
+#define FL_MAX_BLOCK 512        // blocks up to this size are recycled, larger ones are only bump-allocated
+#define FL_ROUND_MASK (~(uint64_t)15)
+
+static int free_lists_on;
+static int arrays_on;
+
+void heap_enable_free_lists(int blocks) {
+    free_lists_on = kiln_get_link_mode() == KILN_LINK_STATIC && !kiln_is_compiling_so();   // Linux and Windows static builds
+    arrays_on = free_lists_on && blocks;
+}
+
+int heap_free_arrays_on(void) { return arrays_on; }
+
+int heap_free_lists_on(void) { return free_lists_on; }
+
+// Start of the string alloc routine: rounds the request up to 16 bytes (every string block is then a whole
+// size class, so a freed one can serve any request of its class) and pops a recycled block of that class if
+// there is one; otherwise falls through with the rounded size in RDI.
+// In: RDI = size. Out: RAX = block (recycled path only). Clobbers RSI, RDI like the alloc routine.
+static void emit_freelist_pop(CodeBuf *code) {
+    emit_add_reg_imm8(code, REG_RDI, 15);
+    emit_mov_reg_imm64(code, REG_RSI, FL_ROUND_MASK);
+    emit_and_reg_reg(code, REG_RDI, REG_RSI);
+    emit_cmp_reg_imm32(code, REG_RDI, FL_MAX_BLOCK);
+    int too_big = emit_jcc_rel32(code, COND_A);
+    emit_mov_reg_reg(code, REG_RSI, REG_RDI);
+    emit_sar_reg_by1(code, REG_RSI);                              // size / 2 = class * 8
+    emit_mov_reg_imm64(code, REG_RAX, kiln_freelist_addr());
+    emit_add_reg_reg(code, REG_RSI, REG_RAX);                     // RSI = &head of this class
+    emit_load_mem_disp32(code, REG_RAX, REG_RSI, 0);              // RAX = head
+    emit_cmp_reg_imm32(code, REG_RAX, 0);
+    int empty = emit_jcc_rel32(code, COND_E);
+    emit_load_mem_disp32(code, REG_RDI, REG_RAX, 0);              // RDI = next free block
+    emit_store_mem_disp32(code, REG_RSI, 0, REG_RDI);             // head = next
+    emit_ret(code);
+    emit_patch_jump(code, empty);
+    emit_patch_jump(code, too_big);
+}
+
+// Puts the block starting at RAX, `size` bytes (RDX, a multiple of 16) on the free list of its class.
+// Does nothing for blocks above FL_MAX_BLOCK. Clobbers RAX, RCX, RDX, RSI.
+static void emit_free_block(CodeBuf *code) {
+    emit_cmp_reg_imm32(code, REG_RDX, FL_MAX_BLOCK);
+    int done = emit_jcc_rel32(code, COND_A);
+    emit_cmp_reg_imm32(code, REG_RDX, 16);
+    int tiny = emit_jcc_rel32(code, COND_B);
+    emit_mov_reg_reg(code, REG_RSI, REG_RDX);
+    emit_sar_reg_by1(code, REG_RSI);
+    emit_mov_reg_imm64(code, REG_RCX, kiln_freelist_addr());
+    emit_add_reg_reg(code, REG_RSI, REG_RCX);                     // RSI = &head
+    emit_load_mem_disp32(code, REG_RCX, REG_RSI, 0);
+    emit_store_mem_disp32(code, REG_RAX, 0, REG_RCX);             // block.next = head
+    emit_store_mem_disp32(code, REG_RSI, 0, REG_RAX);             // head = block
+    emit_patch_jump(code, tiny);
+    emit_patch_jump(code, done);
+}
+
+// A string payload in RAX (a heap block made by the concatenation or str() code, whose 8-byte length
+// prefix sits right before it) goes back on the free list of its class. The class is computed from the
+// length; the block is at least that big, so reusing it for that class is always in bounds.
+// Clobbers RAX, RCX, RDX, RSI. Does nothing for blocks above FL_MAX_BLOCK.
+void heap_emit_free_string_rax(CodeBuf *code) {
+    emit_load_mem_disp32(code, REG_RDX, REG_RAX, -8);             // length
+    emit_add_reg_imm8(code, REG_RDX, 8 + 15);
+    emit_mov_reg_imm64(code, REG_RSI, FL_ROUND_MASK);
+    emit_and_reg_reg(code, REG_RDX, REG_RSI);                     // size class
+    emit_sub_reg_imm8(code, REG_RAX, 8);                          // block start
+    emit_free_block(code);
+}
+
+// RAX = an array object made by the array literal / mem_newarr1 code while the array free lists were on
+// (its 24 bytes were allocated as a 32-byte class block); its element block is capacity * 16 bytes (16 for
+// capacity 0). Every array block is allocated through heap_emit_alloc_recyclable, so both are whole classes.
+// Both go back on the free lists. Clobbers RAX, RCX, RDX, RSI.
+void heap_emit_free_array_rax(CodeBuf *code) {
+    emit_push_reg(code, REG_RAX);
+    emit_load_mem_disp32(code, REG_RDX, REG_RAX, 0);              // capacity
+    emit_mov_reg_imm64(code, REG_RCX, 16);
+    emit_imul_reg_reg(code, REG_RDX, REG_RCX);                    // element block size
+    emit_cmp_reg_imm32(code, REG_RDX, 0);
+    int sized = emit_jcc_rel32(code, COND_NE);
+    emit_mov_reg_imm64(code, REG_RDX, 16);                        // an empty array's 1-byte block was rounded up to 16
+    emit_patch_jump(code, sized);
+    emit_load_mem_disp32(code, REG_RAX, REG_RAX, 16);             // data_ptr
+    emit_free_block(code);
+    emit_pop_reg(code, REG_RAX);                                  // the object itself
+    emit_mov_reg_imm64(code, REG_RDX, 32);
+    emit_free_block(code);
+}
+
+// RAX = the 16-byte block an empty map literal / array literal was given (a 1-byte request rounded up);
+// puts it back. Clobbers RAX, RCX, RDX, RSI.
+void heap_emit_free_empty_block_rax(CodeBuf *code) {
+    emit_mov_reg_imm64(code, REG_RDX, 16);
+    emit_free_block(code);
+}
+
+// RAX = a map object made by the map literal code while the free lists for blocks were on (an object of a
+// plain class is one: its fields are all in the literal, so it never grows); entries block = capacity * 32
+// bytes (16 for capacity 0). Both go back on the free lists. Clobbers RAX, RCX, RDX, RSI.
+void heap_emit_free_map_rax(CodeBuf *code) {
+    emit_push_reg(code, REG_RAX);
+    emit_load_mem_disp32(code, REG_RDX, REG_RAX, 0);              // capacity
+    emit_mov_reg_imm64(code, REG_RCX, 32);
+    emit_imul_reg_reg(code, REG_RDX, REG_RCX);
+    emit_cmp_reg_imm32(code, REG_RDX, 0);
+    int sized = emit_jcc_rel32(code, COND_NE);
+    emit_mov_reg_imm64(code, REG_RDX, 16);
+    emit_patch_jump(code, sized);
+    emit_load_mem_disp32(code, REG_RAX, REG_RAX, 16);             // entries_ptr
+    emit_free_block(code);
+    emit_pop_reg(code, REG_RAX);
+    emit_mov_reg_imm64(code, REG_RDX, 32);
+    emit_free_block(code);
+}
+
 static void emit_alloc_routine(CodeBuf *code) {
     int skip = emit_jmp_rel32(code);
     alloc_routine_offset = code->count;
@@ -110,6 +228,29 @@ static void emit_alloc_routine(CodeBuf *code) {
     emit_store_mem_disp32(code, REG_RSI, 0, REG_RDI); // heap_ptr = new heap_ptr
     emit_ret(code);
     emit_patch_jump(code, skip);
+}
+
+// Only strings are ever freed, so only their allocations (concatenation, str()) go through this routine;
+// arrays, maps and everything else keep calling the plain bump routine, which is byte-for-byte the old one.
+static int str_alloc_offset = -1;
+
+static void emit_str_alloc_routine(CodeBuf *code) {
+    int skip = emit_jmp_rel32(code);
+    str_alloc_offset = code->count;
+    emit_freelist_pop(code);
+    emit_call_back(code, alloc_routine_offset);   // nothing to recycle: bump-allocate the rounded size
+    emit_ret(code);
+    emit_patch_jump(code, skip);
+}
+
+void heap_emit_alloc_recyclable(CodeBuf *code) {
+    if (arrays_on && str_alloc_offset >= 0) emit_call_back(code, str_alloc_offset);
+    else heap_emit_alloc(code);
+}
+
+void heap_emit_alloc_str(CodeBuf *code) {
+    if (free_lists_on && str_alloc_offset >= 0) emit_call_back(code, str_alloc_offset);
+    else heap_emit_alloc(code);
 }
 
 // Called by the dedicated "compile the runtime" driver (see
@@ -194,7 +335,10 @@ void heap_emit_startup(CodeBuf *code) {
     emit_mov_reg_imm64(code, REG_RSI, kiln_heap_limit_addr());
     emit_store_mem_disp32(code, REG_RSI, 0, REG_RDI); // heap_limit = base + one chunk
 
-    if (!is_shared()) emit_alloc_routine(code);
+    if (!is_shared()) {
+        emit_alloc_routine(code);
+        if (free_lists_on) emit_str_alloc_routine(code);
+    }
 }
 
 void heap_emit_alloc(CodeBuf *code) {

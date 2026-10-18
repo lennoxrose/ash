@@ -19,7 +19,7 @@ void codegen_array_literal(void) {
 
     // elements block first (its address becomes the object's data_ptr)
     emit_mov_reg_imm64(code, REG_RDI, (uint64_t)(count > 0 ? count * 16 : 1));
-    heap_emit_alloc(code);                      // RAX = elements block
+    heap_emit_alloc_recyclable(code);           // RAX = elements block
     emit_mov_reg_reg(code, REG_RSI, REG_RAX);   // stash: RSI survives the pop loop below
 
     // Elements were pushed left to right, so the last one is on top --
@@ -34,7 +34,7 @@ void codegen_array_literal(void) {
     // now the stable array object
     emit_push_reg(code, REG_RSI); // save elements block address across this alloc
     emit_mov_reg_imm64(code, REG_RDI, ARRAY_OBJECT_SIZE);
-    heap_emit_alloc(code); // RAX = array object
+    heap_emit_alloc_recyclable(code); // RAX = array object
     emit_pop_reg(code, REG_RSI);
 
     emit_mov_reg_imm64(code, REG_RCX, (uint64_t)count);
@@ -143,7 +143,7 @@ void codegen_builtin_push(void) {
 
     emit_push_reg(code, REG_RCX); // save scratch base across the call
     emit_push_reg(code, REG_RAX); // save new_capacity too (heap_emit_alloc doesn't touch the real stack)
-    heap_emit_alloc(code);         // RAX = new data block
+    heap_emit_alloc_recyclable(code); // RAX = new data block
     emit_pop_reg(code, REG_RDX);   // RDX = new_capacity
     emit_pop_reg(code, REG_RCX);   // scratch base
 

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "jlower/H/jlower.h"
 #include "jtypes/H/check.h"
 
 /* Expression checking: names, members, calls with overload resolution and generic
@@ -968,6 +969,103 @@ static void non_null_operand(Node *n, Node *e, JType *t) {
     if (t->nullable && ty_is_prim(ty_unbox(t))) cerr(e, "possible null: nullable %s cannot be used with operator '%s'; check for null first", ty_str(t), n->name);
 }
 
+/* Compile-time arithmetic safety, as Rust denies `arithmetic_overflow`: a constant int expression that
+ * leaves the 32-bit range is an error rather than a silent wrap or widening (not under --wrap-int,
+ * where wrap-around is the defined behaviour; division by zero stays Java's runtime exception).
+ * fold_int returns 1 when `e` folds to *out, 0 when it is not a constant, 2 when folding hit an overflow (*culprit is the node where it happened). */
+static int fold_int(Node *e, long long *out, Node **culprit) {
+    if (e->kind == N_LIT_INT) {
+        unsigned long long v = strtoull(e->name, NULL, 0);
+        if (v > 2147483647ULL && v <= 0xFFFFFFFFULL && e->name[0] == '0') *out = (long long)v - 4294967296LL; /* hex int literal wraps */
+        else *out = (long long)v;
+        return 1;
+    }
+    /* a final int local or static final int field with a constant initializer is that constant
+     * (`Integer.MAX_VALUE + 1`, `final int N = 100000; N * N`) */
+    if ((e->kind == N_NAME || e->kind == N_FIELDACC) && e->sym) {
+        static int depth;
+        Node *init = NULL;
+        if (e->rk == R_STATIC_FIELD) {
+            JField *f = e->sym;
+            if ((f->flags & M_FINAL) && f->type && f->type->kind == TY_INT && f->decl) init = f->decl->b;
+        } else if (e->rk == R_LOCAL) {
+            JLocal *l = e->sym;
+            if ((l->flags & M_FINAL) && l->type && l->type->kind == TY_INT && l->decl && l->decl->kind == N_LOCAL) init = l->decl->b;
+        }
+        if (!init || depth > 16) return 0;
+        depth++;
+        int r = fold_int(init, out, culprit);
+        depth--;
+        return r == 2 ? 0 : r;   /* an overflow inside the initializer is reported at the initializer, not at every use */
+    }
+    if (e->kind == N_UNARY && !strcmp(e->name, "-")) {
+        long long v;
+        int r = fold_int(e->a, &v, culprit);
+        if (r != 1) return r;
+        *out = -v;
+        if (*out < -2147483648LL || *out > 2147483647LL) { *culprit = e; return 2; }
+        return 1;
+    }
+    if (e->kind == N_BINARY && e->name[1] == 0 && strchr("+-*/%", e->name[0])) {
+        long long a, b;
+        int ra = fold_int(e->a, &a, culprit);
+        if (ra == 2) return 2;
+        int rb = fold_int(e->b, &b, culprit);
+        if (rb == 2) return 2;
+        if (ra != 1 || rb != 1) return 0;
+        long long v;
+        switch (e->name[0]) {
+            case '+': v = a + b; break;
+            case '-': v = a - b; break;
+            case '*': v = a * b; break;   /* both |operands| <= 2^31, so this fits in 64 bits */
+            case '/': if (b == 0) return 0; v = a / b; break;
+            default:  if (b == 0) return 0; v = a % b; break;
+        }
+        if (v < -2147483648LL || v > 2147483647LL) { *culprit = e; return 2; }
+        *out = v;
+        return 1;
+    }
+    return 0;
+}
+
+static void check_const_arith(Node *n, JType *result) {
+    if (jl_wrap_int || result->kind != TY_INT) return;   /* --wrap-int defines overflow as Java wrap-around */
+    long long v;
+    Node *culprit = NULL;
+    if (fold_int(n, &v, &culprit) == 2 && culprit == n) {
+        cerr(n, "arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long");
+    }
+}
+
+/* Length of an array expression known at compile time: a `new T[k]` / `{...}` literal, or a `final` local
+ * initialised with one (other locals can still be reassigned, and programs rely on the run-time
+ * IndexOutOfBounds for those). Returns -1 when unknown. */
+static long const_array_len(Node *e) {
+    if (e->kind == N_NAME && e->rk == R_LOCAL && e->sym) {
+        JLocal *l = e->sym;
+        if (!(l->flags & M_FINAL) || !l->decl || l->decl->kind != N_LOCAL || !l->decl->b) return -1;
+        e = l->decl->b;
+    }
+    if (e->kind == N_ARRAYINIT) return e->l1.count;
+    if (e->kind == N_NEWARRAY) {
+        if (e->l1.count) {
+            long long v; Node *c = NULL;
+            return fold_int(e->l1.items[0], &v, &c) == 1 && v >= 0 ? (long)v : -1;
+        }
+        if (e->b && e->b->kind == N_ARRAYINIT) return e->b->l1.count;
+    }
+    return -1;
+}
+
+/* a[k] with constant k outside a known length (or negative) can never succeed: deny it. */
+static void check_const_index(Node *n) {
+    long long k; Node *c = NULL;
+    if (fold_int(n->b, &k, &c) != 1) return;
+    if (k < 0) { cerr(n, "array index %lld is negative", k); return; }
+    long len = const_array_len(n->a);
+    if (len >= 0 && k >= len) cerr(n, "array index %lld is out of bounds for an array of length %ld", k, len);
+}
+
 static JType *check_binary(Ctx *cx, Node *n) {
     const char *op = n->name;
     if (!strcmp(op, "&&") || !strcmp(op, "||")) {
@@ -996,6 +1094,7 @@ static JType *check_binary(Ctx *cx, Node *n) {
         if (!r) { bad_operands(n, a, b); return ty_error(); }
         non_null_operand(n, n->a, a);
         non_null_operand(n, n->b, b);
+        check_const_arith(n, r);
         return r;
     }
     if (!strcmp(op, "<<") || !strcmp(op, ">>") || !strcmp(op, ">>>")) {
@@ -1114,6 +1213,10 @@ static JType *check_unary(Ctx *cx, Node *n) {
     }
     JType *t = check_expr(cx, n->a, NULL);
     if (t->kind == TY_ERROR) return t;
+    if (op[0] == '&') {      /* borrow: same type and value as the variable it borrows */
+        if (n->a->kind != N_NAME || n->a->rk != R_LOCAL) { cerr(n, "only a local variable can be borrowed with '%s'", op); return ty_error(); }
+        return t;
+    }
     if (!strcmp(op, "!")) {
         if (!is_bool(t)) { cerr(n, "operator '!' cannot be applied to %s", ty_str(t)); return TBOOL; }
         return TBOOL;
@@ -1296,7 +1399,10 @@ JType *check_expr_ex(Ctx *cx, Node *n, JType *expected, int allow_type) {
             if (a->kind == TY_ERROR) { t = a; break; }
             deref_check(n, n->a, a);
             if (a->kind != TY_ARRAY) { cerr(n, "indexing requires an array, found %s", ty_str(a)); t = ty_error(); }
-            else t = a->elem;
+            else {
+                t = a->elem;
+                check_const_index(n);
+            }
             break;
         }
         case N_UNARY: t = check_unary(cx, n); break;

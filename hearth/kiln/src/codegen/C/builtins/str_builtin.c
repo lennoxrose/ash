@@ -35,7 +35,7 @@ void codegen_builtin_str(void) {
     // ---- heap-allocate a length-prefixed block and copy the digits in ----
     emit_mov_reg_reg(code, REG_RDI, REG_RDX);
     emit_add_reg_imm8(code, REG_RDI, 8);
-    heap_emit_alloc(code); // RAX = new block, clobbers RSI
+    heap_emit_alloc_str(code); // RAX = new block, clobbers RSI
 
     emit_store_mem_disp32(code, REG_RAX, 0, REG_RDX); // length prefix
     emit_mov_reg_reg(code, REG_RSI, REG_RAX);          // stash block addr (bytes_emit_copy preserves RSI)

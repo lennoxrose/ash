@@ -13,7 +13,7 @@ static char *ex_new(const char *qname) {
 static void raw(JBuf *b, const char *s) { j_buf_add(b, s); j_buf_addc(b, '\n'); }
 
 void emit_prelude(JBuf *b) {
-    raw(b, "local __KP = [chr(1), 0];");
+    raw(b, "local __KP = [chr(1), 0, chr(1) + \"n\"];");   // [key prefix, object id counter, the element-count key]
     raw(b,
         "forge __bs(x) { given x { yield \"true\"; } yield \"false\"; }\n"
         "forge __p10(n) { local r = 1; local i = 0; during i < n { r = r * 10; i += 1; } yield r; }\n"
@@ -402,6 +402,12 @@ void emit_prelude(JBuf *b) {
         "    yield r;\n"
         "}\n"
         "forge __newarr(dims, d) { yield __na(dims, 0, d); }\n"
+        "forge __newarr1(n, d) {\n"
+        "    local r = [];\n"
+        "    local j = 0;\n"
+        "    during j < n { push(r, d); j += 1; }\n"
+        "    yield r;\n"
+        "}\n"
         "forge __lset(l, i, v) { local o = l[i]; l[i] = v; yield o; }\n"
         "forge __lremove(l, i) { local o = l[i]; delete(l, i); yield o; }\n"
         "forge __lcontains(l, x) { each v in l { given __eq(v, x) { yield yes; } } yield no; }\n"
@@ -433,13 +439,13 @@ void emit_prelude(JBuf *b) {
         "    yield none;\n"
         "}\n"
         "forge __mcnt(m, d) {\n"
-        "    local c = __KP[0] + \"n\";\n"
+        "    local c = __KP[2];\n"
         "    local n = 0;\n"
         "    given has(m, c) { n = m[c]; }\n"
         "    m[c] = n + d;\n"
         "}\n"
         "forge __msize(m) {\n"
-        "    local c = __KP[0] + \"n\";\n"
+        "    local c = __KP[2];\n"
         "    given has(m, c) { yield m[c]; }\n"
         "    yield 0;\n"
         "}\n"
@@ -491,7 +497,7 @@ void emit_prelude(JBuf *b) {
         "}\n"
         "forge __mkeys(m) {\n"
         "    local r = [];\n"
-        "    local c = __KP[0] + \"n\";\n"
+        "    local c = __KP[2];\n"
         "    each sk in keys(m) {\n"
         "        given sk != c {\n"
         "            local e = m[sk];\n"
@@ -502,7 +508,7 @@ void emit_prelude(JBuf *b) {
         "}\n"
         "forge __mvals(m) {\n"
         "    local r = [];\n"
-        "    local c = __KP[0] + \"n\";\n"
+        "    local c = __KP[2];\n"
         "    each sk in keys(m) {\n"
         "        given sk != c {\n"
         "            local e = m[sk];\n"

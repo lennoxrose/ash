@@ -6,6 +6,7 @@
 #include "vm/H/vm.h"
 #include "diagnostics/H/diagnostics.h"
 #include "jdriver/H/jdriver.h"
+#include "jlower/H/jlower.h"
 
 void ashvm_execute_ir(char *ir) {
     diagnostics_set_source(ir, "<internal ir>");
@@ -25,6 +26,7 @@ int main(int argc, char *argv[]) {
     if (strcmp(argv[1], "run") == 0) {
         int wrap_int = argc == 4 && strcmp(argv[2], "--wrap-int") == 0;
         if (argc != 3 + wrap_int) return usage(argv[0]);
+        jl_drops = JL_DROP_STRINGS | JL_DROP_ARRAYS | JL_DROP_OBJECTS | JL_DROP_MAPS | JL_DROP_ELEMS; // ashvm can free: lower mem_free for the locals jown proved to be sole owners
         char *ir = jdriver_compile_file(argv[2 + wrap_int], wrap_int);
         if (!ir) return 1;
         ashvm_execute_ir(ir);

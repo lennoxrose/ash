@@ -1,0 +1,11 @@
+error: array index 3 is out of bounds for an array of length 3
+  --> tests/cases/safety/ConstIndex.ash:5:17
+   |
+  5|         int a = xs[3];                    // past the end of a final array
+   |                 ^
+error: array index -1 is negative
+  --> tests/cases/safety/ConstIndex.ash:6:17
+   |
+  6|         int b = xs[-1];                   // negative
+   |                 ^
+2 error(s)

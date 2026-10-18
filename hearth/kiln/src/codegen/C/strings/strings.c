@@ -79,7 +79,7 @@ void codegen_string_concat(void) {
     emit_add_reg_imm8(code, REG_RDI, 8); // +8 for the new string's own length prefix
 
     emit_push_reg(code, REG_RSI); // heap_emit_alloc clobbers RSI -- save/restore around it
-    heap_emit_alloc(code);         // RAX = new block
+    heap_emit_alloc_str(code);     // RAX = new block (a String: kiln may free it later)
     emit_pop_reg(code, REG_RSI);
     emit_store_mem_disp32(code, REG_RSI, 32, REG_RAX);
 

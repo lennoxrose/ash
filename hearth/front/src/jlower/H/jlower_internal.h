@@ -2,6 +2,7 @@
 #define JLOWER_INTERNAL_H
 
 #include "jlower/H/jlower.h"
+#include "jtypes/H/check.h"
 
 /* State of the statement currently being lowered. */
 typedef struct LoopCtx {
@@ -10,6 +11,7 @@ typedef struct LoopCtx {
     int wrapper;        /* a switch lowered as `during yes {...; stop;}`: break is `stop`, continue leaves via cont_flag */
     char *cont_flag;    /* set before stop when `continue` crosses the wrapper */
     int cont_used;
+    int drop_mark;      /* L.drop_n when the loop began: break/continue free the droppables above it */
     struct LoopCtx *up;
 } LoopCtx;
 
@@ -22,8 +24,14 @@ typedef struct {
     LoopCtx *loop;
     Node *fin[16];  /* enclosing finally bodies, innermost last (inlined before each return) */
     int fin_n;
+    JLocal *drops[64];  /* live sole-owner locals (see JLocal.drop), innermost last */
+    int drop_n;
+    int drop_base;      /* entries below belong to an enclosing function; a lambda's return must not free them */
 } LState;
 extern LState L;
+int jl_drop_ok(JType *t);
+void jl_emit_drop(JBuf *b, int ind, JType *t, const char *var, int elems); /* frees `var`, an owned local of type t, the fields its object owns, and its elements when `elems` */
+const char *jl_drop_fn(JType *t);   /* builtin that frees a local of this type: mem_free_arr arrays, mem_free_obj objects, mem_free Strings */   /* the engine can free a sole-owner local of this type */
 extern int jl_wrap_int; /* --wrap-int: Java 32-bit int overflow (costs about 2x on arithmetic-heavy loops) */
 
 /* lower_expr.c */

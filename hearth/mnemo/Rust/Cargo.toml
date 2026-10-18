@@ -1,0 +1,16 @@
+[package]
+name = "mnemo"
+version = "0.1.0"
+edition = "2021"
+description = "Mnemosyne: memory safety for Ash. C-ABI static library shared by ashvm and kiln."
+publish = false
+
+[lib]
+name = "mnemo"
+crate-type = ["staticlib"]
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+lto = true
+codegen-units = 1

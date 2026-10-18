@@ -25,7 +25,7 @@ void codegen_map_literal(void) {
     expect(TOKEN_RBRACE, "expected '}' after map literal");
 
     emit_mov_reg_imm64(code, REG_RDI, (uint64_t)(count > 0 ? count * MAP_ENTRY_SIZE : 1));
-    heap_emit_alloc(code);                      // RAX = entries block
+    heap_emit_alloc_recyclable(code);           // RAX = entries block
     emit_mov_reg_reg(code, REG_RSI, REG_RAX);   // stash across the pop loop
 
     // Pairs were pushed key-then-value, left to right, so the LAST
@@ -44,7 +44,7 @@ void codegen_map_literal(void) {
 
     emit_push_reg(code, REG_RSI); // save entries block across this alloc
     emit_mov_reg_imm64(code, REG_RDI, MAP_OBJECT_SIZE);
-    heap_emit_alloc(code); // RAX = map object
+    heap_emit_alloc_recyclable(code); // RAX = map object
     emit_pop_reg(code, REG_RSI);
 
     emit_mov_reg_imm64(code, REG_RCX, (uint64_t)count);

@@ -66,6 +66,6 @@ public class Generics {
         List<String> words = new ArrayList<>();
         words.add("pear");
         words.add("fig");
-        System.out.println(largest(words) + " " + mapAll(words, w -> w.length()).get(0));
+        System.out.println(largest(&words) + " " + mapAll(&words, w -> w.length()).get(0));
     }
 }

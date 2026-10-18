@@ -65,7 +65,7 @@ public class Desktop {
         Window win = new Window("main", "Ash Demo");
         Button ok = new Button("ok", "OK");
         win.add(new Label("hint", "Press OK"));
-        win.add(ok);
+        win.add(&ok);               // lent: the button is clicked below
         ok.click();
         ok.click();
         System.out.println(win.render(0).trim());

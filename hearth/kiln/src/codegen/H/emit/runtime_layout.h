@@ -18,6 +18,10 @@
 #define KILN_TRY_DEPTH_SIZE 8
 
 
+// Heads of the free lists of the static builds' allocator (see codegen/C/runtime/heap.c): one 8-byte slot per
+// 16-byte size class, 16..512 bytes, slot 0 unused. Zero in the file, so every list starts empty.
+#define KILN_FREELIST_SIZE (33 * 8)
+
 // Module-level state: top-level `local`s of an imported file whose value is
 // computed at import time live in a fixed table of (tag, payload) slots in the
 // globals region (see parser/C/declarations/module_state.c), because a called

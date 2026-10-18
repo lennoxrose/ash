@@ -62,6 +62,6 @@ public class RunOop {
         Object o = a;
         System.out.println(o instanceof Greeter);
         System.out.println(o instanceof Polite);
-        System.out.println(b instanceof English e ? e.kind() : "no");
+        System.out.println(g instanceof English e ? e.kind() : "no");   // b was moved into g
     }
 }

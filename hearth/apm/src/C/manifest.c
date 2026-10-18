@@ -15,6 +15,7 @@ static const struct { const char *key; size_t offset; size_t size; } header_keys
     { "bugs", offsetof(Manifest, bugs), sizeof(((Manifest *)0)->bugs) },
     { "main", offsetof(Manifest, main), sizeof(((Manifest *)0)->main) },
     { "keywords", offsetof(Manifest, keywords), sizeof(((Manifest *)0)->keywords) },
+    { "memory-safety", offsetof(Manifest, memory_safety), sizeof(((Manifest *)0)->memory_safety) },
 };
 #define HEADER_KEYS ((int)(sizeof(header_keys) / sizeof(header_keys[0])))
 
@@ -30,6 +31,7 @@ void manifest_init_default(Manifest *m, const char *project_name) {
     memset(m, 0, sizeof(*m));
     snprintf(m->name, sizeof(m->name), "%s", project_name);
     snprintf(m->version, sizeof(m->version), "0.1.0");
+    snprintf(m->memory_safety, sizeof(m->memory_safety), "on");
 }
 
 // Trims leading/trailing whitespace in place, returns the trimmed start.

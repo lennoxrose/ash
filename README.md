@@ -103,9 +103,23 @@ roughly the ceiling for anything short of a full optimizing native compiler.
 
 ### Performance notes
 
-- Building a long string one piece at a time with `+=` copies each time, so it is quadratic in time and, since nothing is freed by default, in memory. Collect the pieces and join them once (`StringBuilder`, `String.join`).
-- `kiln`'s heap grows as needed (64MB at a time, `brk` on Linux / `VirtualAlloc` on Windows) rather than crashing at a fixed size, but nothing is freed until the process exits. `ashvm` has an opt-in collector (`make GC=1`).
+- Building a long string one piece at a time with `+=` copies each time, so it is quadratic in time. Collect the pieces and join them once (`StringBuilder`, `String.join`).
+- `kiln`'s heap grows as needed (64MB at a time, `brk` on Linux / `VirtualAlloc` on Windows) rather than crashing at a fixed size, but with `memory-safety: on` it gives back the Strings, one-dimensional arrays, objects, maps and sets the compiler can prove unshared (see Memory safety). `ashvm` frees the same kinds and lists; it also has an opt-in collector (`make GC=1`).
 - `kiln`'s Windows output is checked without a Windows machine: `hearth/kiln/tests/scripts/windows_emulated_check.sh` runs every test program as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. `hearth/kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`). Neither is Windows itself.
+
+## Memory safety (`memory-safety` in `ash.pkg`)
+
+`memory-safety: on` is the default; `off` switches every check and every free below off and generates exactly the code Ash always did. It is read from the project's `ash.pkg` (no `ash.pkg`: the entry file's directory is the project), and only the project's own sources are checked, never the standard library or dependencies.
+
+With it on, at compile time:
+
+- **Ownership.** Storing an owning variable (`b = a`, `T b = a`, `this.f = a`, `xs[i] = a`, `{a}`) or passing it to project code moves it unless the callee only reads that parameter (the compiler works that out, so `size(a)` twice is fine); using it afterwards is an error until it gets a new value. Library and native calls only look at their arguments. Moves follow `if`, `switch`, `try`, loops, `return`, `throw`, `break` and `continue`.
+- **Borrows.** `&x` lends a local (shared), `&mut x` lends it exclusively; both are written only as call arguments. Within one call an exclusive borrow excludes every other use of the same variable, and a loan cannot be handed to a method the compiler can see keeps its parameter (stores, returns or passes it on).
+- **Constants.** A constant `int` expression outside the 32-bit range (`2147483647 + 1`) and a constant array index that is negative or past the length of a literal / `final` array are errors (not under `--wrap-int`).
+
+And at run time memory is freed with no collector (`ashvm`: Strings, arrays, lists, objects, maps and sets; `kiln`: Strings, one-dimensional arrays, objects, maps and sets): a local that is the sole owner of a fresh String, array, `ArrayList`, `HashMap` / `HashSet` or plain object (`new T(..)` whose `this` never escapes, or the fresh result of a project method that returns one) and is only read is freed (with the String and array fields that only it ever references) at the end of its scope, before `return`/`break`/`continue`, and before it is reassigned; concatenation temporaries are freed as soon as they are used, and a list or `String[]` of fresh Strings that are only read in harmless ways frees those Strings with it. Everything the compiler cannot prove unshared is simply left alone, so a leak is possible but a use-after-free is not. A loop building millions of short-lived strings and arrays runs in a few MB.
+
+With `memory-safety: off`, `System.free(x)` frees a String, array or object yourself in `ashvm` (`kiln` ignores it); it is an error with safety on. `kiln` runs the same checks and frees them too (static builds, Linux and Windows; `--link=shared` builds keep the old allocator). The shared move-flow engine is the Rust library `bin/lib/mnemo.a` (`hearth/mnemo`), linked by both engines.
 
 ## Package manager (`apm`)
 
@@ -161,13 +175,14 @@ documentation, `examples/` and the build entry point.
 ```
 hearth/front/     the only frontend: lexer, parser, AST, type checker, lowering, internal IR lexer,
                   REPL session model and the compiler's core types (src/jcore, compiled in as C data).
-                  Built as libashfront.a, linked by ashvm and kiln. There is no front-end executable.
+                  Built as front.a (in bin/lib/), linked by ashvm and kiln. There is no front-end executable.
 hearth/ashvm/     the VM engine: compiler (IR -> bytecode), value, vm, builtins, diagnostics, app (CLI + REPL)
 hearth/kiln/      the native compiler: IR -> machine code -> ELF/PE (no VM, no libc)
 hearth/apm/       the Ash package manager: apm init/add/install/list/run, dependencies fetched from GitHub
                   into a project-local @ash-modules/ folder; point ASH_PATH at an installed source root
                   to compile against it (see ideas/ash_modules.md)
 hearth/pyre/      GPU/CPU compute backends (C ABI)
+hearth/mnemo/     Mnemosyne, memory safety: a Rust static library (bin/lib/mnemo.a) with a C ABI, linked by ashvm and kiln
 ```
 
 Every subsystem keeps sources in `C/`, headers in `H/`, build output in a mirrored `O/` tree, and

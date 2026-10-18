@@ -32,6 +32,7 @@ typedef struct {
 //   license: MIT
 //   main: demo.Main                  main               entry class (qualified) for `apm run start`-style tooling
 //   keywords: ash, cli               keywords           comma-separated
+//   memory-safety: on                memory-safety      on (default) | off: ownership/borrow checks and freeing, read by ashvm and kiln
 //
 //   [dependencies]                   packages fetched into ./@ash-modules/<name>
 //   ash-stdlib: github:user/ash-stdlib@v0.1.0
@@ -51,6 +52,7 @@ typedef struct {
     char bugs[MANIFEST_VALUE_LEN];
     char main[MANIFEST_NAME_LEN];
     char keywords[MANIFEST_VALUE_LEN];
+    char memory_safety[8];
     EntryList deps;
     EntryList dev_deps;
     EntryList libs;

@@ -273,6 +273,19 @@ static Node *unary(Parser *p) {
         n->a = unary(p);
         return n;
     }
+    if (t->kind == JT_AMP) {
+        /* `&x` shared borrow, `&mut x` exclusive borrow: only meaningful as a call argument (checked by jown) */
+        Node *n = p_node(p, N_UNARY);
+        n->name = "&";
+        p_next(p);
+        JToken *m = p_peek(p);
+        if (m->kind == JT_IDENT && !strcmp(m->text, "mut") && (p_peek_at(p, 1)->kind == JT_IDENT || p_peek_at(p, 1)->kind == JT_THIS)) {
+            n->name = "&mut";
+            p_next(p);
+        }
+        n->a = unary(p);
+        return n;
+    }
     if (t->kind == JT_LPAREN && !lambda_ahead(p)) {
         Node *line_node = p_node(p, N_CAST);
         Node *type = try_cast(p);

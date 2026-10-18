@@ -61,7 +61,7 @@ void codegen_map_index_store(void) {
     emit_mov_reg_reg(code, REG_RDI, REG_RAX);
     emit_mov_reg_imm64(code, REG_RBX, MAP_ENTRY_SIZE);
     emit_imul_reg_reg(code, REG_RDI, REG_RBX);
-    heap_emit_alloc(code); // RAX = new entries block
+    heap_emit_alloc_recyclable(code); // RAX = new entries block
     emit_mov_reg_reg(code, REG_RCX, REG_RSP);
     emit_store_mem_disp32(code, REG_RCX, 40, REG_RAX);
 
@@ -74,6 +74,19 @@ void codegen_map_index_store(void) {
     emit_imul_reg_reg(code, REG_RAX, REG_RDX);
     emit_mov_reg_reg(code, REG_RDX, REG_RAX); // byte count
     bytes_emit_copy(code);
+
+    if (heap_free_arrays_on()) {
+        // The first insert into an empty map literal leaves its 16-byte block behind; nobody can be reading
+        // an empty block, so it goes back (blocks of non-empty maps are kept: a loop may still hold them).
+        emit_mov_reg_reg(code, REG_RCX, REG_RSP);
+        emit_load_mem_disp32(code, REG_RSI, REG_RCX, 24);
+        emit_load_mem_disp32(code, REG_RDX, REG_RSI, 0);   // old capacity
+        emit_cmp_reg_imm32(code, REG_RDX, 0);
+        int keep_old = emit_jcc_rel32(code, COND_NE);
+        emit_load_mem_disp32(code, REG_RAX, REG_RSI, 16);  // old entries block
+        heap_emit_free_empty_block_rax(code);
+        emit_patch_jump(code, keep_old);
+    }
 
     emit_mov_reg_reg(code, REG_RCX, REG_RSP);
     emit_load_mem_disp32(code, REG_RSI, REG_RCX, 24);

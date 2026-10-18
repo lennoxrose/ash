@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "jlower/H/jlower_internal.h"
+#include "jown/H/own.h"
 
 /* Statement lowering: control flow, switch (as if-chains), try/catch/finally via
  * attempt/handle, lambdas, and the immediately-invoked closure used by switch expressions. */
@@ -38,9 +39,32 @@ void flush_pre(JBuf *b, int ind) {
     if (L.pre.data) L.pre.data[0] = 0;
 }
 
+/* frees the live sole-owner locals from index `from` up (they stay live: the caller decides about popping) */
+static void emit_drops_except(JBuf *b, int from, int ind, void *keep) {
+    if (!jl_drops || !L.cls || !L.cls->mem_on) return;
+    for (int i = L.drop_n - 1; i >= from && i >= L.drop_base; i--) {
+        if (L.drops[i] != keep) jl_emit_drop(b, ind, L.drops[i]->type, sname(L.drops[i]->name), jown_local_elems(L.drops[i]));
+    }
+}
+
+static void emit_drops(JBuf *b, int from, int ind) { emit_drops_except(b, from, ind, NULL); }
+
+static int ends_path(Node *s) {
+    return s->kind == N_RETURN || s->kind == N_THROW || s->kind == N_BREAK || s->kind == N_CONTINUE;
+}
+
 void lblock_body(JBuf *b, Node *block, int ind) {
     if (block->kind != N_BLOCK) { ls(b, block, ind); return; }
-    for (int i = 0; i < block->l1.count; i++) ls(b, block->l1.items[i], ind);
+    int mark = L.drop_n;
+    for (int i = 0; i < block->l1.count; i++) {
+        Node *s = block->l1.items[i];
+        ls(b, s, ind);
+        /* registered only here, so every entry is popped by the block that declared it */
+        if (s->kind == N_LOCAL && s->sym && ((JLocal *)s->sym)->drop && jl_drop_ok(((JLocal *)s->sym)->type) && L.drop_n < 64) L.drops[L.drop_n++] = s->sym;
+    }
+    int n = block->l1.count;
+    if (!n || !ends_path(block->l1.items[n - 1])) emit_drops(b, mark, ind);
+    L.drop_n = mark;
 }
 
 static void lbody(JBuf *b, Node *s, int ind) { lblock_body(b, s, ind); }
@@ -224,6 +248,7 @@ static void lower_switch_general(JBuf *b, Node *n, char *sel, int ind) {
     for (int d = depth - 1; d >= 0; d--) emit_line(b, ind + d, "}");
     emit_line(b, ind, "local %s = no;", go);
     LoopCtx ctx = {0};
+    ctx.drop_mark = L.drop_n;
     ctx.is_switch = 1;
     ctx.wrapper = 1;
     ctx.cont_flag = new_temp();
@@ -260,6 +285,7 @@ static void lower_switch_stmt(JBuf *b, Node *n, int ind) {
         return;
     }
     LoopCtx ctx = {0};
+    ctx.drop_mark = L.drop_n;
     ctx.is_switch = 1;
     ctx.up = L.loop;
     L.loop = &ctx;
@@ -290,6 +316,8 @@ char *lower_lambda_body(Node *lam, JMethod *sam, int ind) {
     memset(&L.pre, 0, sizeof L.pre);
     LoopCtx *saved_loop = L.loop;
     int saved_tf = L.fin_n;
+    int saved_base = L.drop_base;
+    L.drop_base = L.drop_n;
     L.loop = NULL;
     L.fin_n = 0;
     JBuf b = {0};
@@ -310,6 +338,7 @@ char *lower_lambda_body(Node *lam, JMethod *sam, int ind) {
     }
     L.loop = saved_loop;
     L.fin_n = saved_tf;
+    L.drop_base = saved_base;
     L.pre = saved_pre;
     return b.data;
 }
@@ -380,6 +409,7 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
     char *it = lx(n->b);
     char *name = sname(n->name);
     LoopCtx ctx = {0};
+    ctx.drop_mark = L.drop_n;
     ctx.up = L.loop;
     flush_pre(b, ind);
     if (native_iterable(n->b->type)) {
@@ -435,6 +465,7 @@ static void lower_for(JBuf *b, Node *n, int ind) {
     char *cond = n->a ? loop_cond(n->a, &pre) : "yes";
     flush_pre(b, ind + 1);
     LoopCtx ctx = {0};
+    ctx.drop_mark = L.drop_n;
     ctx.up = L.loop;
     ctx.update = update_text(&n->l2);
     if (pre) {
@@ -497,6 +528,8 @@ void ls(JBuf *b, Node *s, int ind) {
             char *pre;
             char *c = loop_cond(s->a, &pre);
             LoopCtx ctx = {0};
+            ctx.drop_mark = L.drop_n;
+    ctx.drop_mark = L.drop_n;
             ctx.up = L.loop;
             if (pre) {
                 emit_line(b, ind, "during yes {");
@@ -518,6 +551,8 @@ void ls(JBuf *b, Node *s, int ind) {
             char *pre;
             char *c = loop_cond(s->a, &pre);
             LoopCtx ctx = {0};
+            ctx.drop_mark = L.drop_n;
+    ctx.drop_mark = L.drop_n;
             ctx.up = L.loop;
             emit_line(b, ind, "local %s = yes;", first);
             if (pre) {
@@ -543,7 +578,10 @@ void ls(JBuf *b, Node *s, int ind) {
         case N_RETURN: {
             char *v = s->a ? lx(s->a) : "none";
             flush_pre(b, ind);
-            if (L.fin_n) {
+            int drops = jl_drops && L.cls && L.cls->mem_on && L.drop_n > L.drop_base;
+            if (drops || L.fin_n) {
+                /* the value may read a local that is about to be freed, and finally bodies run before the
+                 * function leaves: compute the value first, then finally, then free */
                 char *rv = new_temp();
                 emit_line(b, ind, "local %s = %s;", rv, v);
                 int saved = L.fin_n;
@@ -552,6 +590,8 @@ void ls(JBuf *b, Node *s, int ind) {
                     lbody(b, L.fin[i], ind);
                 }
                 L.fin_n = saved;
+                /* `return x` hands x to the caller */
+                if (drops) emit_drops_except(b, 0, ind, s->a && s->a->kind == N_NAME && s->a->rk == R_LOCAL ? s->a->sym : NULL);
                 v = rv;
             }
             emit_line(b, ind, "yield %s;", v);
@@ -562,6 +602,7 @@ void ls(JBuf *b, Node *s, int ind) {
                 lerr(s, "break inside a switch must be the last statement of its case");
                 break;
             }
+            if (L.loop && !L.fin_n) emit_drops(b, L.loop->drop_mark, ind);   /* not under a finally: it may still read them */
             emit_line(b, ind, "stop;");
             break;
         }
@@ -574,6 +615,7 @@ void ls(JBuf *b, Node *s, int ind) {
                 break;
             }
             LoopCtx *l = real_loop();
+            if (l && !L.fin_n) emit_drops(b, l->drop_mark, ind);
             if (l && l->update) each_line(b, ind, l->update), (void)0;
             emit_line(b, ind, "next;");
             break;

@@ -54,3 +54,8 @@ uint64_t kiln_try_handlers_addr(void) {
     if (is_linux_shared()) return KILN_DYN_GLOBALS_ADDR + 8 + KILN_HEAP_LIMIT_SIZE + KILN_TRY_DEPTH_SIZE;
     return KILN_TRY_HANDLERS_ADDR;
 }
+
+uint64_t kiln_freelist_addr(void) {
+    if (kiln_get_target() == KILN_TARGET_WINDOWS) return KILN_PE_FREELIST_ADDR;
+    return KILN_FREELIST_ADDR;   // only meaningful for the static layouts; heap_enable_free_lists() guards every use
+}

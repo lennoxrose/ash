@@ -16,5 +16,6 @@ uint64_t kiln_heap_ptr_addr(void);
 uint64_t kiln_heap_limit_addr(void);
 uint64_t kiln_try_depth_addr(void);
 uint64_t kiln_try_handlers_addr(void);
+uint64_t kiln_freelist_addr(void);     // static Linux only: the table of free-list heads (33 slots, 8 bytes each)
 
 #endif

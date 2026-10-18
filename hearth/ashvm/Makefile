@@ -25,7 +25,7 @@ ifeq ($(GC),1)
 GC_FLAGS = -DASH_GC
 endif
 CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -I../pyre/src -fopenmp $(GC_FLAGS)
-LDFLAGS = -lm ../../bin/libashfront.a ../../bin/extensions/pyre/libpyre.a -fopenmp -ldl -lvulkan -lstdc++ $(CUDA_LIBS)
+LDFLAGS = -lm ../../bin/lib/front.a ../../bin/lib/mnemo.a ../../bin/extensions/pyre/libpyre.a -fopenmp -ldl -lvulkan -lstdc++ $(CUDA_LIBS)
 
 ASHVM_SRC = \
     src/app/C/main.c \
@@ -54,6 +54,7 @@ ASHVM_SRC = \
     src/builtins/C/string.c \
     src/builtins/C/matrix.c \
     src/builtins/C/proc.c \
+    src/builtins/C/mem.c \
     src/diagnostics/C/diagnostics.c
 
 # Objects and dependency files live in trees parallel to each C tree:
@@ -89,12 +90,16 @@ all: $(BIN)
 
 # The shared front end (lexer, parser, type checker, lowering) is the only frontend ashvm has;
 # front's own Makefile decides whether the library is up to date.
-../../bin/libashfront.a: FORCE
+../../bin/lib/front.a: FORCE
 	$(MAKE) -C ../front
+
+# Mnemosyne (Rust): the ownership pass in front calls into it.
+../../bin/lib/mnemo.a: FORCE
+	$(MAKE) -C ../mnemo
 
 FORCE:
 
-$(BIN): $(ASHVM_OBJ) ../../bin/libashfront.a ../../bin/extensions/pyre/libpyre.a
+$(BIN): $(ASHVM_OBJ) ../../bin/lib/front.a ../../bin/lib/mnemo.a ../../bin/extensions/pyre/libpyre.a
 	mkdir -p ../../bin
 	$(CC) $(CFLAGS) -o $(BIN) $(ASHVM_OBJ) $(LDFLAGS)
 

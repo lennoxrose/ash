@@ -73,8 +73,12 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc) {
                 case VM_NIL: name = "none"; break;
                 default: name = "unknown"; break;
             }
-            char *copy = malloc(strlen(name) + 1); strcpy(copy, name);
-            return vm_str(copy);
+            // The name is a string literal that lives for the whole run: no copy, so the prelude's many type()
+            // calls cost no allocation (and leave nothing behind). Not registered with the collector, which
+            // ignores pointers it did not allocate.
+            VMValue v; v.type = VM_STR; v.number = (double)strlen(name); v.str = (char *)name;
+            v.array = NULL; v.map = NULL; v.closure = NULL;
+            return v;
         }
         case 42: { // exit -- exit(code) ends the program with that status
             if (argc != 1 || args[0].type != VM_NUM) { vm_runtime_error("exit(code) expected\n"); }

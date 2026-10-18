@@ -3,6 +3,7 @@
 #include "jcommon/H/jcommon.h"
 #include "jdriver/H/jdriver.h"
 #include "jlower/H/jlower.h"
+#include "jown/H/own.h"
 #include "jparse/H/jparse.h"
 #include "jtypes/H/jtypes.h"
 
@@ -11,6 +12,7 @@ static JClass *load_and_check(const char *path, const char *src) {
     jt_init_default_roots(path, head->name);
     JClass *entry = jt_load_unit(path, src);
     jt_check_all();
+    if (!j_error_count()) jown_check_project(path);
     if (j_error_count()) {
         fprintf(stderr, "%d error(s)\n", j_error_count());
         return NULL;

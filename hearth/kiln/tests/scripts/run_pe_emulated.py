@@ -31,7 +31,7 @@ for i, entry in enumerate(pe.DIRECTORY_ENTRY_IMPORT):
 
 STACK = 0x7fff00000000
 mu.mem_map(STACK, 0x400000)
-HEAPS = [0x100000000]
+HEAPS = [0x200000000]   # above the image (0x140000000) and the 4 GB heap reservation kiln makes at startup stays clear of it
 mu.reg_write(UC_X86_REG_RSP, STACK + 0x400000 - 0x1000)
 
 handles = {}

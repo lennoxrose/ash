@@ -51,6 +51,8 @@ struct JField {
     const char *lname; /* lowered name */
     const char *tmpl;  /* @Lower template for native constants */
     int is_enum_const;
+    int elems;       /* jown: as JLocal.elems, for an owned String[] / List<String> field */
+    int own;         /* jown: the object exclusively owns this field's String / array (freed with the object) */
 };
 
 struct JMethod {
@@ -70,6 +72,10 @@ struct JMethod {
     int has_override_anno;
     int is_record_accessor;
     int synthetic; /* generated (record members, enum values()) */
+    int own_done;  /* jown: sole-owner analysis of the body has run */
+    JClass *fresh_cls; /* jown: the exact class of the fresh object every return hands over (NULL for String / array) */
+    int fresh_ret; /* jown: 0 unknown, 1 every return is a fresh heap value, 2 not, 3 being analysed */
+    int this_esc;  /* jown: 0 unknown, 1 `this` does not escape, 2 it may, 3 being analysed */
 };
 
 struct JClass {
@@ -101,6 +107,7 @@ struct JClass {
     int order;        /* load order */
     JMethod *sam;     /* cached single abstract method; sam_done marks the cache as valid */
     int sam_done;
+    int mem_on;       /* in a project with `memory-safety: on`: lowering may free what jown proved unshared */
 };
 
 /* resolution kinds stored in Node.rk */

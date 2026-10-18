@@ -1,0 +1,16 @@
+error: cannot use 'xs' here: it is already borrowed mutably in this call
+  --> tests/cases/ownership/OwnBorrowConflict.ash:6:23
+   |
+  6|         both(&mut xs, &xs);               // error: exclusive and shared borrow of xs in one call
+   |                       ^
+error: cannot use 'xs' here: it is already borrowed mutably in this call
+  --> tests/cases/ownership/OwnBorrowConflict.ash:7:23
+   |
+  7|         both(&mut xs, xs);                // error: exclusive borrow plus another use
+   |                       ^
+error: a borrow ('&') can only be passed as a call argument
+  --> tests/cases/ownership/OwnBorrowConflict.ash:8:20
+   |
+  8|         int[] ys = &xs;                   // error: a borrow is only a call argument
+   |                    ^
+3 error(s)

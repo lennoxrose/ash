@@ -2,7 +2,7 @@ CC = gcc
 .DEFAULT_GOAL := all
 KILN_RPATH_LIST = $(abspath ../../bin/extensions/pyre):/usr/local/lib/kiln
 CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -DKILN_RPATH='"$(KILN_RPATH_LIST)"'
-LDFLAGS = ../../bin/libashfront.a
+LDFLAGS = ../../bin/lib/front.a ../../bin/lib/mnemo.a -lpthread -ldl -lm
 
 KILN_SRC = \
     src/app/C/main.c \
@@ -18,6 +18,7 @@ KILN_SRC = \
     src/parser/C/statements/attempt_handle.c \
     src/codegen/C/builtins/builtins.c \
     src/codegen/C/builtins/exit_builtin.c \
+    src/codegen/C/builtins/mem_builtin.c \
     src/codegen/C/builtins/proc_builtins.c \
     src/codegen/C/builtins/filter_builtin.c \
     src/codegen/C/builtins/map_builtin.c \
@@ -107,12 +108,16 @@ all: $(BIN)
 
 # The shared front end (lexer, parser, type checker, lowering) is the only frontend kiln has;
 # front's own Makefile decides whether the library is up to date.
-../../bin/libashfront.a: FORCE
+../../bin/lib/front.a: FORCE
 	$(MAKE) -C ../front
+
+# Mnemosyne (Rust): the ownership pass in front calls into it.
+../../bin/lib/mnemo.a: FORCE
+	$(MAKE) -C ../mnemo
 
 FORCE:
 
-$(BIN): $(KILN_OBJ) ../../bin/libashfront.a
+$(BIN): $(KILN_OBJ) ../../bin/lib/front.a ../../bin/lib/mnemo.a
 	mkdir -p ../../bin
 	$(CC) $(CFLAGS) -o $(BIN) $(KILN_OBJ) $(LDFLAGS)
 
@@ -127,10 +132,11 @@ clean:
 # --link=shared kiln-compiled program's DT_RPATH points at (see
 # src/elf/elf_dynamic.h's KILN_RPATH) -- needs root to write there, so
 # this is a separate, explicit, opt-in step, never run by `make all`.
-KILNRT = ../../bin/libkilnrt.so
+KILNRT = ../../bin/lib/libkilnrt.so
 KILN_RPATH_DIR = /usr/local/lib/kiln
 
 $(KILNRT): $(BIN)
+	mkdir -p ../../bin/lib
 	$(BIN) --emit-runtime -o $(KILNRT)
 
 install-runtime: $(KILNRT)
@@ -141,9 +147,10 @@ install-runtime: $(KILNRT)
 # order checks the launching .exe's own directory first, so
 # libkilnrt.dll just needs to sit next to whatever --link=shared
 # --target=windows binary is using it (or on PATH).
-KILNRT_DLL = ../../bin/libkilnrt.dll
+KILNRT_DLL = ../../bin/lib/libkilnrt.dll
 
 $(KILNRT_DLL): $(BIN)
+	mkdir -p ../../bin/lib
 	$(BIN) --emit-runtime -o $(KILNRT_DLL) --target=windows
 
 runtime-dll: $(KILNRT_DLL)

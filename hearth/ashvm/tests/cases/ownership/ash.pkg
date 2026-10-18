@@ -1,0 +1,3 @@
+name: ownership-tests
+version: 0.1.0
+memory-safety: on

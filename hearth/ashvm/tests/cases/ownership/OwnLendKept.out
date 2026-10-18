@@ -1,0 +1,11 @@
+error: cannot lend 'a' with '&': 'put' keeps this parameter (stores, returns or passes it on); pass 'a' by move or clone it
+  --> tests/cases/ownership/OwnLendKept.ash:12:15
+   |
+ 12|         b.put(&a);                           // error: put keeps a, so it cannot be a loan (Box has no subclass, so the target is known)
+   |               ^
+error: cannot lend 'c' with '&': 'same' keeps this parameter (stores, returns or passes it on); pass 'c' by move or clone it
+  --> tests/cases/ownership/OwnLendKept.ash:14:25
+   |
+ 14|         String d = same(&c);                 // error: same returns its parameter
+   |                         ^
+2 error(s)

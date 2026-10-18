@@ -210,6 +210,7 @@ void check_method_body(JClass *c, JMethod *m) {
         Node *pn = (d->l1.count > i) ? d->l1.items[i] : d;
         JLocal *l = jt_declare_local(&cx, pn, p->name, p->type, (d->l1.count > i) ? pn->flags : 0, 1);
         l->has_init = 1;
+        if (d->l1.count > i) pn->sym = l;   /* jown finds a parameter's local through its declaration */
     }
     Node *body = d->b;
     int explicit_call = body->l1.count > 0 && ((Node *)body->l1.items[0])->kind == N_CTORCALL;

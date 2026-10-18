@@ -14,6 +14,27 @@
 // whole lifetime, so a pointer handed out by an earlier allocation is
 // never invalidated by a later growth step.
 
+// Free lists (static Linux builds only, and only for programs that free: the driver calls
+// heap_enable_free_lists() after lowering when the program contains mem_free / mem_cat). Then the alloc
+// string alloc routine (heap_emit_alloc_str) rounds every request to 16 bytes and recycles freed blocks of up
+// to 512 bytes through one list per size class (heads in the globals region, kiln_freelist_addr()). The plain
+// routine (heap_emit_alloc) is never touched, so arrays, maps and programs that never free cost exactly what
+// they always did. Strings are the only thing kiln frees (heap_emit_free_string_rax).
+void heap_enable_free_lists(int blocks); // blocks: the program also frees arrays or objects (mem_free_arr / mem_newarr1 / mem_free_obj)
+int heap_free_lists_on(void);
+int heap_free_arrays_on(void);
+// RAX = payload of a heap string; puts its block on the free list. Clobbers RAX, RCX, RDX, RSI.
+void heap_emit_free_string_rax(CodeBuf *code);
+// RAX = an array object (see heap.c for what that requires); frees it and its element block.
+void heap_emit_free_array_rax(CodeBuf *code);
+// RAX = the rounded 1-byte block of an empty literal; puts it back. Clobbers RAX, RCX, RDX, RSI.
+void heap_emit_free_empty_block_rax(CodeBuf *code);
+// RAX = a map object (an object of a plain class); frees it and its entries block.
+void heap_emit_free_map_rax(CodeBuf *code);
+// Allocation of an array or map object or its block: rounded to whole size classes and served from the free
+// lists when the program frees arrays, else the plain routine (exactly as before).
+void heap_emit_alloc_recyclable(CodeBuf *code);
+
 // Emitted once, at the very start of the generated program (before the
 // top-level statement loop): grabs the first chunk and records its start
 // as the heap bump pointer at KILN_GLOBALS_ADDR (see elf/H/elf_writer.h),
@@ -38,6 +59,9 @@ int heap_alloc_routine_offset(void);
 // heap_emit_startup) instead of re-emitting the routine's body inline at
 // every one of its ~27 call sites.
 void heap_emit_alloc(CodeBuf *code);
+// Same contract, for the two places that make the Strings kiln can free (concatenation, str()); falls back to
+// heap_emit_alloc when the free lists are off.
+void heap_emit_alloc_str(CodeBuf *code);
 
 // Arena-style checkpoint/reset for short-lived temporaries (built for
 // Pyre's own lowering, e.g. a tight inner loop's scratch buffers that
