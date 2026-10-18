@@ -1,8 +1,14 @@
-local n = 20000000;
-local sum = 0;
-local i = 0;
-during (i < n) {
-    local sum = sum + i;
-    local i = i + 1;
+package benchmarks;
+
+class LoopVarbound {
+    public static void main(String[] args) {
+        int n = 20000000;
+        int sum = 0;
+        int i = 0;
+        while (i < n) {
+            sum = sum + i;
+            i = i + 1;
+        }
+        System.out.println(sum);
+    }
 }
-say sum;

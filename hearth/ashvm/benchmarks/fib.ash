@@ -1,7 +1,14 @@
-forge fib(n) {
-    given (n < 2) {
-        yield n;
+package benchmarks;
+
+class Fib {
+    static int fib(int n) {
+        if (n < 2) {
+            return n;
+        }
+        return fib(n - 1) + fib(n - 2);
     }
-    yield fib(n - 1) + fib(n - 2);
+
+    public static void main(String[] args) {
+        System.out.println(fib(30));
+    }
 }
-say fib(30);
