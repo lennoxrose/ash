@@ -5,12 +5,10 @@
 #include "diagnostics/H/diagnostics.h"
 #include "compiler/H/loop_stack.h"
 
-// statement() is shared between top-level parsing (compile()'s own loop,
-// and stmt_import.c's parse_imported_file_body()) and here, inside a
-// forge/given/during/attempt body -- block_depth distinguishes the two so
-// the "only forge/local at an imported file's top level" guard in
-// statement() only fires for genuinely top-level statements, never for an
-// ordinary yield/given/etc. nested inside an imported function's own body.
+// statement() is shared between top-level parsing (compile()'s own loop) and
+// here, inside a forge/given/during/attempt body -- block_depth distinguishes
+// the two so the "only forge/local at the unit's top level" guard in
+// statement() only fires for genuinely top-level statements.
 static int block_depth = 0;
 
 void block(void) {
@@ -281,9 +279,6 @@ static void raise_statement(void) {
 }
 
 void statement(void) {
-    if (current.type == TOKEN_IMPORT) { advance_token(); compile_import_stmt(); return; }
-    imports_close_block();
-
     const char *ns; int ns_len;
     get_import_namespace(&ns, &ns_len);
     if (ns_len > 0 && block_depth == 0 && current.type != TOKEN_FORGE && current.type != TOKEN_LOCAL) {
@@ -324,28 +319,29 @@ void statement(void) {
 
 static Chunk main_chunk;
 
-Chunk *compile(const char *source, const char *source_path) {
+// The IR is one unit of top-level `forge` and `local` declarations (see
+// ir/H/ir_lex.h) that lives in a single module namespace; the program runs by
+// calling its `start` function. The lowering owns the unit, so there is no
+// import machinery: only this one namespace exists.
+#define IR_NAMESPACE "g"
+
+Chunk *compile(const char *source) {
     vm_function_count = 0;
     local_count = 0;
     chunk_init(&main_chunk);
     chunk = &main_chunk;
+    set_import_namespace(IR_NAMESPACE, (int)strlen(IR_NAMESPACE));
     prescan_functions(source);
     lexer_init(source);
     advance_token();
-    imports_init(source_path);
     while (current.type != TOKEN_EOF) statement();
     check_all_functions_defined();
+    set_import_namespace(NULL, 0);
+    int start_fn = find_function(IR_NAMESPACE ".start", (int)strlen(IR_NAMESPACE ".start"));
+    if (start_fn == -1) { fprintf(stderr, "error: program has no entry point\n"); exit(1); }
+    emit_op(OP_CALL);
+    emit((uint8_t)start_fn);
+    emit(0);
+    emit_op(OP_POP);
     return &main_chunk;
-}
-
-// Appends compiled bytecode to an EXISTING chunk without resetting locals or
-// function definitions -- used by the REPL so state persists between lines.
-Chunk *compile_repl_line(const char *source, Chunk *target_chunk, int *out_start_offset) {
-    chunk = target_chunk;
-    *out_start_offset = chunk->count;
-    prescan_functions(source);
-    lexer_init(source);
-    advance_token();
-    while (current.type != TOKEN_EOF) statement();
-    return chunk;
 }

@@ -5,36 +5,12 @@
 #include "vm/H/gc.h"
 #include "compiler/H/compiler.h"
 
-void vm_set_repl_recovery(jmp_buf *jb) {
-    repl_recovery_jmp = jb;
-}
-
-void vm_repl_checkpoint(void) {
-    repl_saved_frame_count = frame_count;
-    repl_saved_stack_top = stack_top;
-}
-
 void vm_run(Chunk *main_chunk) {
     stack_top = stack;
     frame_count = 1;
     frames[0].chunk = main_chunk;
     frames[0].ip = main_chunk->code;
     frames[0].slots = stack;
-    vm_execute(0);
-}
-
-// Runs bytecode starting at start_offset within the SAME persistent chunk,
-// used by the REPL: on the first call, resets the stack/frames like vm_run;
-// on later calls, keeps the existing stack/frames (so variables persist) and
-// just resumes execution at the newly-appended bytecode's start.
-void vm_run_from(Chunk *chunk, int start_offset, int is_first_call) {
-    if (is_first_call) {
-        stack_top = stack;
-        frame_count = 1;
-        frames[0].chunk = chunk;
-        frames[0].slots = stack;
-    }
-    frames[0].ip = chunk->code + start_offset;
     vm_execute(0);
 }
 

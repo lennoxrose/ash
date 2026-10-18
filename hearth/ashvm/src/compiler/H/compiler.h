@@ -17,7 +17,7 @@ typedef struct {
 extern VMFunction vm_functions[MAX_VM_FUNCS];
 extern int vm_function_count;
 
-Chunk *compile(const char *source, const char *source_path);
-Chunk *compile_repl_line(const char *source, Chunk *target_chunk, int *out_start_offset);
+// Compiles the internal IR unit produced by hearth/front (jdriver). Exits with a diagnostic on error.
+Chunk *compile(const char *source);
 
 #endif

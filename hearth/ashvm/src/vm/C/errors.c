@@ -21,11 +21,6 @@ void vm_runtime_error(const char *fmt, ...) {
 
     if (try_depth > 0) {
         longjmp(try_handlers[try_depth - 1].jmp, 1);
-    } else if (repl_recovery_jmp != NULL) {
-        diagnostics_report("error", error_message, current_pos, current_poslen);
-        frame_count = repl_saved_frame_count;
-        stack_top = repl_saved_stack_top;
-        longjmp(*repl_recovery_jmp, 1);
     } else {
         diagnostics_report("error", error_message, current_pos, current_poslen);
         exit(1);
@@ -33,8 +28,8 @@ void vm_runtime_error(const char *fmt, ...) {
 }
 
 // `raise expr;` -- any value (a string is what built-in errors raise; a map
-// gives a structured error). Mirrors vm_runtime_error's three-way dispatch
-// (attempt handler / REPL recovery / hard exit) exactly, but hands back
+// gives a structured error). Mirrors vm_runtime_error's two-way dispatch
+// (attempt handler / hard exit) exactly, but hands back
 // the exact raised VMValue via `raised_value` instead of funneling it
 // through the fixed-size error_message buffer -- see state.h.
 void vm_raise_value(VMValue msg) {
@@ -44,11 +39,6 @@ void vm_raise_value(VMValue msg) {
 
     if (try_depth > 0) {
         longjmp(try_handlers[try_depth - 1].jmp, 1);
-    } else if (repl_recovery_jmp != NULL) {
-        diagnostics_report("error", text, current_pos, current_poslen);
-        frame_count = repl_saved_frame_count;
-        stack_top = repl_saved_stack_top;
-        longjmp(*repl_recovery_jmp, 1);
     } else {
         diagnostics_report("error", text, current_pos, current_poslen);
         exit(1);

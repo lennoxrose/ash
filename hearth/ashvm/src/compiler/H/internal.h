@@ -34,11 +34,6 @@ int try_fuse_condition(TokenType terminator);
 
 // compiler_stmt.c
 void block(void);
-// statement() itself (compiler_stmt.c's dispatcher) also needs to be
-// callable from compiler_stmt_import.c's parse_imported_file_body(),
-// which drives the same top-level "while not EOF, parse a statement"
-// loop for a recursively parsed imported file -- so it's declared here
-// rather than staying static to compiler_stmt.c.
 void statement(void);
 
 // compiler_stmt_control.c -- the statement kinds involved enough to
@@ -49,10 +44,5 @@ void compile_given_stmt(void);
 void compile_attempt_stmt(void);
 void compile_during_stmt(void);
 void compile_each_stmt(void);
-
-// compiler_stmt_import.c
-void compile_import_stmt(void);
-void imports_close_block(void);
-void imports_init(const char *entry_file_path);
 
 #endif

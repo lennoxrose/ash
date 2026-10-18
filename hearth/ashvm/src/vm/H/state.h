@@ -46,9 +46,6 @@ extern char error_message[512];
 extern VMValue raised_value;
 extern int has_raised_value;
 
-extern jmp_buf *repl_recovery_jmp;
-extern int repl_saved_frame_count;
-extern VMValue *repl_saved_stack_top;
 
 // Source position of the instruction currently executing, captured once per
 // DISPATCH() (the single point every instruction passes through) so

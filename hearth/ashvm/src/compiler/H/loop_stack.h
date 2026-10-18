@@ -1,6 +1,6 @@
 #ifndef ASH_VM_COMPILER_LOOP_STACK_H
 #define ASH_VM_COMPILER_LOOP_STACK_H
-#include "lexer/H/lexer.h"
+#include "ir/H/ir_lex.h"
 
 // stop/next need to know which loop they belong to, and loops nest --
 // they're pure "emit now, patch later" jump bookkeeping (same primitive

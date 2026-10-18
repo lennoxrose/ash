@@ -24,13 +24,12 @@ GC ?= 0
 ifeq ($(GC),1)
 GC_FLAGS = -DASH_GC
 endif
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../pyre/src -fopenmp $(GC_FLAGS)
-LDFLAGS = -lm ../../bin/extensions/pyre/libpyre.a -fopenmp -ldl -lvulkan -lstdc++ $(CUDA_LIBS)
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -I../pyre/src -fopenmp $(GC_FLAGS)
+LDFLAGS = -lm ../../bin/libashfront.a ../../bin/extensions/pyre/libpyre.a -fopenmp -ldl -lvulkan -lstdc++ $(CUDA_LIBS)
 
 ASHVM_SRC = \
     src/app/C/main.c \
-    src/lexer/C/lexer.c \
-    src/lexer/C/lexer_import.c \
+    src/app/C/repl.c \
     src/value/C/hashmap.c \
     src/value/C/value.c \
     src/vm/C/api.c \
@@ -42,12 +41,10 @@ ASHVM_SRC = \
     src/compiler/C/calls.c \
     src/compiler/C/constants.c \
     src/compiler/C/expr.c \
-    src/compiler/C/import_paths.c \
     src/compiler/C/loop_stack.c \
     src/compiler/C/state.c \
     src/compiler/C/stmt.c \
     src/compiler/C/stmt_control.c \
-    src/compiler/C/stmt_import.c \
     src/compiler/C/module_state.c \
     src/compiler/C/prescan.c \
     src/builtins/C/builtins.c \
@@ -67,7 +64,7 @@ ASHVM_OBJ = $(foreach s,$(ASHVM_SRC),$(call obj_of,$(s)))
 ASHVM_DEP = $(foreach s,$(ASHVM_SRC),$(call dep_of,$(s)))
 
 # -MMD -MP: emit a per-object .d file listing the headers it includes, so
-# editing a shared header (e.g. lexer.h, value.h, chunk.h) correctly
+# editing a shared header (e.g. value.h, value.h, chunk.h) correctly
 # triggers a rebuild of every .o that includes it, not just files whose
 # own .c changed. Without this, make's only dependency is "the .c is newer
 # than the .o" -- a header-only edit silently produces a binary built from
@@ -89,7 +86,14 @@ all: $(BIN)
 ../../bin/extensions/pyre/libpyre.a:
 	$(MAKE) -C ../pyre lib
 
-$(BIN): $(ASHVM_OBJ) ../../bin/extensions/pyre/libpyre.a
+# The shared front end (lexer, parser, type checker, lowering) is the only frontend ashvm has;
+# front's own Makefile decides whether the library is up to date.
+../../bin/libashfront.a: FORCE
+	$(MAKE) -C ../front
+
+FORCE:
+
+$(BIN): $(ASHVM_OBJ) ../../bin/libashfront.a ../../bin/extensions/pyre/libpyre.a
 	mkdir -p ../../bin
 	$(CC) $(CFLAGS) -o $(BIN) $(ASHVM_OBJ) $(LDFLAGS)
 
@@ -100,4 +104,4 @@ clean:
 	find src -name '*.d' -delete
 	rm -f $(BIN)
 
-.PHONY: all clean
+.PHONY: all clean FORCE
