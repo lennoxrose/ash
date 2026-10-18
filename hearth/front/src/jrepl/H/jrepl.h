@@ -1,7 +1,7 @@
 #ifndef JREPL_H
 #define JREPL_H
 
-/* Session model for the ashvm REPL (MIGRATION.md D9: the REPL is an explicit exception to the
+/* Session model for the ashvm REPL (the REPL is an explicit exception to the
  * class-per-file rule; each accepted line is wrapped into a hidden class body).
  *
  * A session is the accepted history: imports, type declarations, static methods and statements. To run a

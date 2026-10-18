@@ -22,7 +22,7 @@ for f in "$dir"/err_*_j.ash; do
     done < <(sed -n 's#^// expect: ##p' "$f")
     if [ $miss -eq 1 ]; then echo "$out"; fail=1; else echo "ok   $f"; fi
 done
-for f in tests/cases/syntax/*.ash ../../main.ash; do
+for f in tests/cases/syntax/*.ash; do
     if $VM check "$f" >/dev/null 2>&1; then echo "ok   $f (checks)"; else echo "FAIL $f (check)"; fail=1; fi
 done
 exit $fail

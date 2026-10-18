@@ -40,7 +40,7 @@ static int after_group(Parser *p, int from) {
 }
 
 static void old(Parser *p, const char *word, const char *use) {
-    p_fail(p, "'%s' is old Ash syntax and was removed; %s (see MIGRATION.md)", word, use);
+    p_fail(p, "'%s' is old Ash syntax and was removed; %s", word, use);
 }
 
 void p_old_syntax(Parser *p, int where) {
@@ -55,7 +55,7 @@ void p_old_syntax(Parser *p, int where) {
         if (!strcmp(w, "local") || !strcmp(w, "say") || !strcmp(w, "forge") || !strcmp(w, "given") || !strcmp(w, "during") ||
             !strcmp(w, "each") || !strcmp(w, "attempt") || !strcmp(w, "raise")) {
             p_fail(p, "this looks like an old Ash script ('%s' at the top level); new Ash programs declare a package and a class "
-                      "with `public static void main(String[] args)` (see MIGRATION.md)", w);
+                      "with `public static void main(String[] args)`", w);
         }
         return;
     }

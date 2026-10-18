@@ -10,7 +10,7 @@
 
 Ash is an enterprise-style, statically typed, Java-like language built from scratch in C with no
 external dependencies: packages, classes, interfaces, enums, records, generics, `T?` null safety,
-checked exceptions, lambdas. The design contract is `MIGRATION.md`.
+checked exceptions, lambdas.
 
 ```java
 package demo;
@@ -64,8 +64,7 @@ and `hearth/kiln/tests/scripts/run_regression.sh` run them on both engines. The 
 `ash-stdlib` package (`ash.util`, `ash.io`, `ash.json`, `ash.math`, `ash.cli`, `ash.test`, `ash.time`,
 `ash.concurrent`, `ash.net`, `ash.web`, `ash.game`, `ash.desktop`; the last five are pure-Ash
 models because the VM has no threads, sockets, windows or clock); the test scripts expect it as a sibling
-checkout (`../ash-stdlib`) or via `ASH_PATH`. Known limits of the current backend are
-tabulated in `MIGRATION.md`.
+checkout (`../ash-stdlib`) or via `ASH_PATH`.
 
 ### REPL
 

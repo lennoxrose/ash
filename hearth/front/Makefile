@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc 
 
 # Shared front end for Ash: lexer, parser, AST, type checker, lowering and the internal IR
-# lexer, built as libashfront.a and linked by both ashvm and kiln (see MIGRATION.md, D12).
+# lexer, built as libashfront.a and linked by both ashvm and kiln.
 # There is no front-end executable: ashvm and kiln are the user-facing tools.
 # Same layout rule as the other subprojects: src/<sub>/C/x.c -> src/<sub>/O/x.o.
 FRONT_SRC = \
