@@ -1,3 +1,6 @@
+## 2026-10-18 (apm license)
+- `apm license` lists the built-in licenses; `apm license <id> [--author <name>] [--year <yyyy>]` writes `LICENSE` (replacing any existing one) and sets `license:` in `ash.pkg`, so running it again with another id swaps both and leaves every other field alone. Built in as C string data (`apm/src/C/license`, about 170 KB): MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC, OFL-1.1, GPL-2.0, GPL-3.0, LGPL-2.1, LGPL-3.0. Texts are verbatim SPDX texts; MIT, BSD, ISC and OFL get the author and year filled in.
+
 ## 2026-10-18 (apm: the package manager, richer ash.pkg)
 - **`forgepack` is now `apm`** ("Ash package manager"): folder `hearth/apm`, binary `bin/apm`, `make @apm`. Older changelog entries keep the old name.
 - **`ash.pkg` carries npm-style metadata**: `name`, `version`, `description`, `author`, `license`, `homepage`, `repository`, `bugs`, `main` (entry class) and `keywords`, plus sections `[dependencies]`, `[dev-dependencies]`, `[libraries]` (external native libraries, recorded and listed only; `ashvm`/`kiln` do not consume them yet) and `[scripts]` (build instructions). Unknown sections warn; unknown header keys are ignored; files written before this change still load.

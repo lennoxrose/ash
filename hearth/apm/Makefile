@@ -9,7 +9,10 @@ APM_SRC = \
     src/C/git_fetch.c \
     src/C/install.c \
     src/C/cmd.c \
-    src/C/ui.c
+    src/C/ui.c \
+    src/C/license/licenses.c \
+    src/C/license/texts_permissive.c \
+    src/C/license/texts_copyleft.c
 
 # Objects and dependency files live in trees parallel to C/:
 #   src/C/x.c -> src/O/x.o, src/D/x.d

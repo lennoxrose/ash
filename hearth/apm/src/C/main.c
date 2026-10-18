@@ -10,6 +10,7 @@ static void print_usage(void) {
     printf("  apm add github:<user>/<repo>[@ref] [--as <name>] [--dev]\n");
     printf("  apm install\n");
     printf("  apm list\n");
+    printf("  apm license [<id>] [--author <name>] [--year <yyyy>]   list licenses / write LICENSE and set license: in ash.pkg\n");
     printf("  apm run <script>      run a [scripts] entry of ash.pkg (apm build / apm test = run build / run test)\n");
 }
 
@@ -25,6 +26,7 @@ int main(int argc, char **argv) {
     if (strcmp(command, "add") == 0) return cmd_add(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "install") == 0) return cmd_install(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "list") == 0) return cmd_list(project_dir, rest_argc, rest_argv);
+    if (strcmp(command, "license") == 0) return cmd_license(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "run") == 0) return cmd_run(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "build") == 0 || strcmp(command, "test") == 0) {
         char *script[] = { (char *)command };

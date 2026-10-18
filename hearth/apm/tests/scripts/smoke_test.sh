@@ -72,6 +72,18 @@ done
 out=$("$BIN" run test) && grep -q "^testing$" <<<"$out" || fail "apm run test"
 if "$BIN" run nonexistent > /dev/null 2>&1; then fail "unknown script should exit non-zero"; fi
 
+# licenses: write LICENSE and keep ash.pkg in sync; running again replaces both
+"$BIN" license MIT --year 2025 > /dev/null || fail "apm license MIT"
+grep -q "^Copyright (c) 2025 Ada <ada@example.com>$" LICENSE && fail "email must not end up in the copyright line"
+grep -q "^Copyright (c) 2025 Ada$" LICENSE || fail "LICENSE copyright line (author from ash.pkg)"
+grep -q "^license: MIT$" ash.pkg || fail "ash.pkg license not set to MIT"
+"$BIN" license gpl-3.0-only > /dev/null || fail "apm license GPL-3.0 (alias, replace)"
+grep -q "GNU GENERAL PUBLIC LICENSE" LICENSE || fail "LICENSE not replaced"
+grep -q "^license: GPL-3.0$" ash.pkg || fail "ash.pkg license not updated"
+grep -q "^build: echo building" ash.pkg || fail "ash.pkg lost other fields on license change"
+"$BIN" license | grep -q "OFL-1.1" || fail "license list"
+if "$BIN" license no-such-license > /dev/null 2>&1; then fail "unknown license should exit non-zero"; fi
+
 if "$BIN" bogus-command > /dev/null 2>&1; then fail "unknown command should exit non-zero"; fi
 
 echo "apm smoke test: OK"

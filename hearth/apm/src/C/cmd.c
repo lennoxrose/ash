@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE 700 // exposes PATH_MAX under -std=c11 (see ashvm/kiln's import_paths.c)
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
@@ -10,6 +11,7 @@
 #include "H/fsutil.h"
 #include "H/git_fetch.h"
 #include "H/ui.h"
+#include "H/license/licenses.h"
 
 static void infer_project_name(char *out, int out_size) {
     char cwd[PATH_MAX];
@@ -194,5 +196,77 @@ int cmd_run(const char *project_dir, int argc, char **argv) {
         ui_err("script '%s' failed", script->name);
         return 1;
     }
+    return 0;
+}
+
+static void print_license(const License *l) { ui_bullet("%-13s %s", l->id, l->name); }
+
+// apm license                                  lists the available licenses
+// apm license <id> [--author <name>] [--year <yyyy>]
+//   writes LICENSE (replacing any existing one) and sets `license:` in ash.pkg to <id>, so running it
+//   again with another id swaps both. The copyright holder defaults to ash.pkg's `author:` (without
+//   the <email>), the year to the current year.
+int cmd_license(const char *project_dir, int argc, char **argv) {
+    if (argc < 1) {
+        ui_header("available licenses");
+        license_each(print_license);
+        return 0;
+    }
+    const License *lic = license_find(argv[0]);
+    if (!lic) {
+        ui_err("unknown license '%s' -- run 'apm license' to list the available ones", argv[0]);
+        return 1;
+    }
+    const char *author_arg = NULL, *year_arg = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--author") == 0 && i + 1 < argc) author_arg = argv[++i];
+        else if (strcmp(argv[i], "--year") == 0 && i + 1 < argc) year_arg = argv[++i];
+        else {
+            ui_err("usage: apm license <id> [--author <name>] [--year <yyyy>]");
+            return 1;
+        }
+    }
+
+    Manifest m;
+    if (!manifest_load(project_dir, &m)) {
+        char project_name[MANIFEST_NAME_LEN];
+        infer_project_name(project_name, sizeof(project_name));
+        manifest_init_default(&m, project_name);
+        ui_info("no %s here, creating one", MANIFEST_FILE);
+    }
+
+    char author[MANIFEST_NAME_LEN];
+    if (author_arg) snprintf(author, sizeof(author), "%s", author_arg);
+    else {
+        snprintf(author, sizeof(author), "%s", m.author);
+        char *angle = strchr(author, '<');
+        if (angle) { *angle = '\0'; size_t n = strlen(author); while (n > 0 && author[n - 1] == ' ') author[--n] = '\0'; }
+    }
+    if (license_needs_author(lic) && author[0] == '\0') {
+        ui_err("%s needs a copyright holder: pass --author <name> or set 'author:' in %s", lic->id, MANIFEST_FILE);
+        return 1;
+    }
+
+    char year[16];
+    if (year_arg) snprintf(year, sizeof(year), "%s", year_arg);
+    else {
+        time_t now = time(NULL);
+        strftime(year, sizeof(year), "%Y", localtime(&now));
+    }
+
+    char *text = license_render(lic, year, author);
+    if (!text) { ui_err("out of memory"); return 1; }
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/LICENSE", project_dir);
+    int existed = access(path, F_OK) == 0;
+    FILE *f = fopen(path, "w");
+    if (!f) { ui_err("could not write %s", path); free(text); return 1; }
+    fputs(text, f);
+    fclose(f);
+    free(text);
+
+    snprintf(m.license, sizeof(m.license), "%s", lic->id);
+    if (!manifest_save(project_dir, &m)) return 1;
+    ui_ok("%s LICENSE (%s) and set license: %s in %s", existed ? "replaced" : "wrote", lic->name, lic->id, MANIFEST_FILE);
     return 0;
 }

@@ -144,7 +144,10 @@ apm add github:user/repo[@ref] [--as name] [--dev]
 apm install                                # fetch [dependencies] and [dev-dependencies] into ./@ash-modules/
 apm list                                   # metadata, dependencies (and whether installed), libraries, scripts
 apm run <script>                           # run a [scripts] entry with sh -c; `apm build` / `apm test` are shorthands
+apm license [<id>] [--author <name>] [--year <yyyy>]   # list licenses / write LICENSE and set license: in ash.pkg
 ```
+
+`apm license MIT` writes a `LICENSE` file and sets `license: MIT` in `ash.pkg`; running it again with another id replaces both. The copyright holder defaults to `author:` (without the `<email>`), the year to the current year. Built in (no network): MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC, OFL-1.1, GPL-2.0, GPL-3.0, LGPL-2.1, LGPL-3.0 (texts from the SPDX list; the `-only` forms are accepted as aliases).
 
 `[libraries]` records the external native libraries a package links; apm stores and lists them, but
 `ashvm` and `kiln` do not consume them yet. Scripts run with the same trust as `npm run`: only the

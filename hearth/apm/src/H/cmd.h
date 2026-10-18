@@ -8,6 +8,7 @@ int cmd_init(const char *project_dir, int argc, char **argv);
 int cmd_add(const char *project_dir, int argc, char **argv);
 int cmd_install(const char *project_dir, int argc, char **argv);
 int cmd_list(const char *project_dir, int argc, char **argv);
+int cmd_license(const char *project_dir, int argc, char **argv);
 int cmd_run(const char *project_dir, int argc, char **argv);
 
 #endif
