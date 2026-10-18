@@ -2,7 +2,7 @@ package memory;
 
 import ash.util.ArrayList;
 
-/// Allocates ~1.2M short-lived strings and lists. The default VM never frees them (hundreds of MB
+/// Allocates ~1.8M short-lived strings and lists. The default VM never frees them (hundreds of MB
 /// here); the experimental collector (make GC=1) keeps the footprint small. Output is identical.
 class GcChurn {
     static int churn(int n) {
@@ -23,6 +23,6 @@ class GcChurn {
     }
 
     public static void main(String[] args) {
-        System.out.println(churn(200000));
+        System.out.println(churn(300000));
     }
 }
