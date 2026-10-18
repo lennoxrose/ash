@@ -14,46 +14,49 @@
 //
 // if you cant beat it by atleast 50% then you are not allowed to submit your solution
 
-local ITERATIONS = 1000000000;
-local threshold = 0.75;
+package benchmarks;
 
-forge random(seed) {
-    seed = (seed * 1664525 + 1013904223) % 4294967296;
-    yield seed;
-}
-
-local seed = 123456789;
-local risky = 0;
-
-say "Starting Monte Carlo simulation...";
-say "Iterations: " + str(ITERATIONS);
-
-local i = 0;
-
-during i < ITERATIONS {
-    local random_value = random(seed);
-    seed = random_value;
-
-    local normalized = random_value / 4294967296.0;
-
-    // Simulate a risk event.
-    // Combine two independent random values.
-    local random_value_2 = random(seed);
-    seed = random_value_2;
-
-    local normalized_2 = random_value_2 / 4294967296.0;
-
-    local score = normalized * normalized_2;
-
-    given score > threshold {
-        risky += 1;
+class MonteCarloNoPi {
+    static long random(long seed) {
+        return (seed * 1664525L + 1013904223L) % 4294967296L;
     }
 
-    i += 1;
+    public static void main(String[] args) {
+        long iterations = 1000000000L;
+        double threshold = 0.75;
+        long seed = 123456789L;
+        long risky = 0L;
+
+        System.out.println("Starting Monte Carlo simulation...");
+        System.out.println("Iterations: " + iterations);
+
+        long i = 0L;
+        while (i < iterations) {
+            long randomValue = random(seed);
+            seed = randomValue;
+
+            double normalized = randomValue / 4294967296.0;
+
+            // Simulate a risk event.
+            // Combine two independent random values.
+            long randomValue2 = random(seed);
+            seed = randomValue2;
+
+            double normalized2 = randomValue2 / 4294967296.0;
+
+            double score = normalized * normalized2;
+
+            if (score > threshold) {
+                risky += 1L;
+            }
+
+            i += 1L;
+        }
+
+        double probability = (double) risky / iterations;
+
+        System.out.println("Done!");
+        System.out.println("Risky outcomes: " + risky);
+        System.out.println("Estimated probability: " + probability);
+    }
 }
-
-local probability = risky / ITERATIONS;
-
-say "Done!";
-say "Risky outcomes: " + str(risky);
-say "Estimated probability: " + str(probability);

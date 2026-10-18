@@ -14,50 +14,56 @@
 
 // Matrix multiplication: C = A x B
 // Dimensions: N x N
-local N = 2000;
+package benchmarks;
 
-forge create_matrix(size, value) {
-    local mat = [];
-    local i = 0;
-    during i < size {
-        local row = [];
-        local j = 0;
-        during j < size {
-            push(row, value);
-            j += 1;
+class MatrixMultiply {
+    static double[][] createMatrix(int size, double value) {
+        double[][] mat = new double[size][];
+        int i = 0;
+        while (i < size) {
+            double[] row = new double[size];
+            int j = 0;
+            while (j < size) {
+                row[j] = value;
+                j += 1;
+            }
+            mat[i] = row;
+            i += 1;
         }
-        push(mat, row);
-        i += 1;
+        return mat;
     }
-    yield mat;
-}
 
-// 1. Initialize two N x N matrices
-local A = create_matrix(N, 1.5);
-local B = create_matrix(N, 2.0);
+    public static void main(String[] args) {
+        int n = 2000;
 
-// 2. Initialize the result matrix C with zeros
-local C = create_matrix(N, 0.0);
+        // 1. Initialize two N x N matrices
+        double[][] a = createMatrix(n, 1.5);
+        double[][] b = createMatrix(n, 2.0);
 
-say "Starting matrix multiplication (" + str(N) + "x" + str(N) + ")...";
+        // 2. Initialize the result matrix C with zeros
+        double[][] c = createMatrix(n, 0.0);
 
-// 3. Compute C = A x B
-// Total operations: 2 * N^3 = 250,000,000 floating point operations
-local i = 0;
-during i < N {
-    local j = 0;
-    during j < N {
-        local sum = 0.0;
-        local k = 0;
-        during k < N {
-            sum += A[i][k] * B[k][j];
-            k += 1;
+        System.out.println("Starting matrix multiplication (" + n + "x" + n + ")...");
+
+        // 3. Compute C = A x B
+        // Total operations: 2 * N^3 = 250,000,000 floating point operations
+        int i = 0;
+        while (i < n) {
+            int j = 0;
+            while (j < n) {
+                double sum = 0.0;
+                int k = 0;
+                while (k < n) {
+                    sum += a[i][k] * b[k][j];
+                    k += 1;
+                }
+                c[i][j] = sum;
+                j += 1;
+            }
+            i += 1;
         }
-        C[i][j] = sum;
-        j += 1;
-    }
-    i += 1;
-}
 
-say "Done!";
-say "Sample element C[0][0]: " + str(C[0][0]); // Should be 1500
+        System.out.println("Done!");
+        System.out.println("Sample element C[0][0]: " + c[0][0]); // Should be 1500.0
+    }
+}
