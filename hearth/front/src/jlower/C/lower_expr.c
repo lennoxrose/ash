@@ -503,6 +503,19 @@ static void assign_parts(Node *e, char **lhs, char **rhs) {
     *rhs = lx(e->b);
 }
 
+/* `x = (x + i);` -> `x = x + i;`: the VM fuses the unparenthesised accumulate shape into one instruction */
+static char *unparen(char *t) {
+    size_t n = strlen(t);
+    if (n < 2 || t[0] != '(' || t[n - 1] != ')') return t;
+    int depth = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (t[i] == '"') { for (i++; i < n && t[i] != '"'; i++) if (t[i] == '\\') i++; continue; }
+        if (t[i] == '(') depth++;
+        else if (t[i] == ')' && --depth == 0 && i != n - 1) return t;
+    }
+    return j_strndup(t + 1, n - 2);
+}
+
 void emit_assign_stmt(JBuf *b, Node *e, int ind) {
     if (e->kind == N_ASSIGN) {
         char *lhs, *rhs;
@@ -514,7 +527,7 @@ void emit_assign_stmt(JBuf *b, Node *e, int ind) {
             rhs = binop(op, e->a->type, e->b->type, lhs, rhs, e);
         }
         flush_pre(b, ind);
-        emit_line(b, ind, "%s = %s;", lhs, rhs);
+        emit_line(b, ind, "%s = %s;", lhs, unparen(rhs));
         return;
     }
     /* ++ / -- as statements */
@@ -522,7 +535,7 @@ void emit_assign_stmt(JBuf *b, Node *e, int ind) {
     char *lhs = lvalue(t);
     int inc = e->name[0] == '+';
     flush_pre(b, ind);
-    emit_line(b, ind, "%s = %s;", lhs, incdec_text(e, lhs, inc));
+    emit_line(b, ind, "%s = %s;", lhs, unparen(incdec_text(e, lhs, inc)));
 }
 
 

@@ -19,39 +19,10 @@ void block(void) {
     expect(TOKEN_RBRACE, "expected '}'");
 }
 
-// local name = value;  --  also tries to fuse `local x = x OP (number|local);`
-// into a single OP_ACC_LOCAL instead of a full expression compile, when the
-// shape matches exactly (see vm/compiler.c's history / rundown.md).
-static void local_statement(void) {
-    advance_token();
-    expect(TOKEN_IDENTIFIER, "expected variable name after 'local'");
-    const char *name = previous.start;
-    int len = previous.length;
-    expect(TOKEN_EQUAL, "expected '=' after variable name");
-
-    // Bug (found while writing the first real forgepack module, a JSON
-    // codec -- any imported function with a `local` inside a loop failed
-    // to compile): try_declare_import_constant() has no way to tell "a
-    // top-level local in an imported file" from "an ordinary local deep
-    // inside one of that file's own functions" except this check -- it
-    // only makes sense at block_depth == 0, same as the sibling guard in
-    // statement() above (which already gets this right).
-    if (block_depth == 0) {
-        const char *ns; int ns_len;
-        get_import_namespace(&ns, &ns_len);
-        if (ns_len > 0) {
-            // A top-level `local` of an imported file is a module-level variable.
-            int state_slot = module_state_declare(name, len);
-            expression();
-            expect(TOKEN_SEMICOLON, "expected ';' after statement");
-            emit2(OP_SET_GLOBAL, (uint8_t)state_slot);
-            emit_op(OP_POP);
-            return;
-        }
-    }
-
-    int slot = resolve_local(name, len);
-
+// `x OP (number|local);` right after `x =` / `local x =`, for an existing local x, compiles to a single
+// OP_ACC_LOCAL instead of a full expression compile. Returns 1 when it fused (statement fully consumed);
+// otherwise the token stream is left exactly as it was.
+static int try_fuse_accumulate(int slot, const char *name, int len) {
     int fused = 0;
     if (slot != -1 && current.type == TOKEN_IDENTIFIER &&
         current.length == len && strncmp(current.start, name, len) == 0) {
@@ -97,6 +68,43 @@ static void local_statement(void) {
         }
         if (!fused) { lexer_init(save.start + save.length); current = save; }
     }
+    return fused;
+}
+
+// local name = value;  --  also tries to fuse `local x = x OP (number|local);`
+// into a single OP_ACC_LOCAL instead of a full expression compile, when the
+// shape matches exactly (see vm/compiler.c's history / rundown.md).
+static void local_statement(void) {
+    advance_token();
+    expect(TOKEN_IDENTIFIER, "expected variable name after 'local'");
+    const char *name = previous.start;
+    int len = previous.length;
+    expect(TOKEN_EQUAL, "expected '=' after variable name");
+
+    // Bug (found while writing the first real forgepack module, a JSON
+    // codec -- any imported function with a `local` inside a loop failed
+    // to compile): try_declare_import_constant() has no way to tell "a
+    // top-level local in an imported file" from "an ordinary local deep
+    // inside one of that file's own functions" except this check -- it
+    // only makes sense at block_depth == 0, same as the sibling guard in
+    // statement() above (which already gets this right).
+    if (block_depth == 0) {
+        const char *ns; int ns_len;
+        get_import_namespace(&ns, &ns_len);
+        if (ns_len > 0) {
+            // A top-level `local` of an imported file is a module-level variable.
+            int state_slot = module_state_declare(name, len);
+            expression();
+            expect(TOKEN_SEMICOLON, "expected ';' after statement");
+            emit2(OP_SET_GLOBAL, (uint8_t)state_slot);
+            emit_op(OP_POP);
+            return;
+        }
+    }
+
+    int slot = resolve_local(name, len);
+
+    int fused = try_fuse_accumulate(slot, name, len);
 
     if (!fused) {
         expression();
@@ -231,6 +239,7 @@ static void identifier_statement(void) {
     if (current.type == TOKEN_EQUAL) {
         int slot = resolve_local_or_error(id);
         advance_token();
+        if (slot >= 0 && try_fuse_accumulate(slot, id.start, id.length)) return;
         expression();
         expect(TOKEN_SEMICOLON, "expected ';' after assignment");
         emit_ref_set(slot);
