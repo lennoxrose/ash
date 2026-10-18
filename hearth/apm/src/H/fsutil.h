@@ -1,5 +1,5 @@
-#ifndef FORGEPACK_FSUTIL_H
-#define FORGEPACK_FSUTIL_H
+#ifndef APM_FSUTIL_H
+#define APM_FSUTIL_H
 
 int fsutil_dir_exists(const char *path);
 

@@ -61,7 +61,7 @@ void git_fetch_infer_name(const char *spec, char *out, int out_size) {
 int git_fetch_github(const char *spec, const char *dest_dir) {
     char user[128], repo[128], ref[128];
     if (!parse_github_spec(spec, user, sizeof(user), repo, sizeof(repo), ref, sizeof(ref))) {
-        fprintf(stderr, "forgepack: malformed github spec '%s' (expected github:user/repo or github:user/repo@ref)\n", spec);
+        fprintf(stderr, "apm: malformed github spec '%s' (expected github:user/repo or github:user/repo@ref)\n", spec);
         return 0;
     }
 
@@ -76,7 +76,7 @@ int git_fetch_github(const char *spec, const char *dest_dir) {
 
     int rc = system(cmd);
     if (rc != 0) {
-        fprintf(stderr, "forgepack: 'git clone' failed for %s\n", spec);
+        fprintf(stderr, "apm: 'git clone' failed for %s\n", spec);
         return 0;
     }
     return 1;

@@ -4,12 +4,13 @@
 #include "H/ui.h"
 
 static void print_usage(void) {
-    printf("forgepack -- package manager for Ash (github: sources only, for now)\n\n");
+    printf("apm -- the Ash package manager (github: sources only, for now)\n\n");
     printf("usage:\n");
-    printf("  forgepack init\n");
-    printf("  forgepack add github:<user>/<repo>[@ref] [--as <name>]\n");
-    printf("  forgepack install\n");
-    printf("  forgepack list\n");
+    printf("  apm init\n");
+    printf("  apm add github:<user>/<repo>[@ref] [--as <name>] [--dev]\n");
+    printf("  apm install\n");
+    printf("  apm list\n");
+    printf("  apm run <script>      run a [scripts] entry of ash.pkg (apm build / apm test = run build / run test)\n");
 }
 
 int main(int argc, char **argv) {
@@ -24,6 +25,11 @@ int main(int argc, char **argv) {
     if (strcmp(command, "add") == 0) return cmd_add(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "install") == 0) return cmd_install(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "list") == 0) return cmd_list(project_dir, rest_argc, rest_argv);
+    if (strcmp(command, "run") == 0) return cmd_run(project_dir, rest_argc, rest_argv);
+    if (strcmp(command, "build") == 0 || strcmp(command, "test") == 0) {
+        char *script[] = { (char *)command };
+        return cmd_run(project_dir, 1, script);
+    }
 
     ui_err("unknown command '%s'", command);
     print_usage();

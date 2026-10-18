@@ -2,7 +2,7 @@ CC = gcc
 .DEFAULT_GOAL := all
 CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc
 
-FORGEPACK_SRC = \
+APM_SRC = \
     src/C/main.c \
     src/C/manifest.c \
     src/C/fsutil.c \
@@ -15,8 +15,8 @@ FORGEPACK_SRC = \
 #   src/C/x.c -> src/O/x.o, src/D/x.d
 obj_of = $(patsubst %.c,%.o,$(subst /C/,/O/,$(1)))
 dep_of = $(patsubst %.c,%.d,$(subst /C/,/D/,$(1)))
-FORGEPACK_OBJ = $(foreach s,$(FORGEPACK_SRC),$(call obj_of,$(s)))
-FORGEPACK_DEP = $(foreach s,$(FORGEPACK_SRC),$(call dep_of,$(s)))
+APM_OBJ = $(foreach s,$(APM_SRC),$(call obj_of,$(s)))
+APM_DEP = $(foreach s,$(APM_SRC),$(call dep_of,$(s)))
 
 # -MMD -MP: see ashvm/Makefile's and kiln/Makefile's comment -- a shared
 # header edit must rebuild every .o that includes it, not just the .c
@@ -26,17 +26,17 @@ $(call obj_of,$(1)): $(1)
 	@mkdir -p $$(dir $$@) $$(dir $(call dep_of,$(1)))
 	$$(CC) $$(CFLAGS) -MMD -MP -MF $(call dep_of,$(1)) -MT $$@ -c $$< -o $$@
 endef
-$(foreach s,$(FORGEPACK_SRC),$(eval $(call compile_rule,$(s))))
+$(foreach s,$(APM_SRC),$(eval $(call compile_rule,$(s))))
 
-BIN = ../../bin/forgepack
+BIN = ../../bin/apm
 
 all: $(BIN)
 
-$(BIN): $(FORGEPACK_OBJ)
+$(BIN): $(APM_OBJ)
 	mkdir -p ../../bin
-	$(CC) $(CFLAGS) -o $(BIN) $(FORGEPACK_OBJ)
+	$(CC) $(CFLAGS) -o $(BIN) $(APM_OBJ)
 
--include $(FORGEPACK_DEP)
+-include $(APM_DEP)
 
 clean:
 	find src -name '*.o' -delete

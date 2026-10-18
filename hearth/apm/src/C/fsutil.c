@@ -55,7 +55,7 @@ int fsutil_copy_dir(const char *src_dir, const char *dest_dir) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
         // Never copy a nested @ash-modules/ or .git -- a "path:" dependency
         // installs its OWN source, not whatever it happened to have
-        // installed/cloned locally when you ran `forgepack add`.
+        // installed/cloned locally when you ran `apm add`.
         if (strcmp(entry->d_name, "@ash-modules") == 0 || strcmp(entry->d_name, ".git") == 0) continue;
 
         char src_path[1024], dest_path[1024];

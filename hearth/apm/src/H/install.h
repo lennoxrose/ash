@@ -1,5 +1,5 @@
-#ifndef FORGEPACK_INSTALL_H
-#define FORGEPACK_INSTALL_H
+#ifndef APM_INSTALL_H
+#define APM_INSTALL_H
 #include "H/manifest.h"
 
 // Installs one dependency into <project_dir>/@ash-modules/<dep->name>/ if

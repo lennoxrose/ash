@@ -15,7 +15,7 @@
 5. [Resolution Order](#resolution-order)
 6. [Versioning](#versioning)
 7. [The Registry](#the-registry)
-8. [CLI: `forgepack`](#cli-forgepack)
+8. [CLI: `apm`](#cli-apm)
 9. [Publishing a Package](#publishing-a-package)
 10. [Development Phases](#development-phases)
 11. [Design Principles](#design-principles)
@@ -105,7 +105,7 @@ my-project/
 
 - Flat, not nested — same lesson npm learned the hard way (npm 2's deeply nested `node_modules` was replaced by npm 3's flat layout). A dependency's *own* dependencies also land flat in the top-level `@ash-modules/`, deduped by version where possible.
 - A version conflict (two dependencies need incompatible versions of the same package) gets a single nested fallback: `@ash-modules/<name>/@ash-modules/<name>@<version>/` — resolution always checks the nearest `@ash-modules/` first, same lookup order Node uses for `node_modules`.
-- `@ash-modules/` is machine-generated and gitignored, like `O/`/`D/` already are for build output — `forgepack install` regenerates it from `ash.lock`.
+- `@ash-modules/` is machine-generated and gitignored, like `O/`/`D/` already are for build output — `apm install` regenerates it from `ash.lock`.
 
 ---
 
@@ -128,7 +128,7 @@ Semver (`MAJOR.MINOR.PATCH`), kept deliberately simple for v1:
 - An exact version (`2.1.0`) always means exactly that version.
 - A caret range (`^1.3.0`) means "`>=1.3.0`, `<2.0.0`" — the usual meaning, allows patch/minor updates, blocks breaking ones.
 - No `~`, no `>=<`, no OR-ranges in v1 — if a real package needs more than caret ranges, add it then, not speculatively now.
-- `ash.lock` pins every resolved package (direct and transitive) to one exact version and a content hash, so `forgepack install` is always reproducible — the manifest describes *intent*, the lockfile describes *what actually got installed*.
+- `ash.lock` pins every resolved package (direct and transitive) to one exact version and a content hash, so `apm install` is always reproducible — the manifest describes *intent*, the lockfile describes *what actually got installed*.
 
 ---
 
@@ -136,24 +136,24 @@ Semver (`MAJOR.MINOR.PATCH`), kept deliberately simple for v1:
 
 Start without a hosted server at all — two sources, both file-based:
 
-1. **Git.** `forgepack add github:someone/some-package` clones a tag/commit straight into `@ash-modules/`. Zero infrastructure, works day one, same escape hatch cargo/npm/go modules all still support.
-2. **A flat static index**, once there's more than a handful of packages: a single JSON (or plain-text) file mapping `name -> [versions] -> tarball URL`, served from anywhere static (GitHub Pages, a S3 bucket) — no backend service, no database, no auth to build first. `forgepack publish` is just "upload a tarball + update the index."
+1. **Git.** `apm add github:someone/some-package` clones a tag/commit straight into `@ash-modules/`. Zero infrastructure, works day one, same escape hatch cargo/npm/go modules all still support.
+2. **A flat static index**, once there's more than a handful of packages: a single JSON (or plain-text) file mapping `name -> [versions] -> tarball URL`, served from anywhere static (GitHub Pages, a S3 bucket) — no backend service, no database, no auth to build first. `apm publish` is just "upload a tarball + update the index."
 
 A real registry with search, download counts, a web UI — all later, once there's something worth searching. Don't build npm's infrastructure for zero packages.
 
 ---
 
-## CLI: `forgepack`
+## CLI: `apm`
 
 ```text
-forgepack init                  # creates ash.pkg in the current directory
-forgepack install                # reads ash.pkg + ash.lock, populates @ash-modules/
-forgepack add <name>[@version]   # adds to ash.pkg, resolves, installs, updates ash.lock
-forgepack add github:user/repo   # git-sourced dependency
-forgepack remove <name>          # removes from ash.pkg, re-resolves, prunes @ash-modules/
-forgepack update [<name>]        # re-resolves within manifest ranges, rewrites ash.lock
-forgepack publish                # packages the current directory, pushes to the index
-forgepack list                   # prints the resolved dependency tree
+apm init                  # creates ash.pkg in the current directory
+apm install                # reads ash.pkg + ash.lock, populates @ash-modules/
+apm add <name>[@version]   # adds to ash.pkg, resolves, installs, updates ash.lock
+apm add github:user/repo   # git-sourced dependency
+apm remove <name>          # removes from ash.pkg, re-resolves, prunes @ash-modules/
+apm update [<name>]        # re-resolves within manifest ranges, rewrites ash.lock
+apm publish                # packages the current directory, pushes to the index
+apm list                   # prints the resolved dependency tree
 ```
 
 Sample `list` output:
@@ -170,7 +170,7 @@ my-project@0.1.0
 
 ## Publishing a Package
 
-A package is just a project with no `main` entry point expectation — `ash.pkg`'s `name`/`version`, a `<name>.ash` entry file at the root, optionally its own `ash.libs/`/dependencies. `forgepack publish`:
+A package is just a project with no `main` entry point expectation — `ash.pkg`'s `name`/`version`, a `<name>.ash` entry file at the root, optionally its own `ash.libs/`/dependencies. `apm publish`:
 
 1. Validates `ash.pkg` (name/version present, version not already published).
 2. Tars up the directory (minus `@ash-modules/`, minus anything in a `.ashignore`).
@@ -182,10 +182,10 @@ A package is just a project with no `main` entry point expectation — `ash.pkg`
 
 | Phase | Goal | Details |
 |-------|------|---------|
-| **1. Manifest + local install** | Prove the shape works | `ash.pkg` parsing, `@ash-modules/` resolution added to `import_resolve_path()`, `forgepack install` reading only git/local-path sources (no index yet). |
-| **2. Lockfile** | Reproducible installs | `ash.lock` generation, content hashing, `forgepack install` becoming deterministic from the lockfile alone. |
-| **3. Static index** | Discoverability without a server | Flat JSON index, `forgepack publish`/`add <name>` against it, version resolution against caret ranges. |
-| **4. Version conflict handling** | Real-world dependency graphs | Nested fallback resolution, `forgepack list` tree view, dedup pass. |
+| **1. Manifest + local install** | Prove the shape works | `ash.pkg` parsing, `@ash-modules/` resolution added to `import_resolve_path()`, `apm install` reading only git/local-path sources (no index yet). |
+| **2. Lockfile** | Reproducible installs | `ash.lock` generation, content hashing, `apm install` becoming deterministic from the lockfile alone. |
+| **3. Static index** | Discoverability without a server | Flat JSON index, `apm publish`/`add <name>` against it, version resolution against caret ranges. |
+| **4. Version conflict handling** | Real-world dependency graphs | Nested fallback resolution, `apm list` tree view, dedup pass. |
 | **5. Registry service** *(maybe, later)* | Search, stats, web UI | Only once there's enough real packages to justify it. |
 
 ---
@@ -206,5 +206,5 @@ A package is just a project with no `main` entry point expectation — `ash.pkg`
 - **Git dependency pinning:** a tag can move, a branch definitely does. `ash.lock` should probably pin a commit hash for git sources, not just a tag name.
 - **Circular package dependencies:** `ashvm`'s `@import` already handles circular *file* imports (see `imports_circular_*` tests) — need to confirm that still holds once "file" becomes "a file inside someone else's installed package."
 - **Namespace clashes with `ash.libs/`:** a project with a local `ash.libs/http/` and a dependency also named `http` — local wins per the resolution order above, but should probably at least warn.
-- **Removing packages:** `forgepack remove` pruning `@ash-modules/` safely needs to know what's still a transitive dependency of something else first.
+- **Removing packages:** `apm remove` pruning `@ash-modules/` safely needs to know what's still a transitive dependency of something else first.
 - **No native deps today — forever?** If a package ever genuinely needs to call into C (e.g. for something `kiln` can't do in pure Ash), there's no story for that yet. Worth deciding explicitly rather than backing into it.

@@ -2,7 +2,7 @@
 *.o
 /bin/
 
-# forgepack-installed dependencies (see ideas/ash_modules.md) -- fetched,
+# apm-installed dependencies (see ideas/ash_modules.md) -- fetched,
 # never hand-edited, same spirit as node_modules/
 @ash-modules/
 

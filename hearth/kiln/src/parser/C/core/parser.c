@@ -67,7 +67,7 @@ static void local_statement(void) {
 
     const char *ns; int ns_len;
     get_import_namespace(&ns, &ns_len);
-    // Bug (found while writing the first real forgepack module, a JSON
+    // Bug (found while writing the first real apm module, a JSON
     // codec -- any imported function with a `local` inside a loop failed
     // to compile, mirrored from the identical ashvm bug): this only
     // makes sense at block_depth == 0 (a genuinely top-level `local` in
@@ -266,7 +266,7 @@ static void assignment_statement(void) {
     // (`local x = json.load(...);`, where codegen/C/expressions/expr.c's
     // primary() already handles this same `ident.member(...)` shape) --
     // mirrors the identical ashvm fix, found missing the same way (the
-    // first real forgepack module's whole point is exactly this shape).
+    // first real apm module's whole point is exactly this shape).
     if (current.type == TOKEN_DOT) {
         advance_token();
         expect(TOKEN_IDENTIFIER, "expected name after '.'");

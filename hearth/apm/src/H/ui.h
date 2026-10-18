@@ -1,5 +1,5 @@
-#ifndef FORGEPACK_UI_H
-#define FORGEPACK_UI_H
+#ifndef APM_UI_H
+#define APM_UI_H
 
 // Plain Unicode symbols (box-drawing/dingbats block, not emoji -- no
 // color-font fallback needed, renders in any monospace terminal font) and

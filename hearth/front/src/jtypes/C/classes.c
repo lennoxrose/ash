@@ -30,7 +30,7 @@ void jt_add_root(const char *dir) { j_list_push(&roots, j_strdup(dir)); }
 
 static int dir_exists(const char *d) { return access(d, F_OK) == 0; }
 
-/* Packages installed by forgepack: each child C of <project>/@ash-modules and <project>/ash.libs is a
+/* Packages installed by apm: each child C of <project>/@ash-modules and <project>/ash.libs is a
  * source root, at C/src/main/ash when that exists and at C itself otherwise. */
 static void add_package_roots(const char *project, const char *folder) {
     char *dir = j_fmt("%s/%s", project, folder);
@@ -304,7 +304,7 @@ JType *jt_resolve_type(Node *tn, JClass *ctx, JMethod *mctx, int report) {
         }
         if (!c) {
             if (report) {
-                if (!jt_find_class("ash.util.List")) cerr(tn, "cannot find type '%s' (the standard library is the optional ash-stdlib package: install it with forgepack or point ASH_PATH at its src/main/ash)", tn->name);
+                if (!jt_find_class("ash.util.List")) cerr(tn, "cannot find type '%s' (the standard library is the optional ash-stdlib package: install it with apm or point ASH_PATH at its src/main/ash)", tn->name);
                 else cerr(tn, "cannot find type '%s'", tn->name);
             }
             return ty_error();

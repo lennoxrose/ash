@@ -48,7 +48,7 @@ bin/kiln Main.ash -o main --target=windows --link=shared --wrap-int
 The standard library is not built into the compiler. The compiler only contains the types it cannot work
 without (`ash.lang`, the functional interfaces, `ash.util.Iterator`); `ash.util` (collections, `Optional`,
 `Stream`), `ash.io`, `ash.json`, `ash.math`, `ash.time`, `ash.cli`, `ash.test` and the model packages live
-in the separate `ash-stdlib` package. Install it with forgepack (`forgepack add ash-stdlib github:<user>/ash-stdlib`,
+in the separate `ash-stdlib` package. Install it with apm (`apm add github:<user>/ash-stdlib`,
 which lands in `./@ash-modules/ash-stdlib` and is found automatically), or set
 `ASH_PATH=/path/to/ash-stdlib/src/main/ash`. Without it, programs that only use `ash.lang` still work and
 anything else reports a `cannot find type` error that names the package.
@@ -107,6 +107,49 @@ roughly the ceiling for anything short of a full optimizing native compiler.
 - `kiln`'s heap grows as needed (64MB at a time, `brk` on Linux / `VirtualAlloc` on Windows) rather than crashing at a fixed size, but nothing is freed until the process exits. `ashvm` has an opt-in collector (`make GC=1`).
 - `kiln`'s Windows output is checked without a Windows machine: `hearth/kiln/tests/scripts/windows_emulated_check.sh` runs every test program as a PE under the Unicorn x86-64 emulator (kernel32 faked over the real filesystem) and compares it with the Linux build. `hearth/kiln/tests/scripts/windows_wine_check.sh` does the same under Wine (an independent `kernel32`). Neither is Windows itself.
 
+## Package manager (`apm`)
+
+A project is described by `ash.pkg`, a flat `key: value` header plus `[section]` blocks (like `package.json`):
+
+```
+name: my-app
+version: 1.2.0
+description: What it does
+author: Ada <ada@example.com>
+license: MIT
+homepage: https://example.com/my-app
+repository: github:ada/my-app
+bugs: https://example.com/my-app/issues
+main: demo.Main
+keywords: ash, cli
+
+[dependencies]
+ash-stdlib: github:<user>/ash-stdlib@v0.1.0
+
+[dev-dependencies]
+test-kit: github:<user>/test-kit
+
+[libraries]
+m: system
+vulkan: pkg-config:vulkan
+
+[scripts]
+build: ashvm check src/main/ash/demo/Main.ash
+test: ashvm run src/test/ash/AllTests.ash
+```
+
+```bash
+apm init                                   # create ash.pkg
+apm add github:user/repo[@ref] [--as name] [--dev]
+apm install                                # fetch [dependencies] and [dev-dependencies] into ./@ash-modules/
+apm list                                   # metadata, dependencies (and whether installed), libraries, scripts
+apm run <script>                           # run a [scripts] entry with sh -c; `apm build` / `apm test` are shorthands
+```
+
+`[libraries]` records the external native libraries a package links; apm stores and lists them, but
+`ashvm` and `kiln` do not consume them yet. Scripts run with the same trust as `npm run`: only the
+project's own `ash.pkg` is consulted, never an installed dependency's.
+
 ## Project structure
 
 Every project lives in `hearth/` and builds into `bin/`; the repository root only holds
@@ -118,7 +161,7 @@ hearth/front/     the only frontend: lexer, parser, AST, type checker, lowering,
                   Built as libashfront.a, linked by ashvm and kiln. There is no front-end executable.
 hearth/ashvm/     the VM engine: compiler (IR -> bytecode), value, vm, builtins, diagnostics, app (CLI + REPL)
 hearth/kiln/      the native compiler: IR -> machine code -> ELF/PE (no VM, no libc)
-hearth/forgepack/ package manager: forgepack init/add/install/list, dependencies fetched from GitHub
+hearth/apm/       the Ash package manager: apm init/add/install/list/run, dependencies fetched from GitHub
                   into a project-local @ash-modules/ folder; point ASH_PATH at an installed source root
                   to compile against it (see ideas/ash_modules.md)
 hearth/pyre/      GPU/CPU compute backends (C ABI)

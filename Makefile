@@ -1,6 +1,6 @@
 # Ash - Makefile
-#	Every project lives in hearth/ (ashvm, kiln, forgepack, pyre, front) and builds into the root bin/.
-#	`make` makes all subprojects, such as ashvm, kiln, forgepack, etc.
+#	Every project lives in hearth/ (ashvm, kiln, apm, pyre, front) and builds into the root bin/.
+#	`make` makes all subprojects, such as ashvm, kiln, apm, etc.
 #	`make clean` cleans all subprojects.
 #	`make @<subproject>` cleans and builds only that subproject, e.g. `make @ashvm`
 

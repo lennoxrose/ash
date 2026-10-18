@@ -81,7 +81,7 @@ static void local_statement(void) {
     int len = previous.length;
     expect(TOKEN_EQUAL, "expected '=' after variable name");
 
-    // Bug (found while writing the first real forgepack module, a JSON
+    // Bug (found while writing the first real apm module, a JSON
     // codec -- any imported function with a `local` inside a loop failed
     // to compile): try_declare_import_constant() has no way to tell "a
     // top-level local in an imported file" from "an ordinary local deep
@@ -182,7 +182,7 @@ static void identifier_statement(void) {
     // discarding the result) rather than nested in an expression
     // (`local x = json.load(...);`, where expr.c's primary() already
     // handles this same `ident.member(...)` shape) -- found missing
-    // while writing the first real forgepack module, whose whole point
+    // while writing the first real apm module, whose whole point
     // (`json.save(path, value);`) is exactly this shape.
     if (current.type == TOKEN_DOT) {
         advance_token();
@@ -226,7 +226,7 @@ static void identifier_statement(void) {
         return;
     }
     // Bare reassignment (`x = expr;`, no `local`) on an already-declared
-    // variable -- found missing while writing the first real forgepack
+    // variable -- found missing while writing the first real apm
     // module (a JSON codec, which reassigns a loop position variable
     // throughout). kiln already supports this (its local_statement()
     // reassigns an existing slot in place rather than requiring `local`

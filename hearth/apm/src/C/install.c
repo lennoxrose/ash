@@ -6,7 +6,7 @@
 
 // GitHub-only for now, deliberately -- no registry/index yet (see
 // ideas/ash_modules.md's phased plan), so a git source is the only thing
-// forgepack can actually resolve without a server. path:/plain-version
+// apm can actually resolve without a server. path:/plain-version
 // dependencies are a later addition, not scoped in yet.
 int install_dependency(const char *project_dir, const Dependency *dep) {
     char dest[1024];
