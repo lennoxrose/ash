@@ -635,13 +635,14 @@ JType *check_lambda(Ctx *cx, Node *lam, JType *target, JType **result) {
     int mark;
     push_scope(cx, &mark);
     int saved_base = cx->lambda_base;
-    int saved_loop = cx->loop_depth, saved_switch = cx->switch_depth;
+    int saved_loop = cx->loop_depth, saved_switch = cx->switch_depth, saved_floor = cx->label_floor;
     JType *saved_ret = cx->ret;
     JList *saved_rt = cx->ret_types;
     int saved_rv = cx->ret_seen_void;
     ExFrame *saved_ex = cx->ex;
     cx->lambda_base = cx->locals.count;
     cx->loop_depth = cx->switch_depth = 0;
+    cx->label_floor = cx->nlabels;
     cx->lambda_depth++;
     ExFrame fr = {0};
     fr.kind = F_LAMBDA;
@@ -693,6 +694,7 @@ JType *check_lambda(Ctx *cx, Node *lam, JType *target, JType **result) {
     cx->lambda_depth--;
     cx->loop_depth = saved_loop;
     cx->switch_depth = saved_switch;
+    cx->label_floor = saved_floor;
     cx->lambda_base = saved_base;
     cx->ret = saved_ret;
     cx->ret_types = saved_rt;

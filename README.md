@@ -31,6 +31,9 @@ public class Main {
 }
 ```
 
+Loops can be labeled and left or continued from an inner loop, as in Java: `outer: for (...) { for (...) { if (done) break outer; if (skip) continue outer; } }`
+(also on `while`, `do` and for-each loops; the jump runs the `finally` blocks it leaves, and the ownership and range checks follow it).
+
 ## Getting started
 
 ```bash

@@ -1,0 +1,51 @@
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/LabelMoves.ash:18:28
+   |
+ 18|         System.out.println(a[0]);             // E0101: moved on the labeled path
+   |                            ^
+   = note: 'a' was moved here, into the call to 'hold'
+  --> tests/cases/diag/LabelMoves.ash:13:26
+   |
+ 13|                     hold(a);                  // a moves on the way out
+   |                          ^
+   = help: 'hold' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/LabelMoves.ash:25:32
+   |
+ 25|             System.out.println(a[0]);         // E0101 on the second pass: the labeled continue below moved a
+   |                                ^
+   = note: 'a' was moved here, into the call to 'hold' (in an earlier iteration of the loop)
+  --> tests/cases/diag/LabelMoves.ash:28:26
+   |
+ 28|                     hold(a);
+   |                          ^
+   = help: 'hold' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/LabelMoves.ash:28:26
+   |
+ 28|                     hold(a);
+   |                          ^
+   = help: this call moves 'a' on every pass of the loop; declare 'a' inside the loop, or give it a new value before the next pass
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/LabelMoves.ash:43:26
+   |
+ 43|                     hold(a);                  // the finally of the try being left runs on the jump
+   |                          ^
+   = help: this call moves 'a' on every pass of the loop; declare 'a' inside the loop, or give it a new value before the next pass
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/LabelMoves.ash:47:28
+   |
+ 47|         System.out.println(a[0]);             // E0101
+   |                            ^
+   = note: 'a' was moved here, into the call to 'hold'
+  --> tests/cases/diag/LabelMoves.ash:43:26
+   |
+ 43|                     hold(a);                  // the finally of the try being left runs on the jump
+   |                          ^
+   = help: 'hold' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+error[E0202]: array index is always out of bounds here: the index is 4 to 9223372036854775807 and the array length is 4; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/diag/LabelMoves.ash:98:30
+   |
+ 98|         System.out.println(a[m]);             // E0202: m is 4 or 7 on every path, both past the end
+   |                              ^
+6 error(s)

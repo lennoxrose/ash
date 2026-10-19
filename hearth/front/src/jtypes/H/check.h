@@ -50,6 +50,9 @@ typedef struct Ctx {
     ExFrame *ex;
     int loop_depth;
     int switch_depth;
+    Node **labels;       /* labeled loops being checked, innermost last (`break outer;`); allocated by the first one */
+    int nlabels, cap_labels;
+    int label_floor;     /* labels below this index belong to an enclosing function: a lambda cannot jump to them */
     int lambda_depth;
     JList captures;      /* (JLocal*) captured by lambdas, validated at method end */
 } Ctx;

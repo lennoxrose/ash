@@ -298,13 +298,27 @@ Node *p_stmt(Parser *p) {
         case JT_BREAK:
             n = p_node(p, N_BREAK);
             p_next(p);
+            if (p_is(p, JT_IDENT)) n->name = p_ident(p, NULL);    /* `break outer;` */
             p_expect(p, JT_SEMI, "';'");
             return n;
         case JT_CONTINUE:
             n = p_node(p, N_CONTINUE);
             p_next(p);
+            if (p_is(p, JT_IDENT)) n->name = p_ident(p, NULL);    /* `continue outer;` */
             p_expect(p, JT_SEMI, "';'");
             return n;
+        case JT_IDENT:
+            if (p_peek_at(p, 1)->kind == JT_COLON) {              /* `outer: for (...) { ... }` */
+                const char *label = t->text;
+                p_next(p);
+                p_next(p);
+                int k = p_peek(p)->kind;
+                if (k != JT_FOR && k != JT_WHILE && k != JT_DO) p_fail(p, "a label can only precede a for, while or do loop");
+                n = p_stmt(p);
+                n->str = label;
+                return n;
+            }
+            break;
         case JT_THROW:
             n = p_node(p, N_THROW);
             p_next(p);

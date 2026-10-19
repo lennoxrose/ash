@@ -54,6 +54,7 @@ check AdvInit 0
 check AdvLambda 2
 check AdvTry 1
 check AdvRegions 5
+check RegionLabels 15
 
 mkdir "$TMP/p"
 printf 'name: m\nversion: 0.1.0\nmemory-safety: on\n' > "$TMP/p/ash.pkg"
@@ -136,6 +137,38 @@ JAVA
 on=$(peak "$TMP/p/mwith"); off=$(peak "$TMP/p/mwithout")
 echo "maps: regions: ${on}  without: ${off}  (peak MB, last line of output)"
 [ "${on#* }" == "${off#* }" ] || { echo "FAIL: map outputs differ"; fail=1; }
+[ "${on%% *}" -le 16 ] || { echo "FAIL: peak with regions is ${on%% *} MB"; fail=1; }
+[ "${off%% *}" -ge $(( ${on%% *} * 3 )) ] || { echo "FAIL: without regions is not clearly larger"; fail=1; }
+
+cat > "$TMP/p/Labels.ash" <<'JAVA'
+import ash.util.HashMap;
+import ash.util.Map;
+
+public class Labels {
+    public static void main(String[] args) {
+        long total = 0;
+        outer:
+        for (int i = 0; i < 300000; i++) {
+            Map<String, Integer> m = new HashMap<>();
+            for (int j = 0; j < 6; j++) {
+                String k = "k" + (j % 4) + i;
+                Integer? c = m.get(k);
+                m.put(k, c == null ? 1 : c + 1);
+                if (j == 4) {
+                    total += m.size() * 10;
+                    continue outer;                      // leaves two region loops without reaching either rewind
+                }
+            }
+            total += 1;
+        }
+        System.out.println(total);
+    }
+}
+JAVA
+"$KILN" "$TMP/p/Labels.ash" -o "$TMP/p/lwith" && KILN_NO_REGIONS=1 "$KILN" "$TMP/p/Labels.ash" -o "$TMP/p/lwithout" || { echo "compile failed"; exit 1; }
+on=$(peak "$TMP/p/lwith"); off=$(peak "$TMP/p/lwithout")
+echo "labeled continue: regions: ${on}  without: ${off}  (peak MB, last line of output)"
+[ "${on#* }" == "${off#* }" ] || { echo "FAIL: labeled outputs differ"; fail=1; }
 [ "${on%% *}" -le 16 ] || { echo "FAIL: peak with regions is ${on%% *} MB"; fail=1; }
 [ "${off%% *}" -ge $(( ${on%% *} * 3 )) ] || { echo "FAIL: without regions is not clearly larger"; fail=1; }
 

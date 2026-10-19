@@ -137,6 +137,86 @@ static LoopCtx *real_loop(void) {
     return l;
 }
 
+/* ---------------------------------------------------------------- labeled jumps */
+
+/* the innermost loop that exists in the IR (a switch lowered to an if-chain does not) */
+static LoopCtx *ir_loop_from(LoopCtx *l) {
+    while (l && l->is_switch && !l->wrapper) l = l->up;
+    return l;
+}
+
+/* called where a loop's LoopCtx is made: the label flags of the loop being lowered belong to it */
+static void ctx_label(LoopCtx *ctx, Node *loop) {
+    ctx->node = loop;
+    if (L.cur_label && L.cur_label_loop == loop) {
+        ctx->lab = L.cur_label;
+        L.cur_label = NULL;
+    }
+}
+
+static void add_prop(LoopCtx *x, LoopCtx *target, int is_cont) {
+    for (LoopProp *p = x->props; p; p = p->next) if (p->target == target && p->is_cont == is_cont) return;
+    LoopProp *p = j_alloc(sizeof *p);
+    p->target = target;
+    p->is_cont = is_cont;
+    p->next = x->props;
+    x->props = p;
+}
+
+/* `break outer;` / `continue outer;`: the finally bodies and droppables of everything between here and the labeled
+ * loop go first (exactly as for a plain jump to that loop), then either the plain jump, when the labeled loop is the
+ * innermost one in the IR, or a flag and a `stop` of the inner loop, which the code after each crossed loop passes on */
+static void lower_labeled_jump(JBuf *b, Node *s, int ind) {
+    int cont = s->kind == N_CONTINUE;
+    LoopCtx *t = NULL;
+    for (LoopCtx *l = L.loop; l && !t; l = l->up) if (l->node && l->node == s->sym) t = l;
+    if (!t || !t->lab) { lerr(s, "cannot lower this labeled jump"); return; }
+    run_fins(b, t->fin_mark, ind);
+    if (!L.fin_n) emit_drops(b, t->drop_mark, ind);
+    /* the loops left (and, for `continue`, the labeled one, whose iteration ends here) that have a region: the rewind
+     * that the jump skips is done now, at the outermost of them, which also gives back everything the inner ones took */
+    const char *rcp = NULL;
+    for (LoopCtx *l = L.loop; l; l = l->up) {
+        if (l->rcp) rcp = l->rcp;
+        if (l == t) break;
+    }
+    if (rcp) emit_line(b, ind, "mem_region_leave(%s);", rcp);
+    LoopCtx *x = ir_loop_from(L.loop);
+    if (x == t) {
+        if (cont) {
+            if (t->update) each_line(b, ind, t->update);
+            emit_line(b, ind, "next;");
+        } else {
+            emit_line(b, ind, "stop;");
+        }
+        return;
+    }
+    char **flag = cont ? &t->lab->cnt : &t->lab->brk;
+    if (!*flag) *flag = new_temp();
+    emit_line(b, ind, "%s = yes;", *flag);
+    emit_line(b, ind, "stop;");
+    if (x) add_prop(x, t, cont);
+}
+
+/* right after the IR loop of `ctx` has been closed: hand the labeled jumps that crossed it to the loop around it */
+static void label_end(JBuf *b, LoopCtx *ctx, int ind) {
+    for (LoopProp *p = ctx->props; p; p = p->next) {
+        LoopCtx *y = ir_loop_from(ctx->up);
+        LoopCtx *t = p->target;
+        char *flag = p->is_cont ? t->lab->cnt : t->lab->brk;
+        emit_line(b, ind, "given %s {", flag);
+        if (y == t && p->is_cont) {
+            emit_line(b, ind + 1, "%s = no;", flag);
+            if (t->update) each_line(b, ind + 1, t->update);
+            emit_line(b, ind + 1, "next;");
+        } else {
+            emit_line(b, ind + 1, "stop;");
+            if (y && y != t) add_prop(y, t, p->is_cont);
+        }
+        emit_line(b, ind, "}");
+    }
+}
+
 /* ---------------------------------------------------------------- switch */
 
 static char *label_cond(Node *lb, const char *sel, JType *seltype) {
@@ -193,11 +273,11 @@ static void switch_chain(JBuf *b, Node *n, const char *sel, int ind, int expr_mo
             }
         } else {
             int cnt = c->l2.count;
-            if (cnt && ((Node *)c->l2.items[cnt - 1])->kind == N_BREAK) cnt--;
+            if (cnt && ((Node *)c->l2.items[cnt - 1])->kind == N_BREAK && !((Node *)c->l2.items[cnt - 1])->name) cnt--;
             for (int k = 0; k < cnt; k++) ls(b, c->l2.items[k], ind + depth + 1);
             if (cnt == c->l2.count && cnt && i != order.count - 1 && !dflt) {
                 Node *last = c->l2.items[cnt - 1];
-                if (last->kind != N_RETURN && last->kind != N_THROW && last->kind != N_CONTINUE)
+                if (last->kind != N_RETURN && last->kind != N_THROW && last->kind != N_CONTINUE && last->kind != N_BREAK)
                     lerr(c, "switch fallthrough is not supported by the backend; end each case with break, return or throw");
             }
         }
@@ -216,7 +296,7 @@ static void switch_chain(JBuf *b, Node *n, const char *sel, int ind, int expr_mo
             }
         } else {
             int cnt = dflt->l2.count;
-            if (cnt && ((Node *)dflt->l2.items[cnt - 1])->kind == N_BREAK) cnt--;
+            if (cnt && ((Node *)dflt->l2.items[cnt - 1])->kind == N_BREAK && !((Node *)dflt->l2.items[cnt - 1])->name) cnt--;
             for (int k = 0; k < cnt; k++) ls(b, dflt->l2.items[k], ind + depth);
         }
     } else if (expr_mode) {
@@ -229,7 +309,7 @@ static void switch_chain(JBuf *b, Node *n, const char *sel, int ind, int expr_mo
 static int contains_break(Node *n) {
     if (!n) return 0;
     switch (n->kind) {
-        case N_BREAK: return 1;
+        case N_BREAK: return !n->name;                    /* a labeled break leaves for a loop, not this switch */
         case N_BLOCK: case N_SEQ:
             for (int i = 0; i < n->l1.count; i++) if (contains_break(n->l1.items[i])) return 1;
             return 0;
@@ -300,6 +380,7 @@ static void lower_switch_general(JBuf *b, Node *n, char *sel, int ind) {
     emit_line(b, ind + 1, "stop;");
     L.loop = ctx.up;
     emit_line(b, ind, "}");
+    label_end(b, &ctx, ind);
     if (ctx.cont_used) {
         emit_line(b, ind, "given %s {", ctx.cont_flag);
         Node cont = {0};
@@ -454,6 +535,7 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
     ctx.drop_mark = L.drop_n;
     ctx.fin_mark = L.fin_n;
     ctx.up = L.loop;
+    ctx_label(&ctx, n);
     flush_pre(b, ind);
     if (n->b->type->kind == TY_ARRAY || (native_iterable(n->b->type) && foreach_body_keeps_sizes(n->b, n->c))) {
         /* an array cannot change size; neither can a list that a body without project code and without list
@@ -480,10 +562,12 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
     L.loop = &ctx;
     /* the loop variable is bound by `each` before the checkpoint, so it survives the rewind */
     char *rg = region_enter(b, n, ind + 1);
+    ctx.rcp = rg;
     lbody(b, n->c, ind + 1);
     region_leave(b, n->c, rg, ind + 1);
     L.loop = ctx.up;
     emit_line(b, ind, "}");
+    label_end(b, &ctx, ind);
 }
 
 static char *update_text(JList *ups) {
@@ -528,6 +612,7 @@ static void lower_for(JBuf *b, Node *n, int ind) {
     ctx.drop_mark = L.drop_n;
     ctx.fin_mark = L.fin_n;
     ctx.up = L.loop;
+    ctx_label(&ctx, n);
     ctx.update = update_text(&n->l2);
     if (pre) {
         emit_line(b, ind + 1, "during yes {");
@@ -540,12 +625,14 @@ static void lower_for(JBuf *b, Node *n, int ind) {
     }
     L.loop = &ctx;
     char *rg = region_enter(b, n, ind + 2);
+    ctx.rcp = rg;
     lbody(b, n->b, ind + 2);
     region_leave(b, n->b, rg, ind + 2);
     L.loop = ctx.up;
     each_line(b, ind + 2, ctx.update);
     emit_line(b, ind + 1, "}");
     emit_line(b, ind, "}");
+    label_end(b, &ctx, ind);
 }
 
 static void lower_local(JBuf *b, Node *n, int ind) {
@@ -568,6 +655,22 @@ void ls(JBuf *b, Node *s, int ind) {
 }
 
 static void ls_inner(JBuf *b, Node *s, int ind) {
+    if (s->str && (s->kind == N_WHILE || s->kind == N_DO || s->kind == N_FOR || s->kind == N_FOREACH) && L.cur_label_loop != s) {
+        /* a labeled loop: lowered into a buffer first, because the flags its jumps need are only known afterwards */
+        LabelInfo li = {0};
+        JBuf sub = {0};
+        LabelInfo *saved_li = L.cur_label;
+        Node *saved_node = L.cur_label_loop;
+        L.cur_label = &li;
+        L.cur_label_loop = s;
+        ls_inner(&sub, s, ind);
+        L.cur_label = saved_li;
+        L.cur_label_loop = saved_node;
+        if (li.brk) emit_line(b, ind, "local %s = no;", li.brk);
+        if (li.cnt) emit_line(b, ind, "local %s = no;", li.cnt);
+        if (sub.data) j_buf_add(b, sub.data);
+        return;
+    }
     switch (s->kind) {
         case N_BLOCK:
             emit_line(b, ind, "given yes {");
@@ -607,6 +710,7 @@ static void ls_inner(JBuf *b, Node *s, int ind) {
             ctx.drop_mark = L.drop_n;
             ctx.fin_mark = L.fin_n;
             ctx.up = L.loop;
+            ctx_label(&ctx, s);
             if (pre) {
                 emit_line(b, ind, "during yes {");
                 each_line(b, ind + 1, pre);
@@ -618,10 +722,12 @@ static void ls_inner(JBuf *b, Node *s, int ind) {
             }
             L.loop = &ctx;
             char *rg = region_enter(b, s, ind + 1);
+            ctx.rcp = rg;
             lbody(b, s->b, ind + 1);
             region_leave(b, s->b, rg, ind + 1);
             L.loop = ctx.up;
             emit_line(b, ind, "}");
+            label_end(b, &ctx, ind);
             break;
         }
         case N_DO: {
@@ -632,6 +738,7 @@ static void ls_inner(JBuf *b, Node *s, int ind) {
             ctx.drop_mark = L.drop_n;
             ctx.fin_mark = L.fin_n;
             ctx.up = L.loop;
+            ctx_label(&ctx, s);
             emit_line(b, ind, "local %s = yes;", first);
             if (pre) {
                 emit_line(b, ind, "during yes {");
@@ -647,10 +754,12 @@ static void ls_inner(JBuf *b, Node *s, int ind) {
             emit_line(b, ind + 1, "%s = no;", first);
             L.loop = &ctx;
             char *rg = region_enter(b, s, ind + 1);
+            ctx.rcp = rg;
             lbody(b, s->b, ind + 1);
             region_leave(b, s->b, rg, ind + 1);
             L.loop = ctx.up;
             emit_line(b, ind, "}");
+            label_end(b, &ctx, ind);
             break;
         }
         case N_FOR: lower_for(b, s, ind); break;
@@ -673,6 +782,7 @@ static void ls_inner(JBuf *b, Node *s, int ind) {
             break;
         }
         case N_BREAK: {
+            if (s->name) { lower_labeled_jump(b, s, ind); break; }
             if (L.loop && L.loop->is_switch && !L.loop->wrapper) {
                 lerr(s, "break inside a switch must be the last statement of its case");
                 break;
@@ -683,6 +793,7 @@ static void ls_inner(JBuf *b, Node *s, int ind) {
             break;
         }
         case N_CONTINUE: {
+            if (s->name) { lower_labeled_jump(b, s, ind); break; }
             if (L.loop && L.loop->is_switch && L.loop->wrapper && real_loop()) {
                 /* leave the one-shot switch loop first, then continue the real loop */
                 L.loop->cont_used = 1;

@@ -5,7 +5,25 @@
 #include "jtypes/H/check.h"
 
 /* State of the statement currently being lowered. */
+/* Labeled loops (`outer: for (...)`): a `break outer;` / `continue outer;` from inside an inner IR loop sets a flag, stops
+ * the inner loops one by one (each re-checks the flag right after it ends) and the loop that owns the label acts on it.
+ * The flags are declared before the labeled loop, once a jump has asked for them. */
+typedef struct LabelInfo {
+    char *brk, *cnt;
+} LabelInfo;
+
+struct LoopCtx;
+typedef struct LoopProp {          /* a labeled jump that has to be passed on once this loop has ended */
+    struct LoopCtx *target;
+    int is_cont;
+    struct LoopProp *next;
+} LoopProp;
+
 typedef struct LoopCtx {
+    Node *node;         /* the loop statement (NULL for a switch) */
+    LabelInfo *lab;     /* its label flags, when it has a label */
+    LoopProp *props;    /* labeled jumps that cross this loop */
+    char *rcp;          /* the checkpoint of this loop's region (region_enter), or NULL */
     const char *update; /* for-loop update statements, emitted before `next` */
     int is_switch;      /* a switch lowered to an if-chain: only a trailing break is allowed */
     int wrapper;        /* a switch lowered as `during yes {...; stop;}`: break is `stop`, continue leaves via cont_flag */
@@ -29,6 +47,8 @@ typedef struct {
     int drop_n;
     int drop_base;      /* entries below belong to an enclosing function; a lambda's return must not free them */
     char *trace_name;   /* `Class.method(File.ash` of the function being emitted, until its first statement marker carries it */
+    LabelInfo *cur_label;  /* flags of the labeled loop about to be lowered (see lower_stmt.c), consumed by its LoopCtx */
+    Node *cur_label_loop;
     int trace_line;     /* last `//@line` marker written in the function being emitted (0: none yet) */
 } LState;
 extern LState L;

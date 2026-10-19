@@ -48,6 +48,8 @@ static int memory_safety_on(const char *root) {
 typedef struct Target {
     struct Target *up;
     int is_switch;     /* `break` ends a switch; `continue` belongs to the nearest loop */
+    int reached;       /* a labeled `break` / `continue` from inside an inner loop lands here */
+    Node *loop;        /* the loop this target belongs to (NULL for a switch): where `break label;` / `continue label;` land */
     uint32_t brk, cont; /* mnemo snapshots accumulating the states that leave through break / continue */
     int nfin;          /* finally blocks open when the target began: a jump out of it runs the ones above */
 } Target;
@@ -357,16 +359,21 @@ static void stmts(Walk *w, JList *l) {
     for (int i = 0; i < l->count; i++) stmt(w, l->items[i]);
 }
 
-static Target *find_target(Walk *w, int for_continue) {
+static Target *find_target(Walk *w, int for_continue, Node *labeled) {
+    if (labeled) {                                    /* `break outer;`: the target of the loop the label names (NULL inside a lambda) */
+        for (Target *t = w->targets; t; t = t->up) if (t->loop == labeled) return t;
+        return NULL;
+    }
     for (Target *t = w->targets; t; t = t->up) if (!for_continue || !t->is_switch) return t;
     return NULL;
 }
 
 /* `break` / `continue` run the finally blocks of the try statements they leave before the jump lands, so the
  * state that reaches the target is the one after them (a `finally { x = 5; }` changes what is known of x). */
-static void jump(Walk *w, int is_continue) {
-    Target *t = find_target(w, is_continue);
+static void jump(Walk *w, int is_continue, Node *labeled) {
+    Target *t = find_target(w, is_continue, labeled);
     if (t) {
+        if (labeled) t->reached = 1;
         int open = w->fins.count, n = open - t->nfin;
         if (n > 0) {
             Node **mine = malloc((size_t)n * sizeof *mine);      /* the walks below push and pop on the same list */
@@ -388,9 +395,11 @@ static void jump(Walk *w, int is_continue) {
     mnemo_kill(w->m);
 }
 
-static void push_target(Walk *w, Target *t, int is_switch) {
+static void push_target(Walk *w, Target *t, int is_switch, Node *loop) {
     t->up = w->targets;
     t->is_switch = is_switch;
+    t->loop = loop;
+    t->reached = 0;
     t->nfin = w->fins.count;
     t->brk = mnemo_save_dead(w->m);
     t->cont = mnemo_save_dead(w->m);
@@ -401,6 +410,16 @@ static void pop_target(Walk *w, Target *t) {
     w->targets = t->up;
     mnemo_release(w->m, t->brk);
     mnemo_release(w->m, t->cont);
+}
+
+/* A loop that gives up its ranges (havoc) also gives them up for the states it already sent to enclosing loops with
+ * a labeled jump: those came from passes with a narrower head. Only loops a labeled jump landed on are touched. */
+static void havoc_outer(Walk *w, Target *self) {
+    for (Target *u = self->up; u; u = u->up) {
+        if (!u->reached) continue;
+        mnemo_join_into(w->m, u->brk);
+        mnemo_join_into(w->m, u->cont);
+    }
 }
 
 /* Nested loops are walked again for every pass of the loop around them, so a nest of d loops costs about 2^d
@@ -416,7 +435,7 @@ static void pop_target(Walk *w, Target *t) {
 static void loop(Walk *w, Node *n) {
     MnemoWalk *m = w->m;
     Target t;
-    push_target(w, &t, 0);
+    push_target(w, &t, 0, n);
     if (n->kind == N_FOREACH) expr(w, n->b);          /* the iterable is evaluated once */
     uint32_t head = mnemo_save(m);
     uint32_t leave = mnemo_save_dead(m);              /* states that leave through the condition */
@@ -477,12 +496,13 @@ static void loop(Walk *w, Node *n) {
             mnemo_havoc(m);
             mnemo_join_into(m, leave);
             mnemo_join_into(m, t.brk);
+            havoc_outer(w, &t);
             mnemo_release(m, head);
             head = mnemo_save(m);
             break;
         }
         int settled = mnemo_equal(m, head);
-        if (!settled && pass >= 8) { mnemo_havoc(m); settled = 1; }
+        if (!settled && pass >= 8) { mnemo_havoc(m); havoc_outer(w, &t); settled = 1; }
         mnemo_release(m, head);
         head = mnemo_save(m);
         if (settled && searching) break;
@@ -548,8 +568,8 @@ static void stmt(Walk *w, Node *n) {
             return;
         case N_RETURN: if (n->a) expr(w, n->a); w->prefix = 0; mnemo_kill(m); return;
         case N_THROW: expr(w, n->a); w->prefix = 0; mnemo_kill(m); return;
-        case N_BREAK: jump(w, 0); return;
-        case N_CONTINUE: jump(w, 1); return;
+        case N_BREAK: jump(w, 0, n->name ? n->sym : NULL); return;
+        case N_CONTINUE: jump(w, 1, n->name ? n->sym : NULL); return;
         case N_TRY: {
             uint32_t entry = mnemo_save(m);
             if (n->l1.count) { w->rg.mute++; w->catch_depth++; }   /* a catch may be the point: the program can provoke the exception */
@@ -586,7 +606,7 @@ static void stmt(Walk *w, Node *n) {
             expr(w, n->a);
             uint32_t entry = mnemo_save(m);
             Target t;
-            push_target(w, &t, 1);
+            push_target(w, &t, 1, NULL);
             uint32_t out = mnemo_save_dead(m);
             uint32_t fall = mnemo_save_dead(m);
             uint32_t gfail = mnemo_save_dead(m);       /* states of a `when` guard that failed: the next cases start from them too */

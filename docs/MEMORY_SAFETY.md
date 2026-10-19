@@ -76,7 +76,8 @@ error[E0101]: use of moved value 'a': it was moved earlier by an assignment or b
   to another read-only parameter) is borrowed, so `sum(a)` twice is fine. Library and native calls only look at
   their arguments and never move.
 - Moves follow `if`, `switch`, `try`, loops (a move that survives to the back edge is caught), `return`, `throw`,
-  `break` and `continue`. A move in one branch counts after the `if`.
+  `break` and `continue`, labeled ones included (`break outer;` carries the state to the end of the loop named
+  `outer`, after the `finally` blocks it leaves). A move in one branch counts after the `if`.
 - A variable declared inside a loop body is a new variable on every iteration, and so are catch variables,
   `instanceof` bindings and switch type-pattern bindings; a variable declared outside the loop and moved inside it
   is an error on the second iteration.
@@ -257,7 +258,8 @@ Windows static builds, `memory-safety: on`. A loop body qualifies when:
 A loop whose only allocations are Strings and arrays that a sole-owner local already gives back every iteration is not
 made a region: it would gain nothing (the blocks are recycled while they are hot) and cost the bookkeeping. The body
 block of a region also does not free its own locals one by one before the rewind. `break` and `return` skip the
-rewind, which only leaves the memory allocated. The loop condition and update run
+rewind, which only leaves the memory allocated; a labeled `break` / `continue` that leaves region loops does the
+rewind itself, at the outermost loop it leaves, so nothing piles up. The loop condition and update run
 outside the region. A rewind also empties the free lists (a block freed inside the region would otherwise be handed
 out again over newer data): a leak, never an overlap. Everything else is an ordinary loop.
 
