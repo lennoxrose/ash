@@ -803,11 +803,24 @@ static Group *group_for(Group **gs, int *ng, const char *uri) {
     return g;
 }
 
-/* the text of a file the diagnostics point into: the open document's, else the file on disk */
+/* the text of a file the diagnostics point into: the open document's, else the file on disk (the last one read is kept
+ * for the next diagnostic that points into the same file; forget_text_cache drops it) */
+static char *cache_path, *cache_text;
+
+static void forget_text_cache(void) {
+    free(cache_path);
+    free(cache_text);
+    cache_path = cache_text = NULL;
+}
+
 static char *text_of(const char *path, const Doc *self) {
     if (self && strcmp(self->path, path) == 0) return strdup(self->text);
     for (int i = 0; i < ndocs; i++) if (docs[i].path && strcmp(docs[i].path, path) == 0) return strdup(docs[i].text);
-    return read_whole(path);
+    if (cache_path && strcmp(cache_path, path) == 0) return cache_text ? strdup(cache_text) : NULL;
+    forget_text_cache();
+    cache_path = strdup(path);
+    cache_text = read_whole(path);
+    return cache_text ? strdup(cache_text) : NULL;
 }
 
 static void analyse_doc(Doc *d) {
@@ -820,7 +833,8 @@ static void analyse_doc(Doc *d) {
     if (own_uri) group_for(&groups, &ng, own_uri);            /* the document is always published, empty when it has no diagnostics */
     free(own_uri);
     JP p;
-    int ok = out && jp_parse(&p, out, (int)strlen(out)) && jp_get(&p, 0, "diagnostics") >= 0;
+    int parsed = out && jp_parse(&p, out, (int)strlen(out));
+    int ok = parsed && jp_get(&p, 0, "diagnostics") >= 0;
     if (ok) {
         int arr = jp_get(&p, 0, "diagnostics");
         int i = arr + 1;
@@ -894,8 +908,9 @@ static void analyse_doc(Doc *d) {
         }
         free(furi);
     }
-    if (ok) free(p.toks);
+    if (parsed) free(p.toks);
     free(out);
+    forget_text_cache();
     /* publish what there is, and an empty list for every file that had diagnostics before and has none now */
     for (int i = 0; i < ng; i++) publish(groups[i].uri, groups[i].items.data);
     for (int i = 0; i < d->npublished; i++) {
@@ -957,6 +972,7 @@ static void answer_query(const char *id_raw, int mode, Doc *d, int line0, int ch
     }
     free(p.toks);
     free(out);
+    forget_text_cache();
     reply(id_raw, r.data ? r.data : "null");
     free(r.data);
 }

@@ -1,7 +1,8 @@
 #include "parser/H/statements/loop_stack.h"
 #include "parser/H/core/parser.h"
 
-#define MAX_LOOP_NESTING 16
+#define MAX_LOOP_NESTING 16   // loops nested inside one function body
+#define MAX_LOOP_SLOTS 64     // ... and in the functions (lambdas) written inside them: see loop_scope_reset
 #define MAX_LOOP_JUMPS 64
 
 typedef struct {
@@ -12,13 +13,13 @@ typedef struct {
     int attempt_base; // attempt_depth when the loop began
 } LoopContext;
 
-static LoopContext loop_stack[MAX_LOOP_NESTING];
+static LoopContext loop_stack[MAX_LOOP_SLOTS];
 static int loop_depth = 0;
 static int loop_floor = 0;    // loops below this index belong to an enclosing function body (see loop_scope_reset)
 static int attempt_depth = 0; // attempt blocks currently open in this function body
 
 void loop_push(void) {
-    if (loop_depth >= MAX_LOOP_NESTING) parse_error("too many nested loops");
+    if (loop_depth - loop_floor >= MAX_LOOP_NESTING || loop_depth >= MAX_LOOP_SLOTS) parse_error("too many nested loops");
     loop_stack[loop_depth].stop_count = 0;
     loop_stack[loop_depth].next_count = 0;
     loop_stack[loop_depth].attempt_base = attempt_depth;

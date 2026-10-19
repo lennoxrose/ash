@@ -3,7 +3,8 @@
 #include "compiler/H/state.h"
 #include "diagnostics/H/diagnostics.h"
 
-#define MAX_LOOP_NESTING 16
+#define MAX_LOOP_NESTING 16   // loops nested inside one function body
+#define MAX_LOOP_SLOTS 64     // ... and in the functions (lambdas) written inside them: see loop_scope_reset
 #define MAX_LOOP_JUMPS 64
 
 typedef struct {
@@ -16,13 +17,13 @@ typedef struct {
     int next_leaves;  // a `next` was compiled while locals past local_base were live (see loop_next_leaves_locals)
 } LoopContext;
 
-static LoopContext loop_stack[MAX_LOOP_NESTING];
+static LoopContext loop_stack[MAX_LOOP_SLOTS];
 static int loop_depth = 0;
 static int loop_floor = 0;    // loops below this index belong to an enclosing function body (see loop_scope_reset)
 static int attempt_depth = 0; // attempt blocks currently open in this function body
 
 void loop_push(void) {
-    if (loop_depth >= MAX_LOOP_NESTING) {
+    if (loop_depth - loop_floor >= MAX_LOOP_NESTING || loop_depth >= MAX_LOOP_SLOTS) {
         diagnostics_report("error", "too many nested loops", current.start, current.length);
         exit(1);
     }
