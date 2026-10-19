@@ -35,6 +35,8 @@ check RegionLoops 12
 check RegionEscapes 0
 check RegionForEach 16
 check RegionForEachLocal 8
+check RegionMaps 7
+check RegionMapEscapes 0
 check RegionForEachEscapes 0
 check RegionCalls 12
 check RegionCallEscapes 0
@@ -91,6 +93,37 @@ JAVA
 on=$(peak "$TMP/p/cwith"); off=$(peak "$TMP/p/cwithout")
 echo "calls: regions: ${on}  without: ${off}  (peak MB, last line of output)"
 [ "${on#* }" == "${off#* }" ] || { echo "FAIL: call outputs differ"; fail=1; }
+[ "${on%% *}" -le 16 ] || { echo "FAIL: peak with regions is ${on%% *} MB"; fail=1; }
+[ "${off%% *}" -ge $(( ${on%% *} * 3 )) ] || { echo "FAIL: without regions is not clearly larger"; fail=1; }
+
+cat > "$TMP/p/Maps.ash" <<'JAVA'
+import ash.util.HashMap;
+import ash.util.HashSet;
+import ash.util.Map;
+import ash.util.Set;
+
+public class Maps {
+    public static void main(String[] args) {
+        long total = 0;
+        for (int i = 0; i < 300000; i++) {
+            Map<String, Integer> m = new HashMap<>();
+            Set<Integer> seen = new HashSet<>();
+            for (int j = 0; j < 6; j++) {
+                String k = "k" + (j % 4) + i;
+                Integer? c = m.get(k);
+                m.put(k, c == null ? 1 : c + 1);
+                seen.add(j % 3);
+            }
+            total += m.size() * 10 + seen.size();
+        }
+        System.out.println(total);
+    }
+}
+JAVA
+"$KILN" "$TMP/p/Maps.ash" -o "$TMP/p/mwith" && KILN_NO_REGIONS=1 "$KILN" "$TMP/p/Maps.ash" -o "$TMP/p/mwithout" || { echo "compile failed"; exit 1; }
+on=$(peak "$TMP/p/mwith"); off=$(peak "$TMP/p/mwithout")
+echo "maps: regions: ${on}  without: ${off}  (peak MB, last line of output)"
+[ "${on#* }" == "${off#* }" ] || { echo "FAIL: map outputs differ"; fail=1; }
 [ "${on%% *}" -le 16 ] || { echo "FAIL: peak with regions is ${on%% *} MB"; fail=1; }
 [ "${off%% *}" -ge $(( ${on%% *} * 3 )) ] || { echo "FAIL: without regions is not clearly larger"; fail=1; }
 

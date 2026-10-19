@@ -51,6 +51,23 @@ static int list_class(JClass *c) {
 static int list_t(JType *t) { return t && !t->nullable && t->kind == TY_CLASS && list_class(t->cls); }
 static int array_t(JType *t) { return t && !t->nullable && t->kind == TY_ARRAY; }
 
+/* A HashMap / HashSet declared in the loop body (and given only a fresh `new HashMap<>()` / `new HashSet<>()`)
+ * whose keys and values are Strings or numbers: the table, its entries, its keys() / values() lists and every
+ * temporary the hashing makes are allocated by the iteration and nothing outside can point at them. Keys that
+ * are objects would call project code (hashCode / equals), values that are objects could be kept elsewhere. */
+static int key_t(JType *t) { return is_str(t) || prim_or_box(t); }
+static int map_class(JClass *c) {
+    return c && c->qname && (!strcmp(c->qname, "ash.util.HashMap") || !strcmp(c->qname, "ash.util.Map") ||
+                              !strcmp(c->qname, "ash.util.HashSet") || !strcmp(c->qname, "ash.util.Set"));
+}
+static int is_set_class(JClass *c) { return c && c->qname && (!strcmp(c->qname, "ash.util.HashSet") || !strcmp(c->qname, "ash.util.Set")); }
+static int map_t(JType *t) {
+    if (!t || t->nullable || t->kind != TY_CLASS || !map_class(t->cls)) return 0;
+    if (t->nargs != (is_set_class(t->cls) ? 1 : 2)) return 0;
+    for (int i = 0; i < t->nargs; i++) if (!key_t(t->args[i])) return 0;
+    return 1;
+}
+
 static int is_inner(Rg *g, JLocal *l) {
     for (int i = 0; i < g->n; i++) if (g->inner[i] == l) return 1;
     return 0;
@@ -79,12 +96,27 @@ static int fresh_arraylist(Node *e) {
     return m && !e->b && e->l1.count == 0 && m->cls && m->cls->qname && !strcmp(m->cls->qname, "ash.util.ArrayList");
 }
 
+static int fresh_map(Node *e) {
+    JMethod *m = e && e->kind == N_NEW ? e->sym : NULL;
+    return m && !e->b && e->l1.count == 0 && m->cls && m->cls->qname &&
+           (!strcmp(m->cls->qname, "ash.util.HashMap") || !strcmp(m->cls->qname, "ash.util.HashSet")) && map_t(e->type);
+}
+
+static int name_in(Rg *g, Node *e);
+
+/* the list that keys() / values() / toList() of a map declared in the body builds anew on every call */
+static int map_listing(Rg *g, Node *e) {
+    JMethod *m = e && e->kind == N_CALL ? e->sym : NULL;
+    if (!m || e->flags == 1 || !map_class(m->cls) || e->l1.count != 0 || !e->a || !name_in(g, e->a) || !map_t(e->a->type)) return 0;
+    return !strcmp(m->name, "keys") || !strcmp(m->name, "values") || !strcmp(m->name, "toList");
+}
+
 /* a new array or list that nothing else references */
 static int fresh(Rg *g, Node *e) {
     if (!e) return 0;
     if (e->kind == N_ARRAYINIT) return expr_ok(g, e);
     if (e->kind == N_NEWARRAY) return expr_ok(g, e);
-    return fresh_arraylist(e);
+    return fresh_arraylist(e) || map_listing(g, e);
 }
 
 static int args_ok(Rg *g, JList *l) {
@@ -113,6 +145,17 @@ static int call_ok(Rg *g, Node *e) {
     if (!m || e->flags == 1 || !m->cls || !m->cls->qname) return 0;
     const char *q = m->cls->qname, *nm = m->name;
     int nargs = e->l1.count;
+    if (map_class(m->cls) && e->a && !type_name(e->a) && name_in(g, e->a) && map_t(e->a->type)) {
+        for (int i = 0; i < nargs; i++) if (!key_t(((Node *)e->l1.items[i])->type)) return 0;
+        if (!args_ok(g, &e->l1)) return 0;
+        if (is_set_class(m->cls)) {
+            if (!strcmp(nm, "size") || !strcmp(nm, "isEmpty") || !strcmp(nm, "toList")) return nargs == 0;
+            return (!strcmp(nm, "add") || !strcmp(nm, "contains") || !strcmp(nm, "remove")) && nargs == 1;
+        }
+        if (!strcmp(nm, "size") || !strcmp(nm, "keys") || !strcmp(nm, "values")) return nargs == 0;
+        if (!strcmp(nm, "get") || !strcmp(nm, "containsKey") || !strcmp(nm, "remove")) return nargs == 1;
+        return !strcmp(nm, "put") && nargs == 2;
+    }
     /* every argument must be a primitive or a String: anything else could be an object whose toString or
      * equals is project code, or a container the callee could keep */
     for (int i = 0; i < nargs; i++) if (!is_value(((Node *)e->l1.items[i])->type)) return 0;
@@ -159,10 +202,11 @@ static int assign_ok(Rg *g, Node *e) {
     int plain = !strcmp(e->name, "=");
     if (t->kind == N_NAME && t->rk == R_LOCAL && t->sym) {
         JLocal *l = t->sym;
-        if (is_prim(l->type)) return prim_or_box(e->b->type);
+        if (is_prim(l->type) || prim_or_box(l->type)) return prim_or_box(e->b->type);
         if (!is_inner(g, l)) return 0;
         if (is_str(l->type)) return is_value(e->b->type);
         if ((array_t(l->type) || list_t(l->type)) && plain) return fresh(g, e->b);
+        if (map_t(l->type) && plain) return fresh_map(e->b);
         return 0;
     }
     if (t->kind == N_INDEX) {
@@ -205,7 +249,8 @@ static int expr_ok2(Rg *g, Node *e) {
         }
         case N_BINARY:
             /* `+` on Strings calls toString of objects (project code): both sides must be values */
-            if (!strcmp(e->name, "+") && (!is_value(e->a->type) || !is_value(e->b->type))) return 0;
+            if (!strcmp(e->name, "+") && !(prim_or_box(e->a->type) && prim_or_box(e->b->type)) &&
+                (!is_value(e->a->type) || !is_value(e->b->type))) return 0;
             return expr_ok(g, e->a) && expr_ok(g, e->b);
         case N_COND:
             return expr_ok(g, e->a) && expr_ok(g, e->b) && expr_ok(g, e->c);
@@ -219,7 +264,7 @@ static int expr_ok2(Rg *g, Node *e) {
         case N_ARRAYINIT:
             return args_ok(g, &e->l1);
         case N_NEW:
-            return fresh_arraylist(e);
+            return fresh_arraylist(e) || fresh_map(e);
         case N_CALL:
             return call_ok(g, e);
         default:
@@ -253,8 +298,9 @@ static int stmt_ok2(Rg *g, Node *s) {
         case N_LOCAL: {
             JLocal *l = s->sym;
             if (!l) return 0;
-            if (is_value(l->type)) return !s->b || expr_ok(g, s->b);
+            if (is_value(l->type) || prim_or_box(l->type)) return !s->b || expr_ok(g, s->b);   /* a boxed number is a number (or none) */
             if ((array_t(l->type) || list_t(l->type)) && s->b) return fresh(g, s->b);
+            if (map_t(l->type) && s->b) return fresh_map(s->b);
             return 0;
         }
         case N_EXPRSTMT: return expr_ok(g, s->a);
