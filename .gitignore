@@ -36,6 +36,7 @@ AGENTS.md
 skills-lock.json
 docs/*
 !docs/RELEASING.md
+!docs/MEMORY_SAFETY.md
 spec/
 
 # Private Notes
