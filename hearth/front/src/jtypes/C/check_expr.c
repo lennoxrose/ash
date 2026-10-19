@@ -770,6 +770,11 @@ static JType *check_name(Ctx *cx, Node *n, int allow_type) {
         n->sym2 = (void *)n->name;
         return ty_error();
     }
+    {
+        const char *guess = sug_value_name(cx, n->name);
+        if (!guess && n->name[0] >= 'A' && n->name[0] <= 'Z') guess = jt_suggest_type(n->name, cx->cls);
+        sug_help("name", guess, "");
+    }
     cerr(n, "cannot find symbol '%s'", n->name);
     return ty_error();
 }
@@ -805,6 +810,12 @@ static JType *check_fieldacc(Ctx *cx, Node *n, int allow_type) {
             if (!allow_type) cerr(n, "'%s' is a type, not a value", n->name);
             return class_ref(n, nc);
         }
+        {
+            JList cands = {0};
+            sug_members(cx, c, 0, 1, &cands);
+            for (int i = 0; i < c->nested.count; i++) j_list_push(&cands, (void *)((JClass *)c->nested.items[i])->name);
+            sug_help("name", sug_best(n->name, &cands), "");
+        }
         cerr(n, "cannot find symbol '%s' in %s", n->name, c->name);
         return ty_error();
     }
@@ -821,6 +832,14 @@ static JType *check_fieldacc(Ctx *cx, Node *n, int allow_type) {
     }
     JField *f = jt_find_field(rc->cls, n->name);
     if (!f) {
+        {
+            JList cands = {0};
+            sug_members(cx, rc->cls, 0, 0, &cands);
+            sug_help("field", sug_best(n->name, &cands), "");
+            JList ms = {0};
+            jt_collect_methods(rc->cls, n->name, &ms);
+            if (ms.count) j_diag_help("'%s' is a method; call it as %s()", n->name, n->name);
+        }
         cerr(n, "cannot find field '%s' in %s", n->name, ty_str(tt));
         return ty_error();
     }
@@ -845,6 +864,11 @@ static JType *check_call(Ctx *cx, Node *n, JType *expected) {
             if (cands.count) { recv = c->self_type; static_only = c != cx->cls; break; }
         }
         if (!cands.count) {
+            {
+                JList names = {0};
+                for (JClass *c = cx->cls; c; c = c->outer) sug_members(cx, c, 1, cx->is_static && c == cx->cls, &names);
+                sug_help("method", sug_best(n->name, &names), "");
+            }
             cerr(n, "cannot find method '%s'", n->name);
             return ty_error();
         }
@@ -872,6 +896,12 @@ static JType *check_call(Ctx *cx, Node *n, JType *expected) {
             jt_collect_methods(recv->cls, n->name, &cands);
         }
         if (!cands.count) {
+            {
+                JList names = {0};
+                sug_members(cx, recv->cls, 1, n->a->rk == R_CLASS, &names);
+                sug_help("method", sug_best(n->name, &names), "");
+                if (n->a->rk != R_CLASS && jt_find_field(recv->cls, n->name)) j_diag_help("'%s' is a field, not a method; drop the parentheses", n->name);
+            }
             cerr(n, "cannot find method '%s' in %s", n->name, ty_str(tt));
             return ty_error();
         }

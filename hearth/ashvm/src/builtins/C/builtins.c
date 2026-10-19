@@ -14,7 +14,8 @@ static const char *builtin_names[] = {
     "contains", "starts_with", "ends_with", "repeat",
     "exit", "matrix_mul",
     "sys_fork", "sys_wait", "sys_exec",
-    "mem_free", "mem_cat", "mem_release", "mem_free_arr", "mem_free_obj", "mem_free_map", "mem_free_elems"
+    "mem_free", "mem_cat", "mem_release", "mem_free_arr", "mem_free_obj", "mem_free_map", "mem_free_elems",
+    "print_raw"
 };
 // Argument count each builtin is wrapped with when used as a value
 // (`map(xs, str)`); same order as builtin_names.
@@ -29,7 +30,8 @@ static const int builtin_arity[] = {
     2, 2, 2, 2,
     1, 2,
     0, 1, 2,
-    1, 3, 1, 1, 1, 1, 1
+    1, 3, 1, 1, 1, 1, 1,
+    1
 };
 #define NUM_BUILTINS (int)(sizeof(builtin_names) / sizeof(builtin_names[0]))
 
@@ -55,5 +57,6 @@ VMValue vm_call_builtin(int id, VMValue *args, int argc) {
     if (id == 43) return vm_call_builtin_matrix(id, args, argc); // matrix_mul
     if (id >= 44 && id <= 46) return vm_call_builtin_proc(id, args, argc); // sys_fork, sys_wait, sys_exec
     if (id >= 47 && id <= 53) return vm_call_builtin_mem(id, args, argc); // mem_free
+    if (id == 54) return vm_call_builtin_core(id, args, argc); // print_raw
     vm_runtime_error("unknown builtin id: %d\n", id);
 }

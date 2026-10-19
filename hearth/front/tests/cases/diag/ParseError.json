@@ -1,0 +1,1 @@
+{"diagnostics":[{"severity":"error","code":null,"message":"expected ';' but found 'System'","file":"tests/cases/diag/ParseError.ash","line":6,"column":9,"help":[],"notes":[]}],"errors":1}

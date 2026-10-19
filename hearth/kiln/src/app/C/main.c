@@ -9,6 +9,7 @@
 #include "pe/H/pe_writer.h"
 #include "pe/H/pe_dll_writer.h"
 #include "diagnostics/H/diagnostics.h"
+#include "jcommon/H/jcommon.h"
 #include "jdriver/H/jdriver.h"
 #include "jlower/H/jlower.h"
 #include "codegen/H/runtime/heap.h"
@@ -19,7 +20,7 @@
 #endif
 
 static void usage(const char *prog) {
-    fprintf(stderr, "usage: %s <file.ash> -o <output> [--target=linux|windows] [--link=static|shared] [--wrap-int]\n", prog);
+    fprintf(stderr, "usage: %s <file.ash> -o <output> [--target=linux|windows] [--link=static|shared] [--wrap-int] [--json]\n", prog);
     fprintf(stderr, "       %s --emit-runtime -o <libkilnrt.so|libkilnrt.dll> [--target=linux|windows]\n", prog);
     exit(1);
 }
@@ -60,7 +61,7 @@ int main(int argc, char *argv[]) {
             : elf_write_shared_runtime(argv[3]);
     }
 
-    if (argc < 4 || argc > 7) usage(argv[0]);
+    if (argc < 4 || argc > 8) usage(argv[0]);
     if (strcmp(argv[2], "-o") != 0) usage(argv[0]);
 
     const char *input_path = argv[1];
@@ -69,6 +70,7 @@ int main(int argc, char *argv[]) {
     int wrap_int = 0;
     for (int i = 4; i < argc; i++) {
         if (strcmp(argv[i], "--wrap-int") == 0) wrap_int = 1;
+        else if (strcmp(argv[i], "--json") == 0) j_diag_json(); // diagnostics as one JSON document on stdout
         else if (strncmp(argv[i], "--target=", 9) == 0) kiln_set_target(parse_target(argv[i], argv[0]));
         else if (strncmp(argv[i], "--link=", 7) == 0) kiln_set_link_mode(parse_link(argv[i], argv[0]));
         else usage(argv[0]);

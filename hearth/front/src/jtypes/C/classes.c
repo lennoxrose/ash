@@ -240,6 +240,36 @@ static JClass *resolve_class_simple(const char *name, JClass *ctx) {
     return jt_find_class(j_fmt("ash.lang.function.%s", name));
 }
 
+/* the loaded class or imported name closest to `name` that `name` could stand for (error path only) */
+const char *jt_suggest_type(const char *name, JClass *ctx) {
+    JList cands = {0};
+    for (int i = 0; i < all_classes.count; i++) {
+        JClass *c = all_classes.items[i];
+        if (c->outer || !c->name || !*c->name || strchr(c->name, '$')) continue;
+        j_list_push(&cands, (void *)c->name);
+    }
+    for (JClass *c = ctx; c; c = c->outer) {
+        for (int i = 0; i < c->nested.count; i++) j_list_push(&cands, (void *)((JClass *)c->nested.items[i])->name);
+        for (int i = 0; i < c->tparams.count; i++) j_list_push(&cands, (void *)((JTVar *)c->tparams.items[i])->name);
+    }
+    Node *unit = ctx ? ctx->unit : NULL;
+    for (int i = 0; unit && i < unit->l1.count; i++) {
+        Node *im = unit->l1.items[i];
+        if (im->flags) continue;
+        const char *last = strrchr(im->name, '.');
+        j_list_push(&cands, (void *)(last ? last + 1 : im->name));
+    }
+    /* keep only what the name can really stand for here: a class the current file can name */
+    JList ok = {0};
+    for (int i = 0; i < cands.count; i++) {
+        const char *c = cands.items[i];
+        int tv = 0;
+        for (JClass *k = ctx; k && !tv; k = k->outer) for (int j = 0; j < k->tparams.count; j++) if (!strcmp(((JTVar *)k->tparams.items[j])->name, c)) tv = 1;
+        if (tv || resolve_class_simple(c, ctx)) j_list_push(&ok, (void *)c);
+    }
+    return sug_best(name, &ok);
+}
+
 static JTVar *find_tvar(const char *name, JClass *ctx, JMethod *mctx) {
     if (mctx) {
         for (int i = 0; i < mctx->tparams.count; i++) {
@@ -304,6 +334,10 @@ JType *jt_resolve_type(Node *tn, JClass *ctx, JMethod *mctx, int report) {
         }
         if (!c) {
             if (report) {
+                if (!strchr(tn->name, '.')) {
+                    const char *guess = jt_suggest_type(tn->name, ctx);
+                    if (guess) j_diag_help("did you mean the type '%s'?", guess);
+                }
                 if (!jt_find_class("ash.util.List")) cerr(tn, "cannot find type '%s' (the standard library is the optional ash-stdlib package: install it with apm or point ASH_PATH at its src/main/ash)", tn->name);
                 else cerr(tn, "cannot find type '%s'", tn->name);
             }

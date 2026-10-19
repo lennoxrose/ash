@@ -22,6 +22,7 @@ FRONT_SRC = \
     src/jtypes/C/check_expr.c \
     src/jtypes/C/check_stmt.c \
     src/jtypes/C/check_class.c \
+    src/jtypes/C/suggest.c \
     src/jown/C/own.c \
     src/jown/C/range.c \
     src/jown/C/region.c \

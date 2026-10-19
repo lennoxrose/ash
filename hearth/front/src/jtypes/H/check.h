@@ -84,6 +84,12 @@ int jt_const_int(Node *e, long long *out);
 void push_scope(Ctx *cx, int *mark);
 void pop_scope(Ctx *cx, int mark);
 
+/* suggest.c: "did you mean" for names that do not resolve (error path only) */
+void sug_locals(Ctx *cx, JList *out);
+void sug_members(Ctx *cx, JClass *c, int want_methods, int static_only, JList *out);
+const char *sug_value_name(Ctx *cx, const char *name);
+void sug_help(const char *what, const char *guess, const char *suffix);
+
 /* check_class.c */
 void check_method_body(JClass *c, JMethod *m);
 

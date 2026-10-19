@@ -5,6 +5,7 @@
 #include "compiler/H/compiler.h"
 #include "vm/H/vm.h"
 #include "diagnostics/H/diagnostics.h"
+#include "jcommon/H/jcommon.h"
 #include "jdriver/H/jdriver.h"
 #include "jlower/H/jlower.h"
 
@@ -20,7 +21,7 @@ void ashvm_execute_ir(char *ir) {
 static int usage(const char *prog) {
     fprintf(stderr, "usage: %s                            interactive REPL\n", prog);
     fprintf(stderr, "       %s run [--wrap-int] <file.ash>   run a program\n", prog);
-    fprintf(stderr, "       %s check <file.ash>              type-check without running\n", prog);
+    fprintf(stderr, "       %s check [--json] <file.ash>     type-check without running; --json prints the diagnostics as JSON on stdout\n", prog);
     return 2;
 }
 
@@ -38,8 +39,10 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     if (strcmp(argv[1], "check") == 0) {
-        if (argc != 3) return usage(argv[0]);
-        return jdriver_check_file(argv[2]);
+        int json = argc == 4 && strcmp(argv[2], "--json") == 0;
+        if (argc != 3 + json || argv[2 + json][0] == '-') return usage(argv[0]);
+        if (json) j_diag_json();
+        return jdriver_check_file(argv[2 + json]);
     }
     return usage(argv[0]);
 }

@@ -69,6 +69,10 @@ jobs:
         working-directory: ash
         run: bash hearth/front/tests/scripts/check_types.sh
 
+      - name: front, diagnostics (text and JSON, both engines)
+        working-directory: ash
+        run: bash hearth/front/tests/scripts/diag_check.sh
+
       - name: ashvm, regression
         working-directory: ash
         run: bash hearth/ashvm/tests/scripts/run_regression.sh

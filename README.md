@@ -39,6 +39,7 @@ make                                    # builds bin/ashvm, bin/kiln and the res
 bin/ashvm run Main.ash                  # run a program on the VM
 bin/ashvm run --wrap-int Main.ash       # Java's 32-bit int overflow (slower arithmetic loops)
 bin/ashvm check Main.ash                # parse and type-check only
+bin/ashvm check --json Main.ash         # the same, diagnostics as JSON on stdout (editors; kiln has --json too)
 bin/ashvm                               # interactive REPL
 
 bin/kiln Main.ash -o main               # compile to a native ELF binary (no VM, no libc)

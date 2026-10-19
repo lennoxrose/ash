@@ -405,6 +405,15 @@ const JCoreEntry jcore_lang[] = {
     "    @Lower(\"__println(__bs($1))\") public native void println(bool b);\n"
     "    /// Prints the value followed by a newline.\n"
     "    @Lower(\"__println(chr($1))\") public native void println(char c);\n"
+    "    @Lower(\"print_raw(__str($1))\") public native void print(Object? o);\n"
+    "    @Lower(\"print_raw(__str($1))\") public native void print(String? s);\n"
+    "    @Lower(\"print_raw(str($1))\") public native void print(int i);\n"
+    "    @Lower(\"print_raw(__lstr($1))\") public native void print(long l);\n"
+    "    @Lower(\"print_raw(__dstr($1))\") public native void print(double d);\n"
+    "    @Lower(\"print_raw(__fstr($1))\") public native void print(float f);\n"
+    "    @Lower(\"print_raw(__bs($1))\") public native void print(bool b);\n"
+    "    @Lower(\"print_raw(chr($1))\") public native void print(char c);\n"
+    "    @Lower(\"print_raw(\\\"\\\")\") public native void flush();\n"
     "}\n" },
   { "ash/lang/Record",
     "package ash.lang;\n"

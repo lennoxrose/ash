@@ -172,4 +172,9 @@ JMethod *jt_find_overridden(JClass *c, JMethod *m); /* method of a supertype tha
 
 void cerr(Node *n, const char *fmt, ...);
 
+/* suggest.c: the name of `cands` (const char*) closest to `name`, or NULL; jt_suggest_type: a class that
+ * `name` could be a misspelling of, resolvable by its simple name from `ctx` (error path only) */
+const char *sug_best(const char *name, JList *cands);
+const char *jt_suggest_type(const char *name, JClass *ctx);
+
 #endif
