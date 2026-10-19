@@ -8,6 +8,10 @@
 #include "jdriver/H/jdriver.h"
 #include "jlower/H/jlower.h"
 
+#ifndef ASH_VERSION
+#define ASH_VERSION "dev"
+#endif
+
 void ashvm_execute_ir(char *ir) {
     diagnostics_set_source(ir, "<internal ir>");
     vm_run(compile(ir));
@@ -21,6 +25,7 @@ static int usage(const char *prog) {
 }
 
 int main(int argc, char *argv[]) {
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) { printf("ashvm %s\n", ASH_VERSION); return 0; }
     if (argc < 2) return repl_run();
 
     if (strcmp(argv[1], "run") == 0) {

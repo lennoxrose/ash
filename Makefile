@@ -7,7 +7,7 @@
 HEARTH := hearth
 SUBDIRS := $(patsubst %/Makefile,%,$(wildcard $(HEARTH)/*/Makefile))
 
-.PHONY: all clean $(SUBDIRS) $(addprefix clean-,$(SUBDIRS))
+.PHONY: all clean release $(SUBDIRS) $(addprefix clean-,$(SUBDIRS))
 
 all: clean-bin $(SUBDIRS)
 
@@ -23,6 +23,11 @@ clean: $(addprefix clean-,$(SUBDIRS))
 
 $(addprefix clean-,$(SUBDIRS)):
 	$(MAKE) -C $(patsubst clean-%,%,$@) clean
+
+# `make release VERSION=beta-v0.1.0 [ARGS=--dry-run]`: see docs/RELEASING.md
+release:
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=<tag> [ARGS='--dry-run --yes']" >&2; exit 2; }
+	tools/release.sh $(VERSION) $(ARGS)
 
 @%:
 	@if [ ! -f $(HEARTH)/$*/Makefile ]; then \

@@ -14,6 +14,10 @@
 #include "codegen/H/runtime/heap.h"
 #include "app/H/target.h"
 
+#ifndef ASH_VERSION
+#define ASH_VERSION "dev"
+#endif
+
 static void usage(const char *prog) {
     fprintf(stderr, "usage: %s <file.ash> -o <output> [--target=linux|windows] [--link=static|shared] [--wrap-int]\n", prog);
     fprintf(stderr, "       %s --emit-runtime -o <libkilnrt.so|libkilnrt.dll> [--target=linux|windows]\n", prog);
@@ -37,6 +41,7 @@ static KilnLinkMode parse_link(const char *arg, const char *prog) {
 }
 
 int main(int argc, char *argv[]) {
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) { printf("kiln %s\n", ASH_VERSION); return 0; }
     // --emit-runtime -o <path> [--target=...]: writes libkilnrt.so/.dll
     // (Plan B) and exits, no .ash input at all -- an entirely separate
     // mode from compiling a program.

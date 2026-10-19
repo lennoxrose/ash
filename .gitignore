@@ -1,6 +1,7 @@
 # Build artifacts
 *.o
 /bin/
+/dist/
 
 # apm-installed dependencies (see ideas/ash_modules.md) -- fetched,
 # never hand-edited, same spirit as node_modules/
@@ -34,6 +35,7 @@ AGENTS.md
 .agents
 skills-lock.json
 docs/*
+!docs/RELEASING.md
 spec/
 
 # Private Notes

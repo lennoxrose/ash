@@ -3,6 +3,10 @@
 #include "H/cmd.h"
 #include "H/ui.h"
 
+#ifndef ASH_VERSION
+#define ASH_VERSION "dev"
+#endif
+
 static void print_usage(void) {
     printf("apm -- the Ash package manager (github: sources only, for now)\n\n");
     printf("usage:\n");
@@ -19,6 +23,7 @@ static void print_usage(void) {
 int main(int argc, char **argv) {
     if (argc < 2) { print_usage(); return 1; }
 
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) { printf("apm %s\n", ASH_VERSION); return 0; }
     const char *command = argv[1];
     int rest_argc = argc - 2;
     char **rest_argv = argv + 2;

@@ -1,6 +1,8 @@
 CC = gcc
 .DEFAULT_GOAL := all
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc
+# make ASH_VERSION=<tag> bakes the release tag into --version (tools/release.sh does this)
+ASH_VERSION ?= dev
+CFLAGS = -DASH_VERSION='"$(ASH_VERSION)"' -Wall -Wextra -std=c11 -O2 -Isrc
 
 APM_SRC = \
     src/C/main.c \

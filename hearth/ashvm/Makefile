@@ -24,8 +24,19 @@ GC ?= 0
 ifeq ($(GC),1)
 GC_FLAGS = -DASH_GC
 endif
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -I../pyre/src -fopenmp $(GC_FLAGS)
-LDFLAGS = -lm ../../bin/lib/front.a ../../bin/lib/mnemo.a ../../bin/extensions/pyre/libpyre.a -fopenmp -ldl -lvulkan -lstdc++ $(CUDA_LIBS)
+# make ASH_VERSION=<tag> bakes the release tag into --version (tools/release.sh does this)
+ASH_VERSION ?= dev
+CFLAGS = -DASH_VERSION='"$(ASH_VERSION)"' -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -I../pyre/src -fopenmp $(GC_FLAGS)
+# `make ASH_STATIC_RT=1` (used by tools/release.sh) links libgcc and libstdc++ statically, so a release binary
+# needs only libc, libm, libgomp and the Vulkan loader on the target machine (libgomp has no static library
+# on every distro). Same code, only the link differs.
+ASH_STATIC_RT ?= 0
+ifeq ($(ASH_STATIC_RT),1)
+STDCXX = -static-libgcc -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic
+else
+STDCXX = -lstdc++
+endif
+LDFLAGS = -lm ../../bin/lib/front.a ../../bin/lib/mnemo.a ../../bin/extensions/pyre/libpyre.a -fopenmp -ldl -lvulkan $(STDCXX) $(CUDA_LIBS)
 
 ASHVM_SRC = \
     src/app/C/main.c \

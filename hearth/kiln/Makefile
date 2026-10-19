@@ -1,7 +1,9 @@
 CC = gcc
 .DEFAULT_GOAL := all
 KILN_RPATH_LIST = $(abspath ../../bin/extensions/pyre):/usr/local/lib/kiln
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -DKILN_RPATH='"$(KILN_RPATH_LIST)"'
+# make ASH_VERSION=<tag> bakes the release tag into --version (tools/release.sh does this)
+ASH_VERSION ?= dev
+CFLAGS = -DASH_VERSION='"$(ASH_VERSION)"' -Wall -Wextra -std=c11 -O2 -Isrc -I../front/src -DKILN_RPATH='"$(KILN_RPATH_LIST)"'
 LDFLAGS = ../../bin/lib/front.a ../../bin/lib/mnemo.a -lpthread -ldl -lm
 
 KILN_SRC = \
