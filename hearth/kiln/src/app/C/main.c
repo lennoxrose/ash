@@ -14,6 +14,7 @@
 #include "jexplain/H/jexplain.h"
 #include "jlower/H/jlower.h"
 #include "codegen/H/runtime/heap.h"
+#include "codegen/H/runtime/trace.h"
 #include "app/H/target.h"
 
 #ifndef ASH_VERSION
@@ -104,6 +105,7 @@ int main(int argc, char *argv[]) {
 
     CodeBuf machine_code;
     compile_program(ir, &machine_code);
+    trace_finish(&machine_code);
 
     int status;
     if (kiln_get_target() == KILN_TARGET_WINDOWS) {

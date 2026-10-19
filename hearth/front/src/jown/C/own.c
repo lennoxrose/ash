@@ -1199,9 +1199,11 @@ int jown_field_assign_frees(Node *n) {
 
 void jown_check_project(const char *entry_path) {
     char *root = find_project_root(entry_path);
-    if (!root || !memory_safety_on(root)) return;
+    if (!root) return;
     JClass **all;
     int n = jt_all_classes(&all);
+    for (int i = 0; i < n; i++) if (under(all[i]->path, root)) all[i]->in_project = 1;
+    if (!memory_safety_on(root)) return;
     for (int i = 0; i < n; i++) if (under(all[i]->path, root)) all[i]->mem_on = 1;   /* before any analysis reads it */
     /* fields start as "exclusively owned" candidates (a plain class's String / array instance fields) and lose
      * the status at the first use that could alias or replace them with a shared value */

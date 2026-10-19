@@ -88,4 +88,7 @@ Token lexer_next_token(void);
 LexerState lexer_save_state(void);
 void lexer_restore_state(LexerState state);
 
+/* The `//@<line>[ <name>]` marker comment right before the token at `tok`, if any (see ir_lex.c). */
+int ir_marker_before(const char *tok, int *line, const char **name, int *name_len);
+
 #endif

@@ -554,7 +554,20 @@ static void lower_local(JBuf *b, Node *n, int ind) {
     emit_line(b, ind, "local %s = %s;", sname(n->name), init);
 }
 
+static void ls_inner(JBuf *b, Node *s, int ind);
+
 void ls(JBuf *b, Node *s, int ind) {
+    if (L.cls && L.cls->in_project && s->line > 0 && (s->line != L.trace_line || L.trace_name) &&
+        s->kind != N_BLOCK && s->kind != N_SEQ && s->kind != N_EMPTY) {
+        L.trace_line = s->line;
+        if (L.trace_name) emit_line(b, ind, "//@%d %s", s->line, L.trace_name);
+        else emit_line(b, ind, "//@%d", s->line);
+        L.trace_name = NULL;
+    }
+    ls_inner(b, s, ind);
+}
+
+static void ls_inner(JBuf *b, Node *s, int ind) {
     switch (s->kind) {
         case N_BLOCK:
             emit_line(b, ind, "given yes {");

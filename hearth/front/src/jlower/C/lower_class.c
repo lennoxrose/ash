@@ -76,6 +76,18 @@ static void begin_body(JClass *c, JMethod *m, int is_static) {
     L.loop = NULL;
     L.fin_n = 0;
     L.pre.len = 0;
+    L.trace_line = 0;
+    L.trace_name = NULL;
+}
+
+/* `//@<line> <name>` before the first statement of a project function and `//@<line>` before the others: comments to the IR
+ * lexer, read by the engines to turn the call stack of an uncaught exception into `at Class.method(File.ash:12)`
+ * lines (ashvm scans the IR text backwards from an instruction, kiln records them as it generates code). */
+static void trace_fn_marker(JClass *c, JMethod *m, const char *what) {
+    if (!c->in_project || !m || !m->decl) return;
+    const char *file = m->decl->path ? strrchr(m->decl->path, '/') : NULL;
+    file = file ? file + 1 : (m->decl->path ? m->decl->path : "?");
+    L.trace_name = j_fmt("%s.%s(%s", c->qname, what, file);
 }
 
 static char *param_list(JMethod *m, int with_self) {
@@ -96,6 +108,7 @@ static char *param_list(JMethod *m, int with_self) {
 static void emit_method(JBuf *out, JClass *c, JMethod *m) {
     begin_body(c, m, (m->flags & M_STATIC) != 0);
     emit_line(out, 0, "forge %s(%s) {", fn_name(m, NULL), param_list(m, !(m->flags & M_STATIC)));
+    trace_fn_marker(c, m, m->name);
     lblock_body(out, m->decl->b, 1);
     emit_line(out, 1, "yield none;");
     emit_line(out, 0, "}");
@@ -165,6 +178,7 @@ static void emit_ctor(JBuf *out, JClass *c, JMethod *k) {
     Node *d = k->decl;
     int is_enum = c->kind == N_ENUM;
     emit_line(out, 0, "forge %s(%s) {", fn_name(k, "init"), param_list(k, 1));
+    trace_fn_marker(c, k, "<init>");
     int first = 0;
     int delegates = 0;
     if (d && d->b && d->b->l1.count && ((Node *)d->b->l1.items[0])->kind == N_CTORCALL) {

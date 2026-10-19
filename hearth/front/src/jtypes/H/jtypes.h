@@ -112,6 +112,7 @@ struct JClass {
     JMethod *sam;     /* cached single abstract method; sam_done marks the cache as valid */
     int sam_done;
     int mem_on;       /* in a project with `memory-safety: on`: lowering may free what jown proved unshared */
+    int in_project;   /* the class belongs to the project being compiled (not the library): its statements carry line markers for stack traces */
 };
 
 /* resolution kinds stored in Node.rk */

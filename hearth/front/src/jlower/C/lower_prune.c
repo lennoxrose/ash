@@ -17,27 +17,78 @@ typedef struct {
     int keep;
 } Part;
 
-typedef struct {
+typedef struct VtLine {
     char *line;  /* the whole VT assignment line */
     char *key;   /* "toString/0" without quotes */
     char *fn;
     int keep;
+    struct VtLine *next; /* another line with the same key */
 } VtLine;
 
 static int ident_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
 
-/* does `text` mention identifier `name` as a whole word (call, reference or variable use)? */
-static int mentions_word(const char *text, const char *name) {
-    size_t n = strlen(name);
-    for (const char *p = text; (p = strstr(p, name)); p += n) {
-        if ((p == text || !ident_char(p[-1])) && !ident_char(p[n])) return 1;
-    }
-    return 0;
+static unsigned name_hash(const char *s, size_t n) {
+    unsigned h = 2166136261u;
+    for (size_t i = 0; i < n; i++) h = (h ^ (unsigned char)s[i]) * 16777619u;
+    return h;
 }
 
-static int mentions_key(const char *text, const char *key) {
-    char *q = j_fmt("\"%s\"", key);
-    return strstr(text, q) != NULL;
+
+typedef struct {
+    Part **pslot;       /* parts by name (open addressing) */
+    VtLine **vslot;     /* VT lines by key, chained through next */
+    int cap;
+    const char **work;  /* kept texts not read yet */
+    int nwork;
+} Reach;
+
+/* every identifier in [p, end) that names a part keeps that part */
+static void reach_words(Reach *r, const char *p, const char *end) {
+    while (p < end) {
+        if (!ident_char(*p)) { p++; continue; }
+        const char *e = p;
+        while (e < end && ident_char(*e)) e++;
+        size_t n = (size_t)(e - p);
+        unsigned h = name_hash(p, n) & (unsigned)(r->cap - 1);
+        while (r->pslot[h]) {
+            Part *c = r->pslot[h];
+            if (strlen(c->name) == n && !strncmp(c->name, p, n)) {
+                if (!c->keep) { c->keep = 1; r->work[r->nwork++] = c->text; }
+                break;
+            }
+            h = (h + 1) & (unsigned)(r->cap - 1);
+        }
+        p = e;
+    }
+}
+
+/* Reads a kept text once: a word that names a part keeps it (words inside string literals count, as they always
+ * did), a string literal that spells the key of a VT line keeps that line. */
+static void reach_text(Reach *r, const char *t) {
+    for (const char *p = t; *p;) {
+        if (*p != '"') {
+            const char *e = p;
+            while (*e && *e != '"') e++;
+            reach_words(r, p, e);
+            p = e;
+            continue;
+        }
+        const char *e = p + 1;
+        while (*e && *e != '"') e += (*e == '\\' && e[1]) ? 2 : 1;
+        size_t n = (size_t)(e - (p + 1));
+        unsigned h = name_hash(p + 1, n) & (unsigned)(r->cap - 1);
+        while (r->vslot[h]) {
+            if (strlen(r->vslot[h]->key) == n && !strncmp(r->vslot[h]->key, p + 1, n)) {
+                for (VtLine *v = r->vslot[h]; v; v = v->next) {
+                    if (!v->keep) { v->keep = 1; r->work[r->nwork++] = v->line; }
+                }
+                break;
+            }
+            h = (h + 1) & (unsigned)(r->cap - 1);
+        }
+        reach_words(r, p + 1, e);
+        p = *e ? e + 1 : e;
+    }
 }
 
 static char *take_name(const char *s, const char *prefix) {
@@ -93,28 +144,33 @@ char *prune_module(const char *module) {
     }
     st->text = fixed.data ? fixed.data : (char *)"";
     st->keep = 1;
-    for (int changed = 1; changed;) {
-        changed = 0;
-        JBuf kept = {0};
-        for (int i = 0; i < parts.count; i++) {
-            Part *c = parts.items[i];
-            if (c->keep || !c->name) j_buf_add(&kept, c->text);
-        }
-        for (int i = 0; i < vts.count; i++) {
-            VtLine *v = vts.items[i];
-            if (v->keep) { j_buf_add(&kept, v->line); j_buf_addc(&kept, 10); }
-        }
-        const char *k = kept.data ? kept.data : "";
-        for (int i = 0; i < parts.count; i++) {
-            Part *c = parts.items[i];
-            if (c->keep || !c->name) continue;
-            if (mentions_word(k, c->name)) { c->keep = 1; changed = 1; }
-        }
-        for (int i = 0; i < vts.count; i++) {
-            VtLine *v = vts.items[i];
-            if (!v->keep && mentions_key(k, v->key)) { v->keep = 1; changed = 1; }
-        }
+    /* Reachability from the always-kept text (every part without a name, and start() without its VT lines).
+     * Each text is read once: a word that names a part keeps it, a string literal that spells the key of a VT line
+     * keeps that line; a kept part or line is then read in turn. */
+    int cap = 64;
+    while (cap < 4 * (parts.count + vts.count) + 16) cap *= 2;
+    Part **pslot = j_alloc(sizeof(Part *) * (size_t)cap);       /* part by name */
+    VtLine **vslot = j_alloc(sizeof(VtLine *) * (size_t)cap);   /* VT lines by key, chained through next */
+    for (int i = 0; i < parts.count; i++) {
+        Part *c = parts.items[i];
+        if (!c->name) continue;
+        unsigned h = name_hash(c->name, strlen(c->name)) & (unsigned)(cap - 1);
+        while (pslot[h]) h = (h + 1) & (unsigned)(cap - 1);
+        pslot[h] = c;
     }
+    for (int i = 0; i < vts.count; i++) {
+        VtLine *v = vts.items[i];
+        unsigned h = name_hash(v->key, strlen(v->key)) & (unsigned)(cap - 1);
+        while (vslot[h] && strcmp(vslot[h]->key, v->key) != 0) h = (h + 1) & (unsigned)(cap - 1);
+        v->next = vslot[h];
+        vslot[h] = v;
+    }
+    Reach r = {pslot, vslot, cap, j_alloc(sizeof(char *) * (size_t)(parts.count + vts.count + 2)), 0};
+    for (int i = 0; i < parts.count; i++) {
+        Part *c = parts.items[i];
+        if (!c->name || c->keep) r.work[r.nwork++] = c->text;
+    }
+    while (r.nwork > 0) reach_text(&r, r.work[--r.nwork]);
     JBuf out = {0};
     for (int i = 0; i < parts.count; i++) {
         Part *c = parts.items[i];

@@ -28,6 +28,8 @@ typedef struct {
     JLocal *drops[64];  /* live sole-owner locals (see JLocal.drop), innermost last */
     int drop_n;
     int drop_base;      /* entries below belong to an enclosing function; a lambda's return must not free them */
+    char *trace_name;   /* `Class.method(File.ash` of the function being emitted, until its first statement marker carries it */
+    int trace_line;     /* last `//@line` marker written in the function being emitted (0: none yet) */
 } LState;
 extern LState L;
 int jl_drop_ok(JType *t);

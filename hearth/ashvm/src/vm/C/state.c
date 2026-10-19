@@ -15,5 +15,10 @@ VMValue raised_value;
 int has_raised_value = 0;
 
 
+int trace_count = 0;
+unsigned trace_gen = 1;
+Chunk *trace_chunk[FRAMES_MAX];
+uint8_t *trace_ip[FRAMES_MAX];
+
 const char *current_pos = NULL;
 int current_poslen = 0;

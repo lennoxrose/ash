@@ -3,6 +3,7 @@
 #include "codegen/H/emit/emit_internal.h"
 #include "codegen/H/emit/value.h"
 #include "codegen/H/emit/layout.h"
+#include "codegen/H/runtime/trace.h"
 #include "codegen/H/emit/runtime_layout.h"
 #include "codegen/H/platform/platform_console.h"
 #include "codegen/H/platform/win_call.h"
@@ -69,6 +70,8 @@ static void emit_raise_routine(CodeBuf *code) {
     emit_load_mem_disp32(code, REG_RAX, REG_RAX, 0);
     emit_cmp_reg_imm32(code, REG_RAX, 0);
     int go_fatal = emit_jcc_rel32(code, COND_E);
+
+    trace_emit_capture(code);   // depth 1: remember the call stack for the uncaught-exception trace (RAX, RBX, RSI, RDX, RDI preserved)
 
     emit_dec_reg(code, REG_RAX);
     emit_mov_reg_imm64(code, REG_RCX, kiln_try_depth_addr());
@@ -163,6 +166,7 @@ void errors_emit_die(CodeBuf *code, const char *msg) {
     emit_mov_reg_imm64(code, REG_RBX, TAG_STRING);
     emit_mov_reg_imm64(code, REG_RSI, addr);
     emit_mov_reg_imm64(code, REG_RDX, (uint64_t)len);
+    if (kiln_trace_addr()) emit_mov_reg_imm64(code, REG_RDI, kiln_code_base() + (uint64_t)code->count);   // where this happened (stack trace)
     emit_die(code);
 }
 
@@ -198,5 +202,6 @@ void errors_emit_fatal(CodeBuf *code, const char *msg) {
 }
 
 void errors_emit_die_dynamic(CodeBuf *code) {
+    if (kiln_trace_addr()) emit_mov_reg_imm64(code, REG_RDI, kiln_code_base() + (uint64_t)code->count);
     emit_die(code);
 }

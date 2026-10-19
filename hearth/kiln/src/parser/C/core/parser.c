@@ -18,6 +18,8 @@
 #include "codegen/H/collections/maps.h"
 #include "codegen/H/runtime/errors.h"
 #include "codegen/H/runtime/print_int.h"
+#include "codegen/H/runtime/trace.h"
+#include "ir/H/ir_lex.h"
 #include "diagnostics/H/diagnostics.h"
 #include "elf/H/elf_writer.h"
 #include "app/H/target.h"
@@ -383,6 +385,10 @@ void statement(void) {
         parse_error("only 'forge' and constant 'local' declarations are allowed at an imported file's top level");
     }
 
+    {   // a `//@line [name]` marker before this statement: an entry of the stack-trace table
+        int mline; const char *mname; int mlen;
+        if (ir_marker_before(current.start, &mline, &mname, &mlen)) trace_note(code->count, mline, mname, mlen);
+    }
     if (current.type == TOKEN_SAY) {
         advance_token();
         codegen_expression();
@@ -413,6 +419,7 @@ void statement(void) {
 void compile_program(const char *source, CodeBuf *out) {
     code = out;
     code_init(code);
+    trace_reset();
     set_import_namespace(IR_NAMESPACE, (int)strlen(IR_NAMESPACE));
     prescan_functions(source);
     lexer_init(source);
@@ -440,6 +447,7 @@ void compile_program(const char *source, CodeBuf *out) {
     // restores RBP before returning. Milestone 5: each slot is now 16
     // bytes (tag + payload, see codegen/H/emit/value.h), not 8.
     emit_mov_reg_reg(code, REG_RBP, REG_RSP);
+    trace_emit_main_frame(code);
     emit_sub_reg_imm32(code, REG_RSP, KILN_FRAME_RESERVE);
 
     heap_emit_startup(code);

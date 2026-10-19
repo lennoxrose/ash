@@ -6,8 +6,10 @@
 static const char *lex_start;
 static const char *lex_current;
 static int lex_line;
+static const char *lex_source;
 
 void lexer_init(const char *source) {
+    lex_source = source;
     lex_start = source;
     lex_current = source;
     lex_line = 1;
@@ -206,4 +208,24 @@ Token lexer_next_token(void) {
     }
 
     return error_token("unexpected character");
+}
+
+/* The marker comment `//@<line>[ <name>]` on the line right before the token at `tok` (only white space between
+ * them), as the lowering writes it before the statements of project functions; see jlower/C/lower_stmt.c. */
+int ir_marker_before(const char *tok, int *line, const char **name, int *name_len) {
+    const char *p = tok;
+    while (p > lex_source && (p[-1] == ' ' || p[-1] == '\t' || p[-1] == '\n' || p[-1] == '\r')) p--;
+    const char *ls = p;
+    while (ls > lex_source && ls[-1] != '\n') ls--;
+    while (ls < p && (*ls == ' ' || *ls == '\t')) ls++;
+    if (p - ls < 4 || ls[0] != '/' || ls[1] != '/' || ls[2] != '@') return 0;
+    const char *q = ls + 3;
+    int v = 0, digits = 0;
+    while (q < p && *q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); q++; digits++; }
+    if (!digits) return 0;
+    *line = v;
+    *name = NULL;
+    *name_len = 0;
+    if (q < p && *q == ' ') { *name = q + 1; *name_len = (int)(p - (q + 1)); }
+    return 1;
 }

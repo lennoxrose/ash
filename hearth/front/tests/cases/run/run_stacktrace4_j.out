@@ -1,0 +1,5 @@
+cleanup
+Exception in thread "main" ash.lang.IllegalStateException: from the leaf
+    at t.Stack4.leaf(run_stacktrace4_j.ash:5)
+    at t.Stack4.middle(run_stacktrace4_j.ash:21)
+    at t.Stack4.main(run_stacktrace4_j.ash:26)

@@ -10,7 +10,7 @@ src/app/O/main.o: src/app/C/main.c src/parser/H/core/parser.h \
  ../front/src/jdriver/H/jdriver.h ../front/src/jexplain/H/jexplain.h \
  ../front/src/jlower/H/jlower.h ../front/src/jtypes/H/jtypes.h \
  ../front/src/jparse/H/jast.h src/codegen/H/runtime/heap.h \
- src/app/H/target.h
+ src/codegen/H/runtime/trace.h src/app/H/target.h
 src/parser/H/core/parser.h:
 ../front/src/ir/H/ir_lex.h:
 src/codegen/H/emit/emit.h:
@@ -33,4 +33,5 @@ src/diagnostics/H/diagnostics.h:
 ../front/src/jtypes/H/jtypes.h:
 ../front/src/jparse/H/jast.h:
 src/codegen/H/runtime/heap.h:
+src/codegen/H/runtime/trace.h:
 src/app/H/target.h:

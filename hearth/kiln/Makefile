@@ -63,6 +63,7 @@ KILN_SRC = \
     src/codegen/C/runtime/heap.c \
     src/codegen/C/runtime/number_format.c \
     src/codegen/C/runtime/print_int.c \
+    src/codegen/C/runtime/trace.c \
     src/codegen/C/strings/affix_builtins.c \
     src/codegen/C/strings/case_builtins.c \
     src/codegen/C/strings/char_builtins.c \
