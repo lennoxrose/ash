@@ -1,0 +1,26 @@
+error: variable 'c' is used before it is assigned: the first pass through the loop reaches this use before any assignment
+  --> tests/cases/safety/LoopInitErrors.ash:6:20
+   |
+  6|             sum += c;
+   |                    ^
+error: variable 'last' is used before it is assigned: the first pass through the loop reaches this use before any assignment
+  --> tests/cases/safety/LoopInitErrors.ash:16:32
+   |
+ 16|             System.out.println(last);
+   |                                ^
+error: variable 'c' is used before it is assigned: the first pass through the loop reaches this use before any assignment
+  --> tests/cases/safety/LoopInitErrors.ash:25:16
+   |
+ 25|         while (c < 3) {
+   |                ^
+error: variable 'c' is used before it is assigned: the first pass through the loop reaches this use before any assignment
+  --> tests/cases/safety/LoopInitErrors.ash:36:18
+   |
+ 36|             k += c + 1;
+   |                  ^
+error: variable 'c' is used before it is assigned: the first pass through the loop reaches this use before any assignment
+  --> tests/cases/safety/LoopInitErrors.ash:49:18
+   |
+ 49|             t += c;
+   |                  ^
+5 error(s)

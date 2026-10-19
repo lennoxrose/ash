@@ -55,6 +55,9 @@ typedef struct {
     Target *targets;
     JList reported;    /* Node* already diagnosed, so the second loop pass stays quiet */
     RgCtx rg;          /* value-range facts (range.c); shares the MnemoWalk */
+    int prefix;        /* in the first pass of an outermost loop, on the straight-line part of its first iteration */
+    int catch_depth;   /* inside a try block that has a catch */
+    int loop_depth;    /* loops being walked */
 } Walk;
 
 static uint64_t id_of(JLocal *l) { return (uint64_t)(uintptr_t)l; }
@@ -83,14 +86,20 @@ static uint64_t set_id(JLocal *l) { return id_of(l) + 2; }
 
 static void mark_assigned(Walk *w, JLocal *l) { mnemo_move(w->m, set_id(l)); }
 
+/* A loop's first pass starts from the state on entry, so what it sees on the straight-line part of the first
+ * iteration (statements that every run of the body executes before any branch, jump or inner loop) is exact:
+ * a variable no path assigned by then is read unassigned there, even if a later statement of the body assigns it
+ * for the next iteration. A use behind a condition is not judged that way (`if (!first) print(c);`). */
 static void use(Walk *w, Node *n) {
     JLocal *l = n->sym;
-    if (l && !w->in_lambda && !w->rg.mute && mnemo_is_moved(w->m, decl_id(l)) && !mnemo_is_moved(w->m, set_id(l))) {
+    int first_iter = w->rg.mute && w->prefix && !w->catch_depth;
+    if (l && !w->in_lambda && (!w->rg.mute || first_iter) && mnemo_is_moved(w->m, decl_id(l)) && !mnemo_is_moved(w->m, set_id(l))) {
         int dup = 0;
         for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) dup = 1;
         if (!dup) {
             j_list_push(&w->reported, n);
-            cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use", n->name);
+            if (first_iter) cerr(n, "variable '%s' is used before it is assigned: the first pass through the loop reaches this use before any assignment", n->name);
+            else cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use", n->name);
         }
         mark_assigned(w, l);                          /* one report per variable and path */
         return;
@@ -226,9 +235,12 @@ static void expr(Walk *w, Node *n) {
         case N_BINARY:
             if (!strcmp(n->name, "&&") || !strcmp(n->name, "||")) {   /* right side may not run */
                 expr(w, n->a);
+                int pfx = w->prefix;
+                w->prefix = 0;                                 /* the right side may not run */
                 uint32_t after_a = mnemo_save(m);
                 rg_assume(&w->rg, n->a, n->name[0] == '&');
                 expr(w, n->b);
+                w->prefix = pfx;
                 mnemo_join(m, after_a);
                 mnemo_release(m, after_a);
                 return;
@@ -238,6 +250,8 @@ static void expr(Walk *w, Node *n) {
             return;
         case N_COND: {
             expr(w, n->a);
+            int pfx = w->prefix;
+            w->prefix = 0;                                     /* one of the two arms runs */
             uint32_t entry = mnemo_save(m);
             rg_assume(&w->rg, n->a, 1);
             expr(w, n->b);
@@ -248,10 +262,18 @@ static void expr(Walk *w, Node *n) {
             mnemo_join(m, then_s);
             mnemo_release(m, entry);
             mnemo_release(m, then_s);
+            w->prefix = pfx;
             return;
         }
-        case N_SWITCH: stmt(w, n); return;   /* a switch expression: each case starts from the state after the selector */
+        case N_SWITCH: {                     /* a switch expression: each case starts from the state after the selector */
+            int pfx = w->prefix;
+            stmt(w, n);
+            w->prefix = pfx;
+            return;
+        }
         case N_LAMBDA: {                     /* the body runs later: check its uses, keep its moves local */
+            int pfx = w->prefix;
+            w->prefix = 0;
             uint32_t entry = mnemo_save(m);
             Target *saved = w->targets;
             w->targets = NULL;
@@ -259,6 +281,7 @@ static void expr(Walk *w, Node *n) {
             expr(w, n->b);
             w->in_lambda--;
             w->targets = saved;
+            w->prefix = pfx;
             mnemo_restore(m, entry);
             mnemo_release(m, entry);
             return;
@@ -312,8 +335,11 @@ static void loop(Walk *w, Node *n) {
     uint32_t head = mnemo_save(m);
     uint32_t leave = mnemo_save_dead(m);              /* states that leave through the condition */
     int final = 0;
+    int outermost = w->loop_depth == 0;
+    w->loop_depth++;
     for (int pass = 0; pass < 10; pass++) {
         if (!final) w->rg.mute++;
+        w->prefix = pass == 0 && outermost;
         mnemo_restore(m, head);
         if (n->kind == N_DO) {
             stmt(w, n->b);
@@ -346,6 +372,7 @@ static void loop(Walk *w, Node *n) {
             mnemo_join(m, t.cont);
             if (n->kind == N_FOR) for (int i = 0; i < n->l2.count; i++) expr(w, n->l2.items[i]);
         }
+        w->prefix = 0;
         if (!final) w->rg.mute--;
         if (final) break;
         uint32_t end = mnemo_save(m);
@@ -358,6 +385,7 @@ static void loop(Walk *w, Node *n) {
         head = mnemo_save(m);
         if (settled && pass >= 1) final = 1;
     }
+    w->loop_depth--;
     mnemo_restore(m, leave);
     mnemo_join(m, t.brk);
     mnemo_release(m, head);
@@ -365,8 +393,25 @@ static void loop(Walk *w, Node *n) {
     pop_target(w, &t);
 }
 
+/* a statement that always runs to its end: blocks, declarations, expression statements and ifs of those */
+static int runs_through(Node *n) {
+    if (!n) return 1;
+    switch (n->kind) {
+        case N_BLOCK: case N_SEQ:
+            for (int i = 0; i < n->l1.count; i++) if (!runs_through(n->l1.items[i])) return 0;
+            return 1;
+        case N_LOCAL: case N_EXPRSTMT: case N_EMPTY: return 1;
+        case N_IF: return runs_through(n->b) && runs_through(n->c);
+        default: return 0;
+    }
+}
+
 static void stmt(Walk *w, Node *n) {
     MnemoWalk *m = w->m;
+    switch (n->kind) {         /* only these keep the straight-line part going (an `if` after its condition) */
+        case N_BLOCK: case N_SEQ: case N_LOCAL: case N_EXPRSTMT: case N_EMPTY: case N_IF: case N_RETURN: case N_THROW: break;
+        default: w->prefix = 0;
+    }
     switch (n->kind) {
         case N_BLOCK: case N_SEQ: stmts(w, &n->l1); return;
         case N_LOCAL:
@@ -379,6 +424,8 @@ static void stmt(Walk *w, Node *n) {
         case N_EXPRSTMT: expr(w, n->a); return;
         case N_IF: {
             expr(w, n->a);
+            int pfx = w->prefix && runs_through(n);     /* the rest still runs after an if without jumps */
+            w->prefix = 0;                             /* the branches are conditional */
             uint32_t entry = mnemo_save(m);
             rg_assume(&w->rg, n->a, 1);
             stmt(w, n->b);
@@ -389,21 +436,22 @@ static void stmt(Walk *w, Node *n) {
             mnemo_join(m, then_s);
             mnemo_release(m, entry);
             mnemo_release(m, then_s);
+            w->prefix = pfx;
             return;
         }
         case N_WHILE: case N_DO: case N_FOR: case N_FOREACH:
             if (n->kind == N_FOR) stmts(w, &n->l1);
             loop(w, n);
             return;
-        case N_RETURN: if (n->a) expr(w, n->a); mnemo_kill(m); return;
-        case N_THROW: expr(w, n->a); mnemo_kill(m); return;
+        case N_RETURN: if (n->a) expr(w, n->a); w->prefix = 0; mnemo_kill(m); return;
+        case N_THROW: expr(w, n->a); w->prefix = 0; mnemo_kill(m); return;
         case N_BREAK: jump(w, 0); return;
         case N_CONTINUE: jump(w, 1); return;
         case N_TRY: {
             uint32_t entry = mnemo_save(m);
-            if (n->l1.count) w->rg.mute++;             /* a catch may be the point: the program can provoke the exception */
+            if (n->l1.count) { w->rg.mute++; w->catch_depth++; }   /* a catch may be the point: the program can provoke the exception */
             stmt(w, n->b);
-            if (n->l1.count) w->rg.mute--;
+            if (n->l1.count) { w->rg.mute--; w->catch_depth--; }
             uint32_t out = mnemo_save(m);
             mnemo_restore(m, entry);
             mnemo_join(m, out);                        /* the try block may stop anywhere */
