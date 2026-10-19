@@ -3,4 +3,10 @@ error: use of moved value 'a': it was moved earlier by an assignment or by passi
    |
   5|         System.out.println(a);            // error: a was moved
    |                            ^
+   = note: 'a' was moved here, by storing it
+  --> tests/cases/ownership/OwnMoved.ash:4:20
+   |
+  4|         String b = a;
+   |                    ^
+   = help: use 'a' before this point, or use the variable or field it was stored in
 1 error(s)

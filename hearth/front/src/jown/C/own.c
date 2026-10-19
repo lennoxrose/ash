@@ -63,7 +63,27 @@ typedef struct {
     int catch_depth;   /* inside a try block that has a catch */
     int loop_depth;    /* loops being walked */
     int passes;        /* loop passes walked in this method, against LOOP_PASS_BUDGET */
+    JList moves;       /* MoveSite*, in walk order: where each owning local was moved (and, with node == NULL, given a new value) */
+    JMethod *to_call;  /* the project callee whose argument is being moved right now */
 } Walk;
+
+typedef struct { JLocal *l; Node *at; JMethod *callee; } MoveSite;
+
+/* the node where `l` was last moved on the walk, or NULL when the last event was a new value (a join of
+ * paths may then hide the move: say nothing rather than point at the wrong place) */
+static MoveSite *last_move(Walk *w, JLocal *l) {
+    for (int i = w->moves.count - 1; i >= 0; i--) {
+        MoveSite *ms = w->moves.items[i];
+        if (ms->l == l) return ms->at ? ms : NULL;
+    }
+    return NULL;
+}
+
+static void note_reinit(Walk *w, JLocal *l) {
+    MoveSite *ms = j_alloc(sizeof *ms);
+    ms->l = l;
+    j_list_push(&w->moves, ms);
+}
 
 static uint64_t id_of(JLocal *l) { return (uint64_t)(uintptr_t)l; }
 
@@ -112,6 +132,23 @@ static void use(Walk *w, Node *n) {
     if (!l || !mnemo_is_moved(w->m, id_of(l))) return;
     for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) return;
     j_list_push(&w->reported, n);
+    MoveSite *ms = last_move(w, l);
+    if (ms && ms->at == n) {
+        /* the use is the move itself: the loop brings it round again */
+        j_diag_help("this %s moves '%s' on every pass of the loop; declare '%s' inside the loop, or give it a new value before the next pass", ms->callee ? "call" : "statement", n->name, n->name);
+    } else if (ms) {
+        const char *v = n->name;
+        if (ms->callee) {
+            j_diag_note(ms->at->path, ms->at->line, ms->at->col, "'%s' was moved here, into the call to '%s'%s", v, ms->callee->name,
+                        ms->at->line > n->line || (ms->at->line == n->line && ms->at->col > n->col) ? " (in an earlier iteration of the loop)" : "");
+            if (fixed_project_target(ms->callee)) j_diag_help("'%s' keeps its parameter, so '%s' cannot be lent with &%s: use '%s' before the call, or pass a copy", ms->callee->name, v, v, v);
+            else j_diag_help("lend it instead of moving it: %s(&%s)", ms->callee->name, v);
+        } else {
+            j_diag_note(ms->at->path, ms->at->line, ms->at->col, "'%s' was moved here, by storing it%s", v,
+                        ms->at->line > n->line || (ms->at->line == n->line && ms->at->col > n->col) ? " (in an earlier iteration of the loop)" : "");
+            j_diag_help("use '%s' before this point, or use the variable or field it was stored in", v);
+        }
+    }
     cerr(n, "use of moved value '%s': it was moved earlier by an assignment or by passing it to a call; lend it with &%s, clone it, or assign a new value first", n->name, n->name);
 }
 
@@ -120,6 +157,11 @@ static void store(Walk *w, Node *e) {
     expr(w, e);
     if (e->kind == N_NAME && e->rk == R_LOCAL && e->sym && owning(((JLocal *)e->sym)->type)) {
         mnemo_move(w->m, id_of(e->sym));
+        MoveSite *ms = j_alloc(sizeof *ms);
+        ms->l = e->sym;
+        ms->at = e;
+        ms->callee = w->to_call;
+        j_list_push(&w->moves, ms);
     }
 }
 
@@ -172,7 +214,9 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
             if (a->name[1] == 'm') rg_forget(&w->rg, a->a->sym);        /* the callee may write it */
             if (ns < 32) seen[ns++] = (Borrow){a->a->sym, a->name[1] == 'm', a};
         } else if (takes && !param_borrowed(m, i)) {
+            w->to_call = m;
             store(w, a);
+            w->to_call = NULL;
             if (a->kind == N_NAME && a->rk == R_LOCAL && a->sym && ns < 32) seen[ns++] = (Borrow){a->sym, 0, a};
         } else {
             expr(w, a);
@@ -212,7 +256,7 @@ static void expr(Walk *w, Node *n) {
                 int to_local = n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym;
                 if (!to_local) expr(w, n->a);               /* Java evaluates the array and the index before the right side */
                 store(w, n->b);
-                if (to_local) { mnemo_reinit(m, id_of(n->a->sym)); mark_assigned(w, n->a->sym); }
+                if (to_local) { mnemo_reinit(m, id_of(n->a->sym)); note_reinit(w, n->a->sym); mark_assigned(w, n->a->sym); }
             } else {
                 expr(w, n->a);
                 expr(w, n->b);
@@ -273,7 +317,7 @@ static void expr(Walk *w, Node *n) {
         }
         case N_INSTANCEOF:
             children(w, n);
-            if (n->sym) mnemo_reinit(m, id_of(n->sym));       /* the binding is a fresh variable each time the test runs */
+            if (n->sym) mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym);       /* the binding is a fresh variable each time the test runs */
             return;
         case N_SWITCH: {                     /* a switch expression: each case starts from the state after the selector */
             int pfx = w->prefix;
@@ -399,7 +443,7 @@ static void loop(Walk *w, Node *n) {
             }
         } else {
             if (n->kind == N_FOREACH) {
-                if (n->sym) { mnemo_reinit(m, id_of(n->sym)); rg_forget(&w->rg, n->sym); }
+                if (n->sym) { mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym); rg_forget(&w->rg, n->sym); }
                 mnemo_join_into(m, leave);
             } else if (n->a) {
                 expr(w, n->a);
@@ -470,7 +514,7 @@ static void stmt(Walk *w, Node *n) {
         case N_BLOCK: case N_SEQ: stmts(w, &n->l1); return;
         case N_LOCAL:
             if (n->b) store(w, n->b);
-            if (n->sym) mnemo_reinit(m, id_of(n->sym));   /* a fresh variable, also on every loop iteration */
+            if (n->sym) mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym);   /* a fresh variable, also on every loop iteration */
             if (n->sym && !n->b) { mnemo_move(m, decl_id(n->sym)); mnemo_reinit(m, set_id(n->sym)); }
             else if (n->sym) mnemo_reinit(m, decl_id(n->sym));
             rg_declare(&w->rg, n);
@@ -530,7 +574,7 @@ static void stmt(Walk *w, Node *n) {
             return;
         }
         case N_CATCH:
-            if (n->sym) mnemo_reinit(m, id_of(n->sym));   /* a fresh variable on every iteration, like a local */
+            if (n->sym) mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym);   /* a fresh variable on every iteration, like a local */
             stmt(w, n->b);
             return;
         case N_SWITCH: {
@@ -550,7 +594,7 @@ static void stmt(Walk *w, Node *n) {
                 mnemo_release(m, fall);
                 for (int j = 0; j < c->l1.count; j++) {   /* a type pattern binds a fresh variable */
                     Node *lb = c->l1.items[j];
-                    if (lb->kind == N_TYPEPATTERN && lb->sym) mnemo_reinit(m, id_of(lb->sym));
+                    if (lb->kind == N_TYPEPATTERN && lb->sym) mnemo_reinit(m, id_of(lb->sym)), note_reinit(w, lb->sym);
                 }
                 if (c->b) {
                     if (c->b->kind == N_BLOCK || c->b->kind == N_THROW) stmt(w, c->b); else expr(w, c->b);

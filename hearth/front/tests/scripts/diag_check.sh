@@ -18,6 +18,7 @@ for f in tests/cases/diag/*.ash; do
     "$KILN" "$f" -o "$TMP/k.bin" > "$TMP/k.out" 2> "$TMP/k.err"; krc=$?
     if [ $krc -eq 0 ]; then echo "FAIL $f (kiln compiled it)"; fail=1; continue; fi
     if [ -n "${UPDATE:-}" ]; then cp "$TMP/vm.err" "$base.diag"; fi
+    before=$fail
     for e in vm k; do
         if cmp -s "$TMP/$e.err" "$base.diag"; then :; else echo "DIFF $f ($e text)"; diff "$TMP/$e.err" "$base.diag" | head -10; fail=1; fi
     done
@@ -31,6 +32,6 @@ for f in tests/cases/diag/*.ash; do
         done
         if command -v python3 >/dev/null && ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$base.json"; then echo "FAIL $f (json does not parse)"; fail=1; fi
     fi
-    echo "ok   $f"
+    [ $fail -eq $before ] && echo "ok   $f"
 done
 exit $fail

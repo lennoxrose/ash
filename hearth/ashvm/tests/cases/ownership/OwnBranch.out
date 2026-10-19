@@ -3,4 +3,10 @@ error: use of moved value 'a': it was moved earlier by an assignment or by passi
    |
   6|         System.out.println(a);            // error: maybe moved
    |                            ^
+   = note: 'a' was moved here, by storing it
+  --> tests/cases/ownership/OwnBranch.ash:5:37
+   |
+  5|         if (args.length > 0) keep = a;    // moved on one path only
+   |                                     ^
+   = help: use 'a' before this point, or use the variable or field it was stored in
 1 error(s)

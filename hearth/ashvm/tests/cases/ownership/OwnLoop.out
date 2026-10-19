@@ -3,4 +3,5 @@ error: use of moved value 'a': it was moved earlier by an assignment or by passi
    |
   6|             keep = a;                     // error: moved in the previous iteration
    |                    ^
+   = help: this statement moves 'a' on every pass of the loop; declare 'a' inside the loop, or give it a new value before the next pass
 1 error(s)
