@@ -51,6 +51,7 @@ typedef struct Target {
 
 typedef struct {
     MnemoWalk *m;
+    int in_lambda;     /* inside a lambda body: it runs later, so what is assigned by then is unknown */
     Target *targets;
     JList reported;    /* Node* already diagnosed, so the second loop pass stays quiet */
     RgCtx rg;          /* value-range facts (range.c); shares the MnemoWalk */
@@ -73,8 +74,27 @@ static int fixed_project_target(JMethod *m);
 static void expr(Walk *w, Node *n);
 static void stmt(Walk *w, Node *n);
 
+/* A local declared without an initializer is tracked with two more ids in the moved set (a pointer plus 1 and
+ * plus 2 never collides with another local): +1 marks it as declared that way, +2 means "some path assigned it".
+ * The set joins as a union, so a use where +2 is missing is a use where *no* path assigned it: it can only read
+ * the empty value. Paths that merely might leave it unassigned are not reported. */
+static uint64_t decl_id(JLocal *l) { return id_of(l) + 1; }
+static uint64_t set_id(JLocal *l) { return id_of(l) + 2; }
+
+static void mark_assigned(Walk *w, JLocal *l) { mnemo_move(w->m, set_id(l)); }
+
 static void use(Walk *w, Node *n) {
     JLocal *l = n->sym;
+    if (l && !w->in_lambda && !w->rg.mute && mnemo_is_moved(w->m, decl_id(l)) && !mnemo_is_moved(w->m, set_id(l))) {
+        int dup = 0;
+        for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) dup = 1;
+        if (!dup) {
+            j_list_push(&w->reported, n);
+            cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use", n->name);
+        }
+        mark_assigned(w, l);                          /* one report per variable and path */
+        return;
+    }
     if (!l || !mnemo_is_moved(w->m, id_of(l))) return;
     for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) return;
     j_list_push(&w->reported, n);
@@ -123,6 +143,7 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
     for (int i = 0; i < args->count; i++) {
         Node *a = args->items[i];
         if (is_borrow(a)) {
+            if (a->name[1] == 'm') mark_assigned(w, a->a->sym);          /* the callee may fill it in */
             expr(w, a->a);
             /* a borrow may not outlive the call: a callee we can see that keeps its parameter cannot be lent to */
             if (fixed_project_target(m) && !param_borrowed(m, i) && !(m->decl && m->decl->b == NULL)) {
@@ -175,7 +196,7 @@ static void expr(Walk *w, Node *n) {
         case N_ASSIGN:
             if (!strcmp(n->name, "=")) {
                 store(w, n->b);
-                if (n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym) mnemo_reinit(m, id_of(n->a->sym));
+                if (n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym) { mnemo_reinit(m, id_of(n->a->sym)); mark_assigned(w, n->a->sym); }
                 else expr(w, n->a);
             } else {
                 expr(w, n->a);
@@ -234,7 +255,9 @@ static void expr(Walk *w, Node *n) {
             uint32_t entry = mnemo_save(m);
             Target *saved = w->targets;
             w->targets = NULL;
+            w->in_lambda++;
             expr(w, n->b);
+            w->in_lambda--;
             w->targets = saved;
             mnemo_restore(m, entry);
             mnemo_release(m, entry);
@@ -349,6 +372,8 @@ static void stmt(Walk *w, Node *n) {
         case N_LOCAL:
             if (n->b) store(w, n->b);
             if (n->sym) mnemo_reinit(m, id_of(n->sym));   /* a fresh variable, also on every loop iteration */
+            if (n->sym && !n->b) { mnemo_move(m, decl_id(n->sym)); mnemo_reinit(m, set_id(n->sym)); }
+            else if (n->sym) mnemo_reinit(m, decl_id(n->sym));
             rg_declare(&w->rg, n);
             return;
         case N_EXPRSTMT: expr(w, n->a); return;
