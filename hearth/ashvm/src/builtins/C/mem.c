@@ -22,9 +22,13 @@ VMValue vm_call_builtin_mem(int id, VMValue *args, int argc) {
     if (argc != 1) { vm_runtime_error("mem_free(x) expects 1 argument\n"); }
 #ifndef ASH_GC
     VMValue v = args[0];
-    if (id == 53) {              // mem_free_elems(x): the Strings of a String[] / List<String> that only it references
+    if (id == 53) {              // mem_free_elems(x): the Strings of a String[] / List<String> that only it references (or the rows of a T[][])
         if (v.type == VM_ARRAY && v.array) {
-            for (int i = 0; i < v.array->count; i++) if (v.array->items[i].type == VM_STR) free(v.array->items[i].str);
+            for (int i = 0; i < v.array->count; i++) {
+                VMValue e = v.array->items[i];
+                if (e.type == VM_STR) free(e.str);
+                else if (e.type == VM_ARRAY && e.array) { free(e.array->items); free(e.array); }   // a row of a T[][] only this array holds
+            }
         }
         return vm_nil();
     }

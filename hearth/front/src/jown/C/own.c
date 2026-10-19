@@ -621,6 +621,19 @@ static int str_elems(JType *t) {
     return list_type(t) && t->nargs == 1 && t->args && ty_is_string(t->args[0]);
 }
 
+/* a T[][] (any depth): its elements are arrays; the container is freed together with the inner arrays only it holds */
+static int arr_elems(JType *t) {
+    return t && t->kind == TY_ARRAY && t->elem && t->elem->kind == TY_ARRAY;
+}
+
+static int elems_type(JType *t) { return str_elems(t) || arr_elems(t); }
+
+/* an element that is a new heap value of the kind `t` holds (a fresh String, or a new array) and nothing else references yet */
+static int elem_fresh(Node *e, JType *t) {
+    if (arr_elems(t)) return e->kind == N_NEWARRAY || e->kind == N_ARRAYINIT;
+    return jown_is_fresh_string(e);
+}
+
 /* the `elems` flag of a tracked container node, or NULL */
 static int *elems_flag(Node *n) {
     if (!is_tracked(n)) return NULL;
@@ -633,13 +646,15 @@ static void elems_off(Node *n) {
 }
 
 /* a container expression whose elements are known fresh Strings (or that has none yet) */
-static int init_elems_fresh(Node *e) {
+static int init_elems_fresh(Node *e, JType *t) {
     if (e->kind == N_NEWARRAY) {
-        if (!e->b) return 1;                              /* new String[n]: elements start as none */
+        /* new String[n]: elements start as none. new T[a][b]: lowered so every inner array is its own new block
+         * (__newarr2); three or more sizes are built by the generic helper, which kiln cannot free */
+        if (!e->b) return !arr_elems(t) || e->l1.count <= 2;
         e = e->b;
     }
     if (e->kind == N_ARRAYINIT) {
-        for (int i = 0; i < e->l1.count; i++) if (!jown_is_fresh_string(e->l1.items[i])) return 0;
+        for (int i = 0; i < e->l1.count; i++) if (!elem_fresh(e->l1.items[i], t)) return 0;
         return 1;
     }
     return fresh_list(e);
@@ -659,7 +674,7 @@ static void collect(Node *n, int in_lambda) {
             if (l && s->b && is_fresh(s->b) &&
                 (l->type->kind == TY_ARRAY || ty_is_string(l->type) || (list_type(l->type) && (fresh_list(s->b) || s->b->kind == N_CALL)) || (map_type(l->type) && fresh_map(s->b)) ||
                  (obj_type(l->type) && ((s->b->kind == N_NEW && l->type->cls == ((JMethod *)s->b->sym)->cls) ||
-                                        (s->b->kind == N_CALL && ((JMethod *)s->b->sym)->fresh_cls == l->type->cls))))) { l->drop = 1; l->elems = str_elems(l->type) && init_elems_fresh(s->b); }
+                                        (s->b->kind == N_CALL && ((JMethod *)s->b->sym)->fresh_cls == l->type->cls))))) { l->drop = 1; l->elems = elems_type(l->type) && init_elems_fresh(s->b, l->type); }
         }
     }
     collect(n->a, in_lambda); collect(n->b, in_lambda); collect(n->c, in_lambda);
@@ -681,6 +696,11 @@ static int print_method(JMethod *m) {
 }
 
 static void scan(Node *n, int in_lambda);
+static int param_borrowed(JMethod *m, int i);
+
+/* argument `i` goes to a parameter the callee only reads. A container whose elements the callee may take out loses its
+ * `elems` status (the callee could keep an element, and freeing the inner values with the container would dangle) */
+static void borrowed_arg(JMethod *m, int i, Node *arg, int in_lambda);
 
 /* a use of `n` that cannot create a second reference */
 static void fieldacc_base(Node *n, int in_lambda);
@@ -710,10 +730,19 @@ static void benign(Node *n, int in_lambda) {
     if (in_lambda) { if (is_tracked(n)) untrack(n); alias_touch(n); }   /* captured */
 }
 
+static void borrowed_arg(JMethod *m, int i, Node *arg, int in_lambda) {
+    Node *t = is_borrow(arg) ? arg->a : arg;
+    benign(t, in_lambda);
+    Node *pn = m->decl->l1.items[i];
+    JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
+    if (!l || !l->param_elems_ok) elems_off(t);
+}
+
 /* the target of `x.f` / `x.length` */
 static void fieldacc_base(Node *n, int in_lambda) {
     if (is_cand(n->a) && obj_type(((JLocal *)n->a->sym)->type)) benign(n->a, in_lambda);
     else if (n->name && !strcmp(n->name, "length") && n->a->kind == N_NAME) benign(n->a, in_lambda);
+    else if (n->name && !strcmp(n->name, "length") && n->a->kind == N_INDEX && elems_flag(n->a->a)) benign(n->a, in_lambda);   /* m[i].length */
     else scan(n->a, in_lambda);
 }
 
@@ -757,7 +786,7 @@ static void scan(Node *n, int in_lambda) {
                     int last = n->l1.count - 1;
                     if (!strcmp(m->name, "get")) elems_off(n->a);                 /* reached here: not in a harmless context */
                     else if ((!strcmp(m->name, "add") && n->l1.count == 1) || (!strcmp(m->name, "set") && n->l1.count == 2)) {
-                        if (!jown_is_fresh_string(n->l1.items[last]) || in_lambda) elems_off(n->a);   /* a shared / literal element */
+                        if (!elem_fresh(n->l1.items[last], tracked_type(n->a)) || in_lambda) elems_off(n->a);   /* a shared / literal element */
                     }
                 }
             } else if (n->a) { if (safe_string_method(m)) benign(n->a, in_lambda); else scan(n->a, in_lambda); }
@@ -765,8 +794,7 @@ static void scan(Node *n, int in_lambda) {
                 Node *arg = n->l1.items[i];
                 int obj_arg = arg->kind == N_NAME && is_cand(arg) && obj_type(((JLocal *)arg->sym)->type);
                 if ((print_method(m) || safe_string_method(m)) && !obj_arg) benign(arg, in_lambda);
-                else if (param_borrowed(m, i) && is_borrow(arg)) benign(arg->a, in_lambda);
-                else if (param_borrowed(m, i)) benign(arg, in_lambda);
+                else if (param_borrowed(m, i)) borrowed_arg(m, i, arg, in_lambda);
                 else scan(n->l1.items[i], in_lambda);
             }
             return;
@@ -774,7 +802,7 @@ static void scan(Node *n, int in_lambda) {
         case N_EXPRSTMT:
             if (n->a->kind == N_ASSIGN && n->a->a->kind == N_INDEX && elems_flag(n->a->a->a)) {
                 Node *as = n->a;                                 /* xs[i] = value */
-                if (strcmp(as->name, "=") != 0 || !jown_is_fresh_string(as->b) || in_lambda) elems_off(as->a->a);
+                if (strcmp(as->name, "=") != 0 || !elem_fresh(as->b, tracked_type(as->a->a)) || in_lambda) elems_off(as->a->a);
                 benign(as->a->a, in_lambda);
                 scan(as->a->b, in_lambda);
                 scan(as->b, in_lambda);
@@ -782,7 +810,7 @@ static void scan(Node *n, int in_lambda) {
             }
             if (n->a->kind == N_ASSIGN && is_tracked(n->a->a)) {
                 Node *as = n->a;
-                if (elems_flag(as->a) && (strcmp(as->name, "=") != 0 || !init_elems_fresh(as->b))) elems_off(as->a);   /* a new container with unknown elements */
+                if (elems_flag(as->a) && (strcmp(as->name, "=") != 0 || !init_elems_fresh(as->b, tracked_type(as->a)))) elems_off(as->a);   /* a new container with unknown elements */
                 int ok = (!strcmp(as->name, "=") && is_fresh(as->b)) || (!strcmp(as->name, "+=") && ty_is_string(tracked_type(as->a)));
                 if (!ok || in_lambda) untrack(as->a);
                 if (as->a->kind == N_FIELDACC) fieldacc_base(as->a, in_lambda);
@@ -795,14 +823,13 @@ static void scan(Node *n, int in_lambda) {
             /* a local's value goes to the caller (lowering skips freeing it on this path); a parameter's value
              * is the caller's own, so returning it is an escape */
             if (n->a && is_tracked(n->a) && (field_node(n->a) || ((JLocal *)n->a->sym)->is_param)) scan(n->a, in_lambda);
-            else if (n->a) benign(n->a, in_lambda);
+            else if (n->a) { if (n->a->kind == N_INDEX) elems_off(n->a->a); benign(n->a, in_lambda); }   /* `return xs[i]` hands out an element */
             return;
         case N_NEW: {
             JMethod *k = n->sym;
             for (int i = 0; i < n->l1.count; i++) {
                 Node *arg = n->l1.items[i];
-                if (is_borrow(arg) && param_borrowed(k, i)) benign(arg->a, in_lambda);
-                else if (param_borrowed(k, i)) benign(arg, in_lambda);
+                if (param_borrowed(k, i)) borrowed_arg(k, i, arg, in_lambda);
                 else scan(arg, in_lambda);
             }
             scan(n->a, in_lambda);
@@ -839,13 +866,13 @@ static void analyze_method(JMethod *m) {
     for (int i = 0; i < m->decl->l1.count; i++) {
         Node *pn = m->decl->l1.items[i];
         JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
-        if (l && param_cand(l->type) && !(m->flags & M_VARARGS)) l->drop = 1;
+        if (l && param_cand(l->type) && !(m->flags & M_VARARGS)) { l->drop = 1; l->elems = elems_type(l->type); }
     }
     scan(m->decl->b, 0);
     for (int i = 0; i < m->decl->l1.count; i++) {
         Node *pn = m->decl->l1.items[i];
         JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
-        if (l) { l->param_ok = l->drop; l->drop = 0; }   /* a parameter is never freed by the callee */
+        if (l) { l->param_ok = l->drop; l->param_elems_ok = l->drop && l->elems; l->drop = 0; l->elems = 0; }   /* a parameter is never freed by the callee */
     }
 }
 
@@ -960,7 +987,7 @@ void jown_check_project(const char *entry_path) {
         for (int k = 0; k < c->fields.count; k++) {
             JField *f = c->fields.items[k];
             f->own = !(f->flags & M_STATIC) && f->type && (f->type->kind == TY_ARRAY || ty_is_string(f->type) || list_type(f->type) || map_type(f->type));
-            f->elems = f->own && str_elems(f->type) && !(f->decl && f->decl->b);   /* no initializer: elements start empty */
+            f->elems = f->own && elems_type(f->type) && !(f->decl && f->decl->b);   /* no initializer: elements start empty */
         }
     }
     for (int i = 0; i < n; i++) {
@@ -970,7 +997,7 @@ void jown_check_project(const char *entry_path) {
             JField *f = c->fields.items[k];
             if (!f->own || !f->decl || !f->decl->b) continue;
             if (!is_fresh(f->decl->b)) f->own = 0;               /* a literal / alias initializer: the value is shared */
-            f->elems = f->own && str_elems(f->type) && init_elems_fresh(f->decl->b);
+            f->elems = f->own && elems_type(f->type) && init_elems_fresh(f->decl->b, f->type);
             scan(f->decl->b, 0);
         }
     }

@@ -790,6 +790,11 @@ static char *lower_array(Node *n) {
         /* no temporary dims array to leak: the array itself is what a sole owner frees */
         return j_fmt("%s(%s, %s)", (jl_drops & JL_NATIVE_NEWARR) ? "mem_newarr1" : "__newarr1", lx(n->l1.items[0]), default_value(t));
     }
+    if (n->l1.count == 2 && (jl_drops & JL_DROP_ARRAYS) && L.cls && L.cls->mem_on) {
+        /* no temporary dims array to leak, and every row is a block of its own, made the way kiln can give back
+         * (jown frees the rows with the outer array) */
+        return j_fmt("%s(%s, %s, %s)", (jl_drops & JL_NATIVE_NEWARR) ? "__newarr2n" : "__newarr2", lx(n->l1.items[0]), lx(n->l1.items[1]), default_value(t));
+    }
     JBuf b = {0};
     j_buf_addc(&b, '[');
     for (int i = 0; i < n->l1.count; i++) {

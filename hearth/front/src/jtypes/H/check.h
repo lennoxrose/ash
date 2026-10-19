@@ -22,6 +22,7 @@ struct JLocal {
     int elems;       /* jown: a candidate String[] / List<String> whose elements are all fresh Strings it alone owns */
     int *elem_of;    /* jown: a for-each variable over such a container: the container's `elems` flag */
     int param_ok;    /* jown: a parameter the method only reads, so a caller keeps ownership of what it passes */
+    int param_elems_ok; /* jown: ...and it never takes an element out of it, so the caller's `elems` status survives the call */
     int drop;        /* jown proved this local is the sole owner of a fresh String/array: free it at scope end */
 };
 
