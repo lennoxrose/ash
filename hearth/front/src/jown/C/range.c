@@ -34,6 +34,13 @@ static Iv type_range(TyKind k) {
 
 static int tracked(JLocal *l) { return l && int_kind(l->type); }
 static int tracked_array(JLocal *l) { return l && l->type && !l->type->nullable && l->type->kind == TY_ARRAY; }
+static int tracked_string(JLocal *l) { return l && l->type && !l->type->nullable && ty_is_string(l->type); }
+
+/* `s.length()` / `s.charAt(i)` on a String: no side effects, so they can be evaluated against one snapshot */
+static int string_call(Node *e, const char *name) {
+    JMethod *m = e->kind == N_CALL ? e->sym : NULL;
+    return m && e->a && m->cls == jt_string() && !strcmp(m->name, name) && e->flags != 1;
+}
 
 /* ---------------------------------------------------------------- evaluation */
 
@@ -41,7 +48,10 @@ static int tracked_array(JLocal *l) { return l && l->type && !l->type->nullable 
 static int pure(Node *e) {
     if (!e) return 1;
     switch (e->kind) {
-        case N_ASSIGN: case N_CALL: case N_NEW: case N_LAMBDA: case N_POSTFIX: case N_SWITCH: return 0;
+        case N_CALL: if (string_call(e, "length") && e->l1.count == 0) break;
+                     if (string_call(e, "charAt") && e->l1.count == 1) break;
+                     return 0;
+        case N_ASSIGN: case N_NEW: case N_LAMBDA: case N_POSTFIX: case N_SWITCH: return 0;
         case N_UNARY: if (e->name[0] == '+' && e->name[1] == '+') return 0;
                       if (e->name[0] == '-' && e->name[1] == '-') return 0;
                       break;
@@ -80,6 +90,141 @@ static Iv fit(Iv v, TyKind k) {                      /* a value of a narrower ty
     return v.lo >= t.lo && v.hi <= t.hi ? v : t;
 }
 
+/* ---------------------------------------------------------------- lengths of Strings and array fields */
+
+static int ascii_only(const char *s) {
+    for (; *s; s++) if ((unsigned char)*s >= 0x80) return 0;
+    return 1;
+}
+
+/* length interval of a String expression (literals, concatenations of known Strings, String locals) */
+static int str_len(RgCtx *r, Node *e, Iv *out) {
+    if (e->kind == N_LIT_STRING) {
+        if (!ascii_only(e->name)) return 0;            /* bytes and characters could differ */
+        out->lo = out->hi = (int64_t)strlen(e->name);
+        return 1;
+    }
+    if (e->kind == N_NAME && e->rk == R_LOCAL && tracked_string(e->sym)) {
+        int64_t lo, hi;
+        if (!mnemo_len_get(r->m, id_of(e->sym), &lo, &hi)) return 0;
+        *out = (Iv){lo, hi};
+        return 1;
+    }
+    if (e->kind == N_BINARY && !strcmp(e->name, "+") && e->type && ty_is_string(e->type)) {
+        Iv a, b;
+        if (!e->a->type || !ty_is_string(e->a->type) || !e->b->type || !ty_is_string(e->b->type)) return 0;
+        if (!str_len(r, e->a, &a) || !str_len(r, e->b, &b)) return 0;
+        if (a.hi > INT32_MAX || b.hi > INT32_MAX) return 0;
+        *out = (Iv){a.lo + b.lo, a.hi + b.hi};
+        return 1;
+    }
+    return 0;
+}
+
+/* an int constant the type checker could fold: literals, - + * and final static fields with such an initializer */
+static int const_int(Node *e, int64_t *v, int depth) {
+    if (!e || depth > 4 || !e->type || e->type->kind != TY_INT) return 0;
+    switch (e->kind) {
+        case N_LIT_INT: {
+            if (strchr(e->name, '_')) return 0;
+            unsigned long long x = strtoull(e->name, NULL, 0);
+            if (x > 2147483647ULL) return 0;
+            *v = (int64_t)x;
+            return 1;
+        }
+        case N_UNARY: {
+            int64_t a;
+            if (strcmp(e->name, "-") || !const_int(e->a, &a, depth + 1)) return 0;
+            *v = -a;
+            return 1;
+        }
+        case N_BINARY: {
+            int64_t a, b, o;
+            if (e->name[1] != 0 || !strchr("+-*", e->name[0])) return 0;
+            if (!const_int(e->a, &a, depth + 1) || !const_int(e->b, &b, depth + 1)) return 0;
+            o = e->name[0] == '+' ? a + b : e->name[0] == '-' ? a - b : a * b;
+            if (o < INT32_MIN || o > INT32_MAX) return 0;
+            *v = o;
+            return 1;
+        }
+        case N_NAME: case N_FIELDACC:
+            if (e->sym && (e->rk == R_STATIC_FIELD)) {
+                JField *f = e->sym;
+                if ((f->flags & M_FINAL) && (f->flags & M_STATIC) && f->decl && f->decl->b) return const_int(f->decl->b, v, depth + 1);
+            }
+            return 0;
+        default: return 0;
+    }
+}
+
+/* the length of a freshly made array whose size is known when compiling */
+static int new_array_len(Node *init, Iv *out) {
+    if (!init) return 0;
+    if (init->kind == N_ARRAYINIT) { *out = (Iv){init->l1.count, init->l1.count}; return 1; }
+    if (init->kind == N_NEWARRAY) {
+        if (init->b && init->b->kind == N_ARRAYINIT) { *out = (Iv){init->b->l1.count, init->b->l1.count}; return 1; }
+        int64_t v;
+        if (!init->b && init->l1.count && const_int(init->l1.items[0], &v, 0) && v >= 0) { *out = (Iv){v, v}; return 1; }
+    }
+    return 0;
+}
+
+static int field_node(Node *a) {
+    return (a->kind == N_NAME || a->kind == N_FIELDACC) && a->sym && (a->rk == R_FIELD || a->rk == R_STATIC_FIELD || a->rk == R_THIS_FIELD);
+}
+
+static void field_assigned(JField *f, Node *rhs) {
+    Iv len;
+    if (f->rl_state != 1) return;
+    if (!new_array_len(rhs, &len)) { f->rl_state = 0; return; }
+    if (len.lo < f->rl_lo) f->rl_lo = len.lo;
+    if (len.hi > f->rl_hi) f->rl_hi = len.hi;
+}
+
+static void scan_assigns(Node *n) {
+    if (!n) return;
+    if (n->kind == N_ASSIGN && field_node(n->a)) {
+        JField *f = n->a->sym;
+        if (strcmp(n->name, "=")) f->rl_state = 0; else field_assigned(f, n->b);
+    }
+    scan_assigns(n->a); scan_assigns(n->b); scan_assigns(n->c);
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) scan_assigns(ls[k]->items[i]);
+}
+
+/* An array field of a plain class whose every assignment in the project makes an array of a size known when
+ * compiling has that size (the hull of them) for good: an array cannot change length, and only the project's
+ * own code can write the field. A field nobody assigns stays unknown (records and enums set theirs implicitly). */
+void rg_prepare_project(JClass **all, int n) {
+    for (int i = 0; i < n; i++) {
+        JClass *c = all[i];
+        if (!c->mem_on || c->kind != N_CLASS) continue;
+        for (int k = 0; k < c->fields.count; k++) {
+            JField *f = c->fields.items[k];
+            f->rl_state = f->type && f->type->kind == TY_ARRAY && !f->is_enum_const ? 1 : 0;
+            f->rl_lo = INT64_MAX;
+            f->rl_hi = -1;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        JClass *c = all[i];
+        if (!c->mem_on || c->kind != N_CLASS) continue;
+        for (int k = 0; k < c->fields.count; k++) {
+            JField *f = c->fields.items[k];
+            if (f->rl_state == 1 && f->decl && f->decl->b) field_assigned(f, f->decl->b);
+        }
+        scan_assigns(c->decl);
+    }
+    for (int i = 0; i < n; i++) {
+        JClass *c = all[i];
+        if (!c->mem_on || c->kind != N_CLASS) continue;
+        for (int k = 0; k < c->fields.count; k++) {
+            JField *f = c->fields.items[k];
+            if (f->rl_state == 1) f->rl_state = f->rl_hi >= 0 ? 2 : 0;
+        }
+    }
+}
+
 /* length interval of an array expression; returns 0 when nothing is known */
 static int array_len(RgCtx *r, Node *a, Iv *out) {
     if (a->kind == N_NAME && a->rk == R_LOCAL && tracked_array(a->sym)) {
@@ -88,19 +233,11 @@ static int array_len(RgCtx *r, Node *a, Iv *out) {
         *out = (Iv){lo, hi};
         return 1;
     }
-    /* a final field initialised with an array of constant size keeps that length for good */
-    if ((a->kind == N_NAME && (a->rk == R_FIELD || a->rk == R_STATIC_FIELD || a->rk == R_THIS_FIELD)) ||
-        (a->kind == N_FIELDACC && a->a && a->a->kind == N_THIS && a->sym)) {
+    if (field_node(a)) {
         JField *f = a->sym;
-        static int depth;
-        if (f && (f->flags & M_FINAL) && f->decl && f->decl->b && depth < 4 &&
-            (f->decl->b->kind == N_ARRAYINIT || f->decl->b->kind == N_NEWARRAY)) {
-            Node *init = f->decl->b;
-            int ok = init->kind == N_ARRAYINIT || (init->b && init->b->kind == N_ARRAYINIT) ||
-                     (init->l1.count && foldable(init->l1.items[0]));
-            if (ok) { depth++; int r2 = array_len(r, init, out); depth--; return r2; }
-        }
-        return 0;
+        if (f->rl_state != 2) return 0;
+        *out = (Iv){f->rl_lo, f->rl_hi};
+        return 1;
     }
     if (a->kind == N_ARRAYINIT) { *out = (Iv){a->l1.count, a->l1.count}; return 1; }
     if (a->kind == N_NEWARRAY) {
@@ -137,12 +274,25 @@ static Iv eval(RgCtx *r, Node *e) {
                 int64_t lo, hi;
                 if (mnemo_rng_get(r->m, id_of(e->sym), &lo, &hi)) return (Iv){lo, hi};
             }
+            {
+                int64_t v;
+                if (e->rk == R_STATIC_FIELD && const_int(e, &v, 0)) return (Iv){v, v};
+            }
             return top;
+        case N_CALL: {
+            Iv len;
+            if (string_call(e, "length") && str_len(r, e->a, &len)) return len;
+            return string_call(e, "length") ? (Iv){0, INT32_MAX} : top;
+        }
         case N_FIELDACC:
             if (e->rk == R_ARRAYLEN) {
                 Iv len;
                 if (array_len(r, e->a, &len)) return len;
                 return (Iv){0, INT32_MAX};
+            }
+            {
+                int64_t v;
+                if (e->rk == R_STATIC_FIELD && const_int(e, &v, 0)) return (Iv){v, v};
             }
             return top;
         case N_UNARY:
@@ -212,7 +362,7 @@ void rg_check_index(RgCtx *r, Node *n) {
     Iv len;
     if (!array_len(r, n->a, &len)) return;
     if (i.lo >= len.hi) {
-        int final_arr = (n->a->kind == N_NAME && n->a->sym && (((JLocal *)n->a->sym)->flags & M_FINAL)) ||
+        int final_arr = (n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym && (((JLocal *)n->a->sym)->flags & M_FINAL)) ||
                         n->a->kind == N_ARRAYINIT || n->a->kind == N_NEWARRAY;
         if (foldable(n->b) && final_arr) return;           /* check_const_index reports these */
         char l[64];
@@ -220,6 +370,44 @@ void rg_check_index(RgCtx *r, Node *n) {
         show(l, sizeof l, len);
         REPORT(r, n, "array index is always out of bounds here: the index is %s and the array length is %s", b, l);
     }
+}
+
+/* s.charAt(i) where i is always negative or always past the known length of s */
+void rg_check_call(RgCtx *r, Node *n) {
+    if (!string_call(n, "charAt") || n->l1.count != 1) return;
+    Node *idx = n->l1.items[0];
+    if (!pure(n->a) || !pure(idx) || !int_kind(idx->type)) return;
+    Iv i = eval(r, idx), len;
+    char b[64];
+    if (i.hi < 0) {
+        show(b, sizeof b, i);
+        REPORT(r, n, "string index is always negative here (%s)", b);
+        return;
+    }
+    if (!str_len(r, n->a, &len) || i.lo < len.hi) return;
+    char l[64];
+    show(b, sizeof b, i);
+    show(l, sizeof l, len);
+    REPORT(r, n, "string index is always out of bounds here: the index is %s and the string length is %s", b, l);
+}
+
+/* `switch (x) { case 3, 4: ...`: inside that case x is one of the labels */
+void rg_assume_case(RgCtx *r, Node *scrut, Node *kase) {
+    if (kase->flags == 1 || !kase->l1.count) return;      /* default (also merged `case A: default:`) */
+    if (scrut->kind != N_NAME || scrut->rk != R_LOCAL || !tracked(scrut->sym)) return;
+    Iv hull = {POS_INF, NEG_INF};
+    for (int i = 0; i < kase->l1.count; i++) {
+        Node *lab = kase->l1.items[i];
+        if (!int_kind(lab->type) || !pure(lab)) return;     /* patterns, null, Strings, enums */
+        Iv v = eval(r, lab);
+        if (v.lo == NEG_INF || v.hi == POS_INF) return;
+        if (v.lo < hull.lo) hull.lo = v.lo;
+        if (v.hi > hull.hi) hull.hi = v.hi;
+    }
+    Iv t = type_range(((JLocal *)scrut->sym)->type->kind);
+    if (hull.lo < t.lo) hull.lo = t.lo;
+    if (hull.hi > t.hi) hull.hi = t.hi;
+    mnemo_rng_refine(r->m, id_of(scrut->sym), hull.lo, hull.hi);
 }
 
 static void overflow(RgCtx *r, Node *n, const char *what, Iv o) {
@@ -278,10 +466,17 @@ void rg_forget(RgCtx *r, JLocal *l) {
     mnemo_len_clear(r->m, id_of(l));
 }
 
+static void set_str_len_from(RgCtx *r, JLocal *l, Node *init) {
+    Iv len;
+    if (init && str_len(r, init, &len)) mnemo_len_set(r->m, id_of(l), len.lo, len.hi);
+    else mnemo_len_clear(r->m, id_of(l));
+}
+
 void rg_declare(RgCtx *r, Node *n) {
     JLocal *l = n->sym;
     if (!l) return;
-    if (tracked(l) && n->b) set_value(r, l, eval(r, n->b));
+    if (tracked_string(l) && n->b) { rg_forget(r, l); set_str_len_from(r, l, n->b); }
+    else if (tracked(l) && n->b) set_value(r, l, eval(r, n->b));
     else if (tracked_array(l) && n->b) set_len_from(r, l, n->b);
     else rg_forget(r, l);
 }
@@ -292,6 +487,14 @@ void rg_assign(RgCtx *r, Node *n) {
     const char *op = n->name;
     if (tracked_array(l)) {
         if (!strcmp(op, "=")) set_len_from(r, l, n->b); else rg_forget(r, l);
+        return;
+    }
+    if (tracked_string(l)) {
+        if (!strcmp(op, "=")) { set_str_len_from(r, l, n->b); return; }
+        Iv a, b;
+        if (!strcmp(op, "+=") && str_len(r, n->a, &a) && n->b->type && ty_is_string(n->b->type) && str_len(r, n->b, &b) && a.hi <= INT32_MAX && b.hi <= INT32_MAX)
+            mnemo_len_set(r->m, id_of(l), a.lo + b.lo, a.hi + b.hi);
+        else rg_forget(r, l);
         return;
     }
     if (!tracked(l)) return;

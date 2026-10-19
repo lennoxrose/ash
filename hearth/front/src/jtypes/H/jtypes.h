@@ -53,6 +53,8 @@ struct JField {
     int is_enum_const;
     int elems;       /* jown: as JLocal.elems, for an owned String[] / List<String> field */
     int own;         /* jown: the object exclusively owns this field's String / array (freed with the object) */
+    int rl_state;    /* jown/range: array field length over every assignment in the project: 0 unknown, 1 candidate, 2 known */
+    long long rl_lo, rl_hi;
 };
 
 struct JMethod {

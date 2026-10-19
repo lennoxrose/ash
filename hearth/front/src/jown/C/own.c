@@ -186,7 +186,7 @@ static void expr(Walk *w, Node *n) {
         case N_ARRAYINIT:
             for (int i = 0; i < n->l1.count; i++) store(w, n->l1.items[i]);
             return;
-        case N_CALL: call_args(w, n, n->sym, n->a, &n->l1); return;
+        case N_CALL: call_args(w, n, n->sym, n->a, &n->l1); rg_check_call(&w->rg, n); return;
         case N_NEW: call_args(w, n, n->sym, NULL, &n->l1); return;
         case N_UNARY:
             if (n->name[0] == '&') {
@@ -229,6 +229,7 @@ static void expr(Walk *w, Node *n) {
             mnemo_release(m, then_s);
             return;
         }
+        case N_SWITCH: stmt(w, n); return;   /* a switch expression: each case starts from the state after the selector */
         case N_LAMBDA: {                     /* the body runs later: check its uses, keep its moves local */
             uint32_t entry = mnemo_save(m);
             Target *saved = w->targets;
@@ -408,10 +409,11 @@ static void stmt(Walk *w, Node *n) {
                 Node *c = n->l1.items[i];
                 if (c->flags == 1) has_default = 1;
                 mnemo_restore(m, entry);
+                rg_assume_case(&w->rg, n->a, c);       /* ... or the selector matched one of this case's labels */
                 mnemo_join(m, fall);                   /* colon-form cases fall through */
                 mnemo_release(m, fall);
                 if (c->b) {
-                    if (c->b->kind == N_BLOCK) stmt(w, c->b); else expr(w, c->b);
+                    if (c->b->kind == N_BLOCK || c->b->kind == N_THROW) stmt(w, c->b); else expr(w, c->b);
                     mnemo_join_into(m, out);
                     fall = mnemo_save_dead(m);
                 } else {
@@ -1001,6 +1003,7 @@ void jown_check_project(const char *entry_path) {
             scan(f->decl->b, 0);
         }
     }
+    rg_prepare_project(all, n);
     for (int i = 0; i < n; i++) {
         JClass *c = all[i];
         if (!c->mem_on) continue;
