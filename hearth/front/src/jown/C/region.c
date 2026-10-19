@@ -123,6 +123,15 @@ static int call_ok(Rg *g, Node *e) {
         if (e->a && !type_name(e->a) && !expr_ok(g, e->a)) return 0;
         return 1;
     }
+    /* the message of a caught exception: only the exceptions that the body itself can raise reach a catch inside
+     * the iteration (no `throw`, no project constructor, no project call that is not itself checked), and those
+     * are the library's own, whose getMessage is a getter; the String it gives back is a value like any other */
+    if (!strcmp(q, "ash.lang.Throwable") && !strcmp(nm, "getMessage") && nargs == 0 && e->a && e->a->kind == N_NAME &&
+        e->a->rk == R_LOCAL && e->a->sym) {
+        JLocal *cv = e->a->sym;
+        return cv->decl && cv->decl->kind == N_CATCH && cv->type && cv->type->kind == TY_CLASS && cv->type->cls &&
+               cv->type->cls->qname && !strncmp(cv->type->cls->qname, "ash.", 4);
+    }
     /* "x".equals(y) resolves to Object.equals; a String receiver is final, so it is String.equals */
     if (!strcmp(nm, "equals") && nargs == 1 && e->a && is_str(e->a->type)) return expr_ok(g, e->a);
     if (m->cls == jt_string()) {
@@ -256,6 +265,15 @@ static int stmt_ok2(Rg *g, Node *s) {
             return stmt_ok(g, s->b);
         }
         case N_FOREACH: return foreach_ok(g, s);
+        case N_TRY: {
+            /* what is raised inside the body is a runtime error or a library exception (nothing in the body can
+             * `throw` or construct a project exception), allocated in this iteration and caught in it: the catch
+             * variable is a non-value local, so it can be read but not stored anywhere (see assign_ok / call_ok).
+             * An exception nobody here catches leaves the iteration without a rewind. */
+            if (!stmt_ok(g, s->b)) return 0;
+            for (int i = 0; i < s->l1.count; i++) if (!stmt_ok(g, ((Node *)s->l1.items[i])->b)) return 0;
+            return stmt_ok(g, s->c);
+        }
         case N_RETURN:
             if (g->callee) return s->a && is_prim(s->a->type) && expr_ok(g, s->a);
             return expr_ok(g, s->a) && (!s->a || is_value(s->a->type));

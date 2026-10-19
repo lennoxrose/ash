@@ -49,6 +49,15 @@ public class RegionCalls {
         return loud.length();
     }
 
+    static int triesInside(int n) {
+        String s = "y" + n;
+        try {
+            return s.length();
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
     static int tableWords(int rounds) {
         int total = 0;
         for (int r = 0; r < rounds; r++) {
@@ -67,6 +76,12 @@ public class RegionCalls {
     final int times(int x) {
         String s = "t" + x * base;
         return plus(x) + s.length();
+    }
+
+    static long viaTry(int n) {
+        long total = 0;
+        for (int i = 0; i < n; i++) total += triesInside(i);     // a callee with a try / catch of its own
+        return total;
     }
 
     static long viaStatic(int n) {
@@ -151,6 +166,7 @@ public class RegionCalls {
         System.out.println(viaCallOnly(10));
         System.out.println(rc.viaInstance(9));
         System.out.println(viaObject(rc, 9));
+        System.out.println(viaTry(6));
         System.out.println(nested(7));
         System.out.println(afterwards(25));
     }

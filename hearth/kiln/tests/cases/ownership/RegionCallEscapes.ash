@@ -60,15 +60,6 @@ public class RegionCallEscapes {
         return s.length();
     }
 
-    static int triesInside(int n) {
-        String s = "y" + n;
-        try {
-            return s.length();
-        } catch (RuntimeException e) {
-            return 0;
-        }
-    }
-
     static int lambdaInside(int n) {
         String s = "l" + n;
         Runnable r = () -> latest = s;
@@ -115,7 +106,6 @@ public class RegionCallEscapes {
     static long loop7(int n) { long t = 0; for (int i = 0; i < n; i++) t += ping(4); return t; }
     static long loop8(int n) { long t = 0; for (int i = 0; i < n; i++) t += callsImpure(i); return t; }
     static long loop9(int n) { long t = 0; for (int i = 0; i < n; i++) t += throwsInside(i); return t; }
-    static long loop10(int n) { long t = 0; for (int i = 0; i < n; i++) t += triesInside(i); return t; }
     static long loop11(int n) { long t = 0; for (int i = 0; i < n; i++) t += lambdaInside(i); return t; }
     static long loop12(int n) { long t = 0; for (int i = 0; i < n; i++) t += makesObject(i); return t; }
     static long loop13(RegionCallEscapes o, int n) { long t = 0; for (int i = 0; i < n; i++) t += o.overridable(i); return t; }
@@ -133,7 +123,6 @@ public class RegionCallEscapes {
         System.out.println(loop7(3));
         System.out.println(loop8(4) + latest);
         System.out.println(loop9(4));
-        System.out.println(loop10(4));
         System.out.println(loop11(4) + latest);
         System.out.println(loop12(4));
         System.out.println(loop13(new Sub(), 3) + latest);
