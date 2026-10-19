@@ -109,6 +109,8 @@ roughly the ceiling for anything short of a full optimizing native compiler.
 
 ## Memory safety (`memory-safety` in `ash.pkg`)
 
+Every rule below, with examples, the error messages and the switches (`KILN_NO_REGIONS`, `KILN_REGION_POISON`, `ASH_REGION_TRACE`, ...), is written out in [docs/MEMORY_SAFETY.md](docs/MEMORY_SAFETY.md).
+
 `memory-safety: on` is the default; `off` switches every check and every free below off and generates exactly the code Ash always did. It is read from the project's `ash.pkg` (no `ash.pkg`: the entry file's directory is the project), and only the project's own sources are checked, never the standard library or dependencies.
 
 With it on, at compile time:
