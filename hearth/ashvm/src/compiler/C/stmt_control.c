@@ -174,6 +174,7 @@ void compile_during_stmt(void) {
     loop_push();
     block();
     loop_patch_nexts(); // next lands here, right before the loop-back
+    if (loop_next_leaves_locals() && local_count == saved_local_count) emit2(OP_TRUNC_LOCALS, (uint8_t)saved_local_count);
     truncate_block_locals(saved_local_count);
     emit_loop(loop_start);
     patch_jump(exit_jump);
@@ -240,6 +241,7 @@ void compile_each_stmt(void) {
     loop_push();
     block();
     loop_patch_nexts(); // next lands here, right before the index bump
+    if (loop_next_leaves_locals() && local_count == body_local_count) emit2(OP_TRUNC_LOCALS, (uint8_t)body_local_count);
     truncate_block_locals(body_local_count);
 
     emit_op(OP_ACC_LOCAL);

@@ -40,7 +40,7 @@ void loop_pop_and_patch_stops(void);
 // each_depth_save/reset/restore): a stop/next inside a function or
 // lambda body must never reach past that body into an ENCLOSING loop it
 // happens to be textually written inside.
-typedef struct { int loops; int attempts; } LoopScope;
+typedef struct { int loops; int attempts; int floor; } LoopScope;
 void loop_scope_save(LoopScope *out);
 void loop_scope_reset(void);
 void loop_scope_restore(LoopScope saved);

@@ -31,6 +31,7 @@ void loop_record_next(Token keyword, int patch_offset);
 // right after block() returns, before emitting the per-iteration advance
 // step.
 void loop_patch_nexts(void);
+int loop_next_leaves_locals(void);
 
 // Patches every recorded stop jump to the CURRENT code position, then
 // pops the loop context -- call once the loop is fully compiled.
@@ -43,7 +44,7 @@ void loop_pop_and_patch_stops(void);
 // reach past it into an ENCLOSING loop it happens to be textually written
 // inside -- jumps can't cross Chunks anyway, so this is what turns that
 // into a clean compile error instead of nonsense bytecode.
-typedef struct { int loops; int attempts; } LoopScope;
+typedef struct { int loops; int attempts; int floor; } LoopScope;
 void loop_scope_save(LoopScope *out);
 void loop_scope_reset(void);
 void loop_scope_restore(LoopScope saved);
