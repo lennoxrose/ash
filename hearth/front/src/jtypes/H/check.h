@@ -79,6 +79,7 @@ void check_args_for_ctor(Ctx *cx, Node *at, JClass *c, JType *ctype, JList *args
 void check_stmt(Ctx *cx, Node *n);
 void check_block_body(Ctx *cx, Node *block);
 int can_complete(Node *n);
+int jt_const_int(Node *e, long long *out);
 void push_scope(Ctx *cx, int *mark);
 void pop_scope(Ctx *cx, int mark);
 

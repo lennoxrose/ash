@@ -1028,6 +1028,12 @@ static int fold_int(Node *e, long long *out, Node **culprit) {
     return 0;
 }
 
+/* an int constant expression's value (literals, final constants, + - * / %), for the reachability rules */
+int jt_const_int(Node *e, long long *out) {
+    Node *culprit = NULL;
+    return fold_int(e, out, &culprit) == 1;
+}
+
 static void check_const_arith(Node *n, JType *result) {
     if (jl_wrap_int || result->kind != TY_INT) return;   /* --wrap-int defines overflow as Java wrap-around */
     long long v;

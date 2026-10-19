@@ -311,6 +311,12 @@ static int array_len(RgCtx *r, Node *a, Iv *out) {
         *out = (Iv){f->rl_lo, f->rl_hi};
         return 1;
     }
+    if (a->kind == N_COND) {                          /* `c ? x : y`: the hull of the two arms (an array never changes length) */
+        Iv x, y;
+        if (!array_len(r, a->b, &x) || !array_len(r, a->c, &y)) return 0;
+        *out = (Iv){x.lo < y.lo ? x.lo : y.lo, x.hi > y.hi ? x.hi : y.hi};
+        return 1;
+    }
     if (a->kind == N_ARRAYINIT) { *out = (Iv){a->l1.count, a->l1.count}; return 1; }
     if (a->kind == N_NEWARRAY) {
         if (a->b && a->b->kind == N_ARRAYINIT) { *out = (Iv){a->b->l1.count, a->b->l1.count}; return 1; }

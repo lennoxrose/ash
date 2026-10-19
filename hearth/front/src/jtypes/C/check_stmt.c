@@ -34,7 +34,66 @@ static int has_break(Node *n, int depth) {
     }
 }
 
-static int always_true(Node *c) { return !c || (c->kind == N_LIT_BOOL && !strcmp(c->name, "true")); }
+/* A constant expression of type bool (JLS 15.29): literals, `!`, `&&`, `||`, `==` / `!=` on bools and the six
+ * comparisons of int constants, and final variables initialised with such an expression. Returns 1 and sets *out
+ * when it is one. Only these are used for reachability, so a loop whose condition is one of them is infinite
+ * (or never entered) exactly as javac decides. */
+/* only simple names and Type.NAME may stand for a constant variable (`obj.N` is not a constant expression) */
+static int const_shape(Node *e) {
+    if (!e) return 0;
+    switch (e->kind) {
+        case N_LIT_INT: case N_NAME: return 1;
+        case N_FIELDACC: return e->rk == R_STATIC_FIELD && e->a && e->a->rk == R_CLASS;
+        case N_UNARY: return (!strcmp(e->name, "-") || !strcmp(e->name, "+")) && const_shape(e->a);
+        case N_BINARY: return e->name[1] == 0 && strchr("+-*/%", e->name[0]) && const_shape(e->a) && const_shape(e->b);
+        default: return 0;
+    }
+}
+
+static int const_bool(Node *e, int *out, int depth) {
+    if (!e || depth > 16) return 0;
+    if (e->kind == N_LIT_BOOL) { *out = !strcmp(e->name, "true"); return 1; }
+    if ((e->kind == N_NAME || (e->kind == N_FIELDACC && e->rk == R_STATIC_FIELD && e->a && e->a->rk == R_CLASS)) && e->sym &&
+        e->type && e->type->kind == TY_BOOL && !e->type->nullable) {
+        Node *init = NULL;
+        if (e->rk == R_STATIC_FIELD || e->rk == R_FIELD || e->rk == R_THIS_FIELD) {
+            JField *f = e->sym;
+            if ((f->flags & M_FINAL) && f->decl) init = f->decl->b;
+        } else if (e->rk == R_LOCAL) {
+            JLocal *l = e->sym;
+            if ((l->flags & M_FINAL) && l->decl && l->decl->kind == N_LOCAL) init = l->decl->b;
+        }
+        return init && const_bool(init, out, depth + 1);
+    }
+    if (e->kind == N_UNARY && !strcmp(e->name, "!")) {
+        int v;
+        if (!const_bool(e->a, &v, depth + 1)) return 0;
+        *out = !v;
+        return 1;
+    }
+    if (e->kind == N_BINARY) {
+        const char *op = e->name;
+        int a, b;
+        if (!strcmp(op, "&&") || !strcmp(op, "||") || (e->a->type && e->a->type->kind == TY_BOOL && (!strcmp(op, "==") || !strcmp(op, "!=")))) {
+            if (!const_bool(e->a, &a, depth + 1) || !const_bool(e->b, &b, depth + 1)) return 0;
+            *out = op[0] == '&' ? (a && b) : op[0] == '|' ? (a || b) : op[0] == '=' ? (a == b) : (a != b);
+            return 1;
+        }
+        long long x, y;
+        if (e->a->type && e->b->type && e->a->type->kind == TY_INT && e->b->type->kind == TY_INT &&
+            (!strcmp(op, "<") || !strcmp(op, "<=") || !strcmp(op, ">") || !strcmp(op, ">=") || !strcmp(op, "==") || !strcmp(op, "!=")) &&
+            const_shape(e->a) && const_shape(e->b) && jt_const_int(e->a, &x) && jt_const_int(e->b, &y)) {
+            *out = !strcmp(op, "<") ? x < y : !strcmp(op, "<=") ? x <= y : !strcmp(op, ">") ? x > y : !strcmp(op, ">=") ? x >= y : !strcmp(op, "==") ? x == y : x != y;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int always_true(Node *c) {
+    int v;
+    return !c || (const_bool(c, &v, 0) && v);
+}
 
 int can_complete(Node *n) {
     if (!n) return 1;
