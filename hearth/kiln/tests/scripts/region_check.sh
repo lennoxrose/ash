@@ -33,6 +33,8 @@ check() { # name expected_region_loops
 }
 check RegionLoops 12
 check RegionEscapes 0
+check RegionForEach 16
+check RegionForEachEscapes 0
 
 mkdir "$TMP/p"
 printf 'name: m\nversion: 0.1.0\nmemory-safety: on\n' > "$TMP/p/ash.pkg"

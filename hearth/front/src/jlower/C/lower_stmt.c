@@ -439,7 +439,10 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
         emit_line(b, ind + 1, "local %s = __vc0(%s, \"next/0\");", name, iv);
     }
     L.loop = &ctx;
+    /* the loop variable is bound by `each` before the checkpoint, so it survives the rewind */
+    char *rg = region_enter(b, n, ind + 1);
     lbody(b, n->c, ind + 1);
+    region_leave(b, n->c, rg, ind + 1);
     L.loop = ctx.up;
     emit_line(b, ind, "}");
 }

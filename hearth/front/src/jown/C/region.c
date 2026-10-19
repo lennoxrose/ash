@@ -57,7 +57,9 @@ static int is_inner(Rg *g, JLocal *l) {
 
 static void collect(Rg *g, Node *n) {
     if (!n) return;
-    if ((n->kind == N_LOCAL || n->kind == N_FOREACH) && n->sym) {
+    /* a for-each variable of a reference type aliases an element that was there before the iteration, so it is
+     * never one of the body's fresh locals (a String is a value: assigning to it keeps nothing) */
+    if ((n->kind == N_LOCAL || (n->kind == N_FOREACH && n->sym && is_value(((JLocal *)n->sym)->type))) && n->sym) {
         if (g->n < MAX_INNER) g->inner[g->n++] = n->sym; else g->overflow = 1;
     }
     collect(g, n->a); collect(g, n->b); collect(g, n->c);
@@ -197,6 +199,18 @@ static int expr_ok2(Rg *g, Node *e) {
     }
 }
 
+/* for-each over an array or an ArrayList: the loop reads the data pointer and the count once, before the first
+ * iteration, and nothing else of the iteration lives on the heap. Any other Iterable calls project code. */
+static int native_iter_t(JType *t) { return array_t(t) || list_t(t); }
+
+static int foreach_ok(Rg *g, Node *s) {
+    JType *it = s->b ? s->b->type : NULL;
+    if (!s->sym || !native_iter_t(it)) return 0;
+    /* a list that the body itself grows would leave the loop with a stale data pointer */
+    if (list_t(it) && name_in(g, s->b)) return 0;
+    return expr_ok(g, s->b) && stmt_ok(g, s->c);
+}
+
 static int stmts_ok(Rg *g, JList *l) {
     for (int i = 0; i < l->count; i++) if (!stmt_ok(g, l->items[i])) return 0;
     return 1;
@@ -222,6 +236,7 @@ static int stmt_ok2(Rg *g, Node *s) {
             for (int i = 0; i < s->l2.count; i++) if (!expr_ok(g, s->l2.items[i])) return 0;
             return stmt_ok(g, s->b);
         }
+        case N_FOREACH: return foreach_ok(g, s);
         case N_RETURN: return expr_ok(g, s->a) && (!s->a || is_value(s->a->type));
         default: return 0;
     }
@@ -242,12 +257,22 @@ static int allocates(Node *n) {
 }
 
 int region_loop_ok(Node *loop) {
-    if (loop->kind != N_WHILE && loop->kind != N_DO && loop->kind != N_FOR) return 0;
+    if (loop->kind != N_WHILE && loop->kind != N_DO && loop->kind != N_FOR && loop->kind != N_FOREACH) return 0;
     Rg *g = j_alloc(sizeof(Rg));
-    collect(g, loop->b);
-    if (g->overflow) return 0;
+    Node *body = loop->kind == N_FOREACH ? loop->c : loop->b;
     why = NULL;
-    int ok = stmt_ok(g, loop->b) && allocates(loop->b);
+    int ok;
+    if (loop->kind == N_FOREACH) {
+        /* the iterable is evaluated once before the first iteration, i.e. outside the region: it may be any
+         * expression, as long as the loop itself is over an array or an ArrayList */
+        collect(g, loop);
+        if (g->overflow || !loop->sym || !native_iter_t(loop->b ? loop->b->type : NULL)) return 0;
+        ok = stmt_ok(g, body) && allocates(body);
+    } else {
+        collect(g, body);
+        if (g->overflow) return 0;
+        ok = stmt_ok(g, body) && allocates(body);
+    }
     if (!ok && getenv("ASH_REGION_TRACE") && getenv("ASH_REGION_TRACE")[0] == '2' && loop->line)
         fprintf(stderr, "no region: %s:%d (stopped at %s:%d kind %d)\n", loop->path ? loop->path : "?", loop->line, why && why->path ? why->path : "?", why ? why->line : 0, why ? (int)why->kind : -1);
     return ok;
@@ -255,7 +280,7 @@ int region_loop_ok(Node *loop) {
 
 static void mark(Node *n) {
     if (!n) return;
-    if ((n->kind == N_WHILE || n->kind == N_DO || n->kind == N_FOR) && region_loop_ok(n)) n->flags |= JOWN_REGION_LOOP;
+    if ((n->kind == N_WHILE || n->kind == N_DO || n->kind == N_FOR || n->kind == N_FOREACH) && region_loop_ok(n)) n->flags |= JOWN_REGION_LOOP;
     mark(n->a); mark(n->b); mark(n->c);
     JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
     for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) mark(ls[k]->items[i]);
