@@ -9,6 +9,7 @@ APM_SRC = \
     src/C/manifest.c \
     src/C/fsutil.c \
     src/C/git_fetch.c \
+    src/C/lock.c \
     src/C/install.c \
     src/C/cmd.c \
     src/C/ui.c \

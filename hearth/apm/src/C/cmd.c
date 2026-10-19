@@ -10,6 +10,7 @@
 #include "H/cmd.h"
 #include "H/manifest.h"
 #include "H/install.h"
+#include "H/lock.h"
 #include "H/fsutil.h"
 #include "H/git_fetch.h"
 #include "H/ui.h"
@@ -339,15 +340,13 @@ int cmd_add(const char *project_dir, int argc, char **argv) {
     }
 
     // installed first, recorded after: a spec that cannot be fetched must not end up in ash.pkg
-    Dependency dep;
-    snprintf(dep.name, sizeof(dep.name), "%s", name);
-    snprintf(dep.value, sizeof(dep.value), "%s", source);
-    if (!install_dependency(project_dir, &dep)) {
-        ui_err("failed to install '%s' (%s is unchanged)", name, MANIFEST_FILE);
-        return 1;
-    }
     if (!entry_set(target, name, source)) {
         ui_err("dependency table full (max %d)", MANIFEST_MAX_ENTRIES);
+        return 1;
+    }
+    InstallOpts opts = {0};
+    if (!install_resolve(project_dir, &m, &opts)) {
+        ui_err("failed to install '%s' (%s is unchanged)", name, MANIFEST_FILE);
         return 1;
     }
     if (!manifest_save(project_dir, &m)) return 1;
@@ -355,16 +354,15 @@ int cmd_add(const char *project_dir, int argc, char **argv) {
     return 0;
 }
 
-static int install_all(const char *project_dir, EntryList *list) {
-    int ok = 1;
-    for (int i = 0; i < list->count; i++) {
-        if (!install_dependency(project_dir, &list->items[i])) ok = 0;
-    }
-    return ok;
-}
-
+// apm install [--locked]
+//   makes @ash-modules match ash.pkg and ash.lock (see install.h); --locked changes nothing and fails when ash.lock
+//   does not already say what to install (for CI)
 int cmd_install(const char *project_dir, int argc, char **argv) {
-    (void)argc; (void)argv;
+    InstallOpts opts = {0};
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--locked") == 0) opts.locked = 1;
+        else { ui_err("usage: apm install [--locked]"); return 1; }
+    }
     Manifest m;
     if (!manifest_load(project_dir, &m)) {
         ui_err("no %s here -- run 'apm init' first", MANIFEST_FILE);
@@ -377,25 +375,133 @@ int cmd_install(const char *project_dir, int argc, char **argv) {
 
     if (m.deps.count + m.dev_deps.count == 0) {
         ui_info("%s has no dependencies", m.name);
-        return 0;
+        Lock *lock = calloc(1, sizeof(Lock));
+        int stale = lock && lock_load(project_dir, lock) && lock->count > 0;
+        free(lock);
+        if (!stale) return 0;                            // an old lockfile still names packages: drop them below
     }
 
     ui_header("%s@%s", m.name, m.version);
-    int ok = install_all(project_dir, &m.deps);
-    if (!install_all(project_dir, &m.dev_deps)) ok = 0;
+    int ok = install_resolve(project_dir, &m, &opts);
     if (ok) ui_ok("done");
     else ui_err("one or more dependencies failed to install");
     return ok ? 0 : 1;
 }
 
-static void list_dependencies(const char *project_dir, const char *title, EntryList *list) {
+// apm update [<name>]
+//   looks packages up again (the tip of the tag or branch of their source) and moves ash.lock to what it finds: all
+//   of them, or <name> and the packages only it brought in
+int cmd_update(const char *project_dir, int argc, char **argv) {
+    if (argc > 1) { ui_err("usage: apm update [<name>]"); return 1; }
+    Manifest m;
+    if (!manifest_load(project_dir, &m)) {
+        ui_err("no %s here -- run 'apm init' first", MANIFEST_FILE);
+        return 1;
+    }
+    InstallOpts opts = {0};
+    if (argc == 1) {
+        Lock *lock = calloc(1, sizeof(Lock));
+        int known = entry_find(&m.deps, argv[0]) || entry_find(&m.dev_deps, argv[0]) || (lock && lock_load(project_dir, lock) && lock_find(lock, argv[0]));
+        free(lock);
+        if (!known) {
+            ui_err("no package '%s' in %s or %s", argv[0], MANIFEST_FILE, LOCK_FILE);
+            return 1;
+        }
+        opts.update_name = argv[0];
+    } else {
+        opts.update_all = 1;
+    }
+    char ash_modules[1024];
+    snprintf(ash_modules, sizeof(ash_modules), "%s/@ash-modules", project_dir);
+    fsutil_mkdir_p(ash_modules);
+    ui_header("%s@%s", m.name, m.version);
+    if (!install_resolve(project_dir, &m, &opts)) {
+        ui_err("update failed (%s is unchanged)", LOCK_FILE);
+        return 1;
+    }
+    ui_ok("done");
+    return 0;
+}
+
+// apm remove <name>
+//   takes a dependency out of ash.pkg and removes it from @ash-modules together with the packages that only it
+//   needed (what ash.lock says apm installed); ash.lock follows
+int cmd_remove(const char *project_dir, int argc, char **argv) {
+    if (argc != 1) { ui_err("usage: apm remove <name>"); return 1; }
+    const char *name = argv[0];
+    Manifest m;
+    if (!manifest_load(project_dir, &m)) {
+        ui_err("no %s here -- run 'apm init' first", MANIFEST_FILE);
+        return 1;
+    }
+    EntryList *lists[2] = { &m.deps, &m.dev_deps };
+    int found = 0;
+    for (int k = 0; k < 2; k++) {
+        EntryList *l = lists[k];
+        for (int i = 0; i < l->count; i++) {
+            if (strcmp(l->items[i].name, name) != 0) continue;
+            for (int j = i + 1; j < l->count; j++) l->items[j - 1] = l->items[j];
+            l->count--;
+            found = 1;
+            break;
+        }
+    }
+    if (!found) {
+        Lock *lock = calloc(1, sizeof(Lock));
+        const LockEntry *e = lock && lock_load(project_dir, lock) ? lock_find(lock, name) : NULL;
+        if (e && e->via[0]) ui_err("'%s' is not a dependency of this project; %s needs it (remove or change that one)", name, e->via);
+        else ui_err("no dependency '%s' in %s", name, MANIFEST_FILE);
+        free(lock);
+        return 1;
+    }
+    if (!fsutil_safe_name(name)) { ui_err("'%s' is not a usable dependency name", name); return 1; }
+    InstallOpts opts = {0};
+    ui_header("%s@%s", m.name, m.version);
+    // the lockfile still has the package, so the resolver removes it and what only it needed; one that was installed
+    // before ash.lock existed is removed here
+    char dest[1024];
+    snprintf(dest, sizeof(dest), "%s/@ash-modules/%s", project_dir, name);
+    if (!install_resolve(project_dir, &m, &opts)) {
+        ui_err("could not update @ash-modules (%s is unchanged)", MANIFEST_FILE);
+        return 1;
+    }
+    Lock *after = calloc(1, sizeof(Lock));
+    int still_needed = after && lock_load(project_dir, after) && lock_find(after, name);   // another package requires it
+    free(after);
+    if (!still_needed && fsutil_dir_exists(dest)) {
+        if (!fsutil_rm_rf(dest)) { ui_err("could not remove %s", dest); return 1; }
+        ui_info("removed %s", name);
+    }
+    if (still_needed) ui_info("%s stays installed: another package requires it", name);
+    if (!manifest_save(project_dir, &m)) return 1;
+    ui_ok("removed %s", name);
+    return 0;
+}
+
+static void list_dependencies(const char *project_dir, const char *title, EntryList *list, Lock *lock) {
     if (list->count == 0) return;
     ui_header("%s", title);
     for (int i = 0; i < list->count; i++) {
         char dest[1024];
         snprintf(dest, sizeof(dest), "%s/@ash-modules/%s", project_dir, list->items[i].name);
-        if (fsutil_dir_exists(dest)) ui_bullet("%s: %s", list->items[i].name, list->items[i].value);
-        else ui_bullet("%s: %s (not installed)", list->items[i].name, list->items[i].value);
+        const LockEntry *le = lock_find(lock, list->items[i].name);
+        if (!fsutil_dir_exists(dest)) ui_bullet("%s: %s (not installed)", list->items[i].name, list->items[i].value);
+        else if (le && strcmp(le->spec, list->items[i].value) == 0) ui_bullet("%s: %s (%.12s)", list->items[i].name, list->items[i].value, le->sha);
+        else ui_bullet("%s: %s", list->items[i].name, list->items[i].value);
+    }
+}
+
+// the packages ash.lock has beyond the project's own: what the dependencies brought in
+static void list_transitive(const char *project_dir, Lock *lock) {
+    int any = 0;
+    for (int i = 0; i < lock->count; i++) {
+        const LockEntry *e = &lock->items[i];
+        if (!e->via[0]) continue;
+        char dest[1024];
+        snprintf(dest, sizeof(dest), "%s/@ash-modules/%s", project_dir, e->name);
+        if (!any) ui_header("required by dependencies");
+        any = 1;
+        ui_bullet("%s: %s (%.12s, via %s)%s", e->name, e->spec, e->sha, e->via, fsutil_dir_exists(dest) ? "" : " (not installed)");
     }
 }
 
@@ -422,8 +528,14 @@ int cmd_list(const char *project_dir, int argc, char **argv) {
         ui_bullet("(no dependencies)");
         return 0;
     }
-    list_dependencies(project_dir, "dependencies", &m.deps);
-    list_dependencies(project_dir, "dev-dependencies", &m.dev_deps);
+    Lock *lock = calloc(1, sizeof(Lock));
+    if (lock) lock_load(project_dir, lock);
+    if (lock) {
+        list_dependencies(project_dir, "dependencies", &m.deps, lock);
+        list_dependencies(project_dir, "dev-dependencies", &m.dev_deps, lock);
+        list_transitive(project_dir, lock);
+    }
+    free(lock);
     list_entries("libraries", &m.libs);
     list_entries("scripts", &m.scripts);
     return 0;

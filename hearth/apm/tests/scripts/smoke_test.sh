@@ -185,6 +185,151 @@ C
 gcc -std=c11 -Wall -Wextra -I "$APM_DIR/src" -o t t.c "$APM_DIR/src/C/fsutil.c" 2>/dev/null || fail "could not build the rm_rf test"
 ./t || fail "fsutil_rm_rf left part of a deeply nested tree behind (exit $?)")
 
+# ash.lock: commits are pinned, install honours them, update moves them, remove prunes them, transitive dependencies
+# come from the dependency's own ash.pkg. No network: git is pointed at repositories made here, which stand in for
+# https://github.com/acme/<name>.git (git's url.<base>.insteadOf).
+GITROOT="$SCRATCH/gitroot"
+mkdir -p "$GITROOT/acme"
+cat > "$SCRATCH/gitconfig" <<CFG
+[url "file://$GITROOT/"]
+	insteadOf = https://github.com/
+[user]
+	name = apm test
+	email = apm@test.invalid
+[init]
+	defaultBranch = main
+CFG
+export GIT_CONFIG_GLOBAL="$SCRATCH/gitconfig" GIT_CONFIG_NOSYSTEM=1
+upstream() { echo "$GITROOT/acme/$1.git"; }
+# mkpkg <name> [dependency lines of its ash.pkg]: a module with one commit
+mkpkg() {
+    local d; d=$(upstream "$1")
+    mkdir -p "$d/src/main/ash/$1"
+    git -C "$d" init -q
+    printf 'package %s;\npublic class C { public static String v() { return "%s"; } }\n' "$1" "$1" > "$d/src/main/ash/$1/C.ash"
+    { printf 'name: %s\nversion: 1.0.0\n' "$1"; if [ $# -gt 1 ]; then printf '\n[dependencies]\n'; shift; printf '%s\n' "$@"; fi; } > "$d/ash.pkg"
+    git -C "$d" add -A
+    git -C "$d" commit -q -m "$1 one"
+}
+# more <name> <text>: another commit on the default branch
+more() { echo "$2" >> "$(upstream "$1")/extra.txt"; git -C "$(upstream "$1")" add -A; git -C "$(upstream "$1")" commit -q -m "$2"; }
+tip() { git -C "$(upstream "$1")" rev-parse "${2:-HEAD}"; }
+at() { git -C "$1" rev-parse HEAD; }
+
+mkpkg libb
+git -C "$(upstream libb)" tag v1
+mkpkg liba 'libb: github:acme/libb@v1'
+mkpkg tracker
+mkdir lockproj && (cd lockproj
+"$BIN" init > /dev/null || fail "lock: init"
+liba1=$(tip liba); libb1=$(tip libb v1); tracker1=$(tip tracker)
+
+# add installs the dependency and what its ash.pkg needs, and writes ash.lock
+"$BIN" add github:acme/liba > /dev/null 2>&1 || fail "lock: add of a package with a dependency"
+[ -f ash.lock ] || fail "lock: add did not write ash.lock"
+grep -q "^liba: github:acme/liba $liba1\$" ash.lock || fail "lock: liba not pinned to its commit ($(cat ash.lock))"
+grep -q "^libb: github:acme/libb@v1 $libb1 via liba\$" ash.lock || fail "lock: transitive libb not pinned / not marked via liba"
+[ -f @ash-modules/libb/src/main/ash/libb/C.ash ] || fail "lock: transitive dependency not installed next to the others"
+grep -q "libb" ash.pkg && fail "lock: a transitive dependency must not be written to ash.pkg"
+"$BIN" list | grep -q "libb: github:acme/libb@v1 (${libb1:0:12}, via liba)" || fail "lock: list does not show the transitive package"
+
+# upstream moves on; a clean install still gives the locked commits (also for a tag that was moved)
+more liba "liba two"; more libb "libb two"; git -C "$(upstream libb)" tag -f v1 > /dev/null
+cp ash.lock lock.before
+rm -rf @ash-modules
+"$BIN" install > /dev/null 2>&1 || fail "lock: install from ash.lock"
+[ "$(at @ash-modules/liba)" == "$liba1" ] || fail "lock: install did not use the locked commit of liba"
+[ "$(at @ash-modules/libb)" == "$libb1" ] || fail "lock: install did not use the locked commit of libb (the tag has moved)"
+[ ! -e @ash-modules/liba/extra.txt ] || fail "lock: install fetched newer files than the lock"
+cmp -s ash.lock lock.before || fail "lock: install changed ash.lock"
+"$BIN" install > /dev/null 2>&1 || fail "lock: second install"
+cmp -s ash.lock lock.before || fail "lock: a second install changed ash.lock"
+"$BIN" install --locked > /dev/null 2>&1 || fail "lock: install --locked on a current lockfile"
+
+# a package that is somewhere else than the lock says is put back
+git -C @ash-modules/liba commit -q --allow-empty -m drift
+[ "$(at @ash-modules/liba)" != "$liba1" ] || fail "lock: test setup (drift)"
+"$BIN" install > /dev/null 2>&1 || fail "lock: install over a drifted checkout"
+[ "$(at @ash-modules/liba)" == "$liba1" ] || fail "lock: install did not restore the locked commit"
+
+# a dev dependency is locked too, and a branch is pinned to the commit it had
+"$BIN" add github:acme/tracker --dev > /dev/null 2>&1 || fail "lock: add --dev"
+grep -q "^tracker: github:acme/tracker $tracker1\$" ash.lock || fail "lock: dev dependency not pinned"
+more tracker "tracker two"
+rm -rf @ash-modules/tracker
+"$BIN" install > /dev/null 2>&1 || fail "lock: reinstall of a branch dependency"
+[ "$(at @ash-modules/tracker)" == "$tracker1" ] || fail "lock: a branch dependency moved without an update"
+
+# --locked refuses to change anything: a package ash.lock does not know
+cp ash.lock lock.full
+grep -v '^tracker:' lock.full > ash.lock
+if "$BIN" install --locked > /dev/null 2>&1; then fail "lock: --locked accepted a lockfile without tracker"; fi
+cmp -s ash.lock <(grep -v '^tracker:' lock.full) || fail "lock: --locked rewrote ash.lock"
+cp lock.full ash.lock
+
+# update <name> moves that package (and what only it brought in), nothing else
+"$BIN" update tracker > /dev/null 2>&1 || fail "lock: update tracker"
+grep -q "^tracker: github:acme/tracker $(tip tracker)\$" ash.lock || fail "lock: update did not move tracker"
+[ "$(at @ash-modules/tracker)" == "$(tip tracker)" ] || fail "lock: update did not check out the new tracker commit"
+grep -q "^liba: github:acme/liba $liba1\$" ash.lock || fail "lock: update tracker moved liba"
+"$BIN" update liba > /dev/null 2>&1 || fail "lock: update liba"
+grep -q "^liba: github:acme/liba $(tip liba)\$" ash.lock || fail "lock: update liba did not move liba"
+grep -q "^libb: github:acme/libb@v1 $(tip libb v1) via liba\$" ash.lock || fail "lock: update liba did not look libb up again (its tag moved)"
+[ -f @ash-modules/liba/extra.txt ] || fail "lock: update liba did not fetch the new files"
+more tracker "tracker three"; more liba "liba three"
+"$BIN" update > /dev/null 2>&1 || fail "lock: update (all)"
+grep -q "^tracker: github:acme/tracker $(tip tracker)\$" ash.lock || fail "lock: update (all) did not move tracker"
+grep -q "^liba: github:acme/liba $(tip liba)\$" ash.lock || fail "lock: update (all) did not move liba"
+if "$BIN" update nosuchpackage > /dev/null 2>&1; then fail "lock: update of an unknown package must fail"; fi
+
+# remove: out of ash.pkg, out of @ash-modules together with what only it needed, out of ash.lock
+if "$BIN" remove libb > /dev/null 2>&1; then fail "lock: remove of a transitive package must fail"; fi
+if "$BIN" remove nosuchpackage > /dev/null 2>&1; then fail "lock: remove of an unknown package must fail"; fi
+"$BIN" remove liba > /dev/null 2>&1 || fail "lock: remove liba"
+grep -q "liba" ash.pkg && fail "lock: remove left liba in ash.pkg"
+[ ! -e @ash-modules/liba ] || fail "lock: remove left liba installed"
+[ ! -e @ash-modules/libb ] || fail "lock: remove left the package only liba needed"
+grep -q "liba\|libb" ash.lock && fail "lock: remove left packages in ash.lock"
+[ -d @ash-modules/tracker ] || fail "lock: remove took tracker too"
+grep -q "^tracker: " ash.lock || fail "lock: remove dropped tracker from ash.lock"
+"$BIN" remove tracker > /dev/null 2>&1 || fail "lock: remove tracker"
+[ ! -e ash.lock ] || fail "lock: ash.lock must go when no package is left"
+)
+
+# the first source asked for a name stays (and the other is a warning); a package needed from two places is installed once
+mkpkg other 'libb: github:acme/libb'
+mkdir lockconflict && (cd lockconflict
+printf 'name: c\nversion: 1\n\n[dependencies]\nlibb: github:acme/libb@v1\nother: github:acme/other\n' > ash.pkg
+out=$("$BIN" install 2>&1) || fail "lock: install with a source conflict ($out)"
+grep -q "keeping that one" <<<"$out" || fail "lock: a conflicting source was not reported ($out)"
+grep -q "^libb: github:acme/libb@v1 $(tip libb v1)\$" ash.lock || fail "lock: the first source of libb did not win"
+grep -q "^other: github:acme/other .* via" ash.lock && fail "lock: other is a dependency of the project"
+"$BIN" install --locked > /dev/null 2>&1 || fail "lock: --locked after a conflict")
+
+# a dependency's own ash.pkg is not trusted: bad names and sources are refused, nothing is written
+mkpkg evil '../escape: github:acme/libb'
+mkpkg evil2 'libb: github:acme/libb;touch pwned'
+for bad in evil evil2; do
+    mkdir "lock_$bad" && (cd "lock_$bad"
+    printf 'name: e\nversion: 1\n\n[dependencies]\n%s: github:acme/%s\n' "$bad" "$bad" > ash.pkg
+    if "$BIN" install > /dev/null 2>&1; then fail "lock: install accepted a dependency with a bad dependency ($bad)"; fi
+    [ ! -e ash.lock ] || fail "lock: a failed install wrote ash.lock ($bad)"
+    [ ! -e ../escape ] && [ ! -e pwned ] && [ ! -e @ash-modules/escape ] || fail "lock: a bad dependency escaped ($bad)")
+done
+
+# a lockfile naming a commit that does not exist fails the install and leaves the lockfile alone
+mkdir lockbad && (cd lockbad
+printf 'name: b\nversion: 1\n\n[dependencies]\nlibb: github:acme/libb@v1\n' > ash.pkg
+"$BIN" install > /dev/null 2>&1 || fail "lock: install for the bad-lock test"
+sed -i "s/ $(tip libb v1)\$/ 0123456789abcdef0123456789abcdef01234567/" ash.lock
+cp ash.lock lock.bad
+rm -rf @ash-modules
+if "$BIN" install > /dev/null 2>&1; then fail "lock: install accepted a commit that does not exist"; fi
+cmp -s ash.lock lock.bad || fail "lock: a failed install changed ash.lock"
+printf 'rubbish\n' > ash.lock
+"$BIN" install > /dev/null 2>&1 || fail "lock: an unreadable lockfile must be replaced, not fail the install"
+grep -q "^libb: github:acme/libb@v1 $(tip libb v1)\$" ash.lock || fail "lock: unreadable lockfile not rewritten")
+
 if "$BIN" bogus-command > /dev/null 2>&1; then fail "unknown command should exit non-zero"; fi
 
 echo "apm smoke test: OK"

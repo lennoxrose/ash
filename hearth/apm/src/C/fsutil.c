@@ -90,6 +90,40 @@ int fsutil_run(char *const argv[]) {
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
+int fsutil_capture(char *const argv[], char *out, int out_size) {
+    int fds[2];
+    out[0] = '\0';
+    if (pipe(fds) != 0) return 0;
+    fflush(stdout);
+    fflush(stderr);
+    pid_t pid = fork();
+    if (pid < 0) { close(fds[0]); close(fds[1]); return 0; }
+    if (pid == 0) {
+        setenv("GIT_TERMINAL_PROMPT", "0", 1);
+        close(fds[0]);
+        if (dup2(fds[1], STDOUT_FILENO) < 0) _exit(126);
+        close(fds[1]);
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    close(fds[1]);
+    int n = 0;
+    char buf[256];
+    ssize_t got;
+    while ((got = read(fds[0], buf, sizeof(buf))) > 0) {      // drain everything so the child never blocks
+        for (ssize_t i = 0; i < got && n < out_size - 1; i++) out[n++] = buf[i];
+    }
+    close(fds[0]);
+    out[n] = '\0';
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return 0;
+    char *nl = strchr(out, '\n');
+    if (nl) *nl = '\0';
+    size_t len = strlen(out);
+    while (len > 0 && (out[len - 1] == '\r' || out[len - 1] == ' ')) out[--len] = '\0';
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0 && out[0] != '\0';
+}
+
 int fsutil_rm_rf(const char *path) {
     struct stat st;
     if (lstat(path, &st) != 0) return 1;

@@ -164,13 +164,17 @@ test: ashvm run src/test/ash/AllTests.ash
 ```bash
 apm init                                   # create ash.pkg
 apm add github:user/repo[@ref] [--as name] [--dev]
-apm install                                # fetch [dependencies] and [dev-dependencies] into ./@ash-modules/
-apm list                                   # metadata, dependencies (and whether installed), libraries, scripts
+apm install [--locked]                     # fetch [dependencies] and [dev-dependencies] (and theirs) into ./@ash-modules/, at the commits in ash.lock
+apm update [<name>]                        # look dependencies up again (the tip of their tag / branch) and move ash.lock
+apm remove <name>                          # take a dependency out of ash.pkg, @ash-modules/ and ash.lock (and what only it needed)
+apm list                                   # metadata, dependencies with their locked commit (and whether installed), libraries, scripts
 apm run <script>                           # run a [scripts] entry with sh -c; `apm build` / `apm test` are shorthands
 apm license [<id>] [--author <name>] [--year <yyyy>]   # list licenses / write LICENSE and set license: in ash.pkg
 ```
 
 `apm license MIT` writes a `LICENSE` file and sets `license: MIT` in `ash.pkg`; running it again with another id replaces both. The copyright holder defaults to `author:` (without the `<email>`), the year to the current year. Built in (no network): MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC, OFL-1.1, GPL-2.0, GPL-3.0, LGPL-2.1, LGPL-3.0 (texts from the SPDX list; the `-only` forms are accepted as aliases).
+
+`ash.lock` (written next to `ash.pkg`; commit it) records the exact commit of every package under `@ash-modules/`, so `apm install` gives the same sources on every machine whatever a tag or branch points to today, and only `apm update` moves them. A dependency's own `[dependencies]` (not its `[dev-dependencies]`) are installed too, flat in the project's `@ash-modules/` and listed in the lockfile with the package that required them (`via`); when two packages ask for the same name from different sources the first one asked for stays (the project's own entries first) and apm warns. `apm install --locked` changes nothing and fails when `ash.lock` is missing a package or has a stale one (for CI); `apm update <name>` looks that package up again together with the packages only it brought in. A dependency's `ash.pkg` is not trusted: unusable names and sources in it are refused.
 
 `[libraries]` records the external native libraries a package links; apm stores and lists them, but
 `ashvm` and `kiln` do not consume them yet. Scripts run with the same trust as `npm run`: only the
@@ -187,7 +191,7 @@ hearth/front/     the only frontend: lexer, parser, AST, type checker, lowering,
                   Built as front.a (in bin/lib/), linked by ashvm and kiln. There is no front-end executable.
 hearth/ashvm/     the VM engine: compiler (IR -> bytecode), value, vm, builtins, diagnostics, app (CLI + REPL)
 hearth/kiln/      the native compiler: IR -> machine code -> ELF/PE (no VM, no libc)
-hearth/apm/       the Ash package manager: apm init/add/install/list/run, dependencies fetched from GitHub
+hearth/apm/       the Ash package manager: apm init/add/install/update/remove/list/run, dependencies fetched from GitHub and pinned in ash.lock
                   into a project-local @ash-modules/ folder; point ASH_PATH at an installed source root
                   to compile against it (see ideas/ash_modules.md)
 hearth/pyre/      GPU/CPU compute backends (C ABI)
