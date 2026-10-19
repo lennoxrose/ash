@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Only the static builds (Linux and Windows) can give memory back (heap.h); --link=shared IR carries no frees.
-    if (kiln_get_link_mode() == KILN_LINK_STATIC) jl_drops = JL_DROP_STRINGS | JL_DROP_ARRAYS | JL_DROP_OBJECTS | JL_DROP_MAPS | JL_DROP_ELEMS | JL_NATIVE_NEWARR | (getenv("KILN_NO_REGIONS") || kiln_get_target() == KILN_TARGET_WINDOWS ? 0 : JL_REGION);
+    if (kiln_get_link_mode() == KILN_LINK_STATIC) jl_drops = JL_DROP_STRINGS | JL_DROP_ARRAYS | JL_DROP_OBJECTS | JL_DROP_MAPS | JL_DROP_ELEMS | JL_NATIVE_NEWARR | (getenv("KILN_NO_REGIONS") ? 0 : JL_REGION);
     char *ir = jdriver_compile_file(input_path, wrap_int);
     if (!ir) return 1;
     if (strstr(ir, "mem_free(") || strstr(ir, "mem_cat(") || strstr(ir, "mem_free_arr(") || strstr(ir, "mem_free_obj(") || strstr(ir, "mem_free_map(") || strstr(ir, "mem_free_elems(") || strstr(ir, "mem_newarr1(")) {
