@@ -266,6 +266,10 @@ static void expr(Walk *w, Node *n) {
             w->prefix = pfx;
             return;
         }
+        case N_INSTANCEOF:
+            children(w, n);
+            if (n->sym) mnemo_reinit(m, id_of(n->sym));       /* the binding is a fresh variable each time the test runs */
+            return;
         case N_SWITCH: {                     /* a switch expression: each case starts from the state after the selector */
             int pfx = w->prefix;
             stmt(w, n);
@@ -474,7 +478,10 @@ static void stmt(Walk *w, Node *n) {
             mnemo_release(m, into_catch);
             return;
         }
-        case N_CATCH: stmt(w, n->b); return;
+        case N_CATCH:
+            if (n->sym) mnemo_reinit(m, id_of(n->sym));   /* a fresh variable on every iteration, like a local */
+            stmt(w, n->b);
+            return;
         case N_SWITCH: {
             expr(w, n->a);
             uint32_t entry = mnemo_save(m);
@@ -490,6 +497,10 @@ static void stmt(Walk *w, Node *n) {
                 rg_assume_case(&w->rg, n->a, c);       /* ... or the selector matched one of this case's labels */
                 mnemo_join(m, fall);                   /* colon-form cases fall through */
                 mnemo_release(m, fall);
+                for (int j = 0; j < c->l1.count; j++) {   /* a type pattern binds a fresh variable */
+                    Node *lb = c->l1.items[j];
+                    if (lb->kind == N_TYPEPATTERN && lb->sym) mnemo_reinit(m, id_of(lb->sym));
+                }
                 if (c->b) {
                     if (c->b->kind == N_BLOCK || c->b->kind == N_THROW) stmt(w, c->b); else expr(w, c->b);
                     mnemo_join_into(m, out);

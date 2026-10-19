@@ -341,6 +341,7 @@ static void check_try(Ctx *cx, Node *n) {
         if (vt) {
             JLocal *l = jt_declare_local(cx, c, c->name, vt, 0, 0);
             l->has_init = 1;
+            c->sym = l;
         }
         check_block_body(cx, c->b);
         pop_scope(cx, mark);

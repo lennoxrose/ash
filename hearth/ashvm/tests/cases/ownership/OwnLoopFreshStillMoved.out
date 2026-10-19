@@ -1,0 +1,11 @@
+error: use of moved value 'e': it was moved earlier by an assignment or by passing it to a call; lend it with &e, clone it, or assign a new value first
+  --> tests/cases/ownership/OwnLoopFreshStillMoved.ash:17:33
+   |
+ 17|                 total += keepEx(e);           // error: `e` was moved a line above
+   |                                 ^
+error: use of moved value 'outer': it was moved earlier by an assignment or by passing it to a call; lend it with &outer, clone it, or assign a new value first
+  --> tests/cases/ownership/OwnLoopFreshStillMoved.ash:15:33
+   |
+ 15|                 total += keepEx(outer);       // error: `outer` is moved in the previous iteration
+   |                                 ^
+2 error(s)
