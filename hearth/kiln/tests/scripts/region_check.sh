@@ -42,6 +42,13 @@ check RegionCalls 12
 check RegionCallEscapes 0
 check RegionTry 9
 check RegionTryEscapes 0
+check AdvFields 0
+check AdvLoops 0
+check AdvSwitch 0
+check AdvInit 0
+check AdvLambda 2
+check AdvTry 1
+check AdvRegions 5
 
 mkdir "$TMP/p"
 printf 'name: m\nversion: 0.1.0\nmemory-safety: on\n' > "$TMP/p/ash.pkg"
