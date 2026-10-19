@@ -1,0 +1,16 @@
+name: Performance regression
+description: Something got slower between two versions or commits
+labels: [performance]
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Fast and slow versions
+      placeholder: "fast: beta-v0.1.0, slow: a1b2c3d"
+    validations: {required: true}
+  - type: textarea
+    id: bench
+    attributes:
+      label: Benchmark
+      description: The program and the output of `tools/bench_compare.sh <fast ashvm> <slow ashvm>` or your timings
+    validations: {required: true}

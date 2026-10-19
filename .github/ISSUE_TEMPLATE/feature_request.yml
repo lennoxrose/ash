@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a language feature, tool option or improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do today, or do badly?
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Syntax or behavior you would like, with a short example
+    validations: {required: true}
+  - type: textarea
+    id: performance
+    attributes:
+      label: Cost
+      description: >
+        Ash never gets slower. How can this be done with no cost to programs that do not use it
+        (compile-time work, an opt-in flag, a separate path)?
+    validations: {required: true}
