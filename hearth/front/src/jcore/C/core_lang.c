@@ -405,6 +405,7 @@ const JCoreEntry jcore_lang[] = {
     "    @Lower(\"__println(__bs($1))\") public native void println(bool b);\n"
     "    /// Prints the value followed by a newline.\n"
     "    @Lower(\"__println(chr($1))\") public native void println(char c);\n"
+    "    @Lower(\"print_raw(__format($1, $2))\") public native void printf(String format, Object?... args);\n"
     "    @Lower(\"print_raw(__str($1))\") public native void print(Object? o);\n"
     "    @Lower(\"print_raw(__str($1))\") public native void print(String? s);\n"
     "    @Lower(\"print_raw(str($1))\") public native void print(int i);\n"
@@ -509,6 +510,8 @@ const JCoreEntry jcore_lang[] = {
     "    @Lower(\"chr($1)\") public static native String valueOf(char c);\n"
     "    /// Joins strings with a separator.\n"
     "    @Lower(\"join($2, $1)\") public static native String join(String sep, Iterable<String> parts);\n"
+    "    @Lower(\"__format($1, $2)\") public static native String format(String format, Object?... args);\n"
+    "    @Lower(\"__format($0, $1)\") public native String formatted(Object?... args);\n"
     "}\n" },
   { "ash/lang/StringBuilder",
     "package ash.lang;\n"

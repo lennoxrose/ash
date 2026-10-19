@@ -1,0 +1,13 @@
+error: cannot find symbol 'cuont'
+  --> tests/cases/diag/InterpError.ash:6:35
+   |
+  6|         System.out.println("n = ${cuont}, ok = ${count}");
+   |                                   ^
+   = help: did you mean the name 'count'?
+error: cannot find method 'lenght' in String
+  --> tests/cases/diag/InterpError.ash:7:47
+   |
+  7|         System.out.println("unknown method: ${"abc".lenght()}");
+   |                                               ^
+   = help: did you mean the method 'length'?
+2 error(s)

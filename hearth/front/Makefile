@@ -31,6 +31,7 @@ FRONT_SRC = \
     src/jlower/C/lower_class.c \
     src/jlower/C/lower_prelude.c \
     src/jlower/C/lower_prelude_long.c \
+    src/jlower/C/lower_prelude_fmt.c \
     src/jlower/C/lower_prune.c \
     src/jdriver/C/jdriver.c \
     src/jexplain/C/jexplain.c \

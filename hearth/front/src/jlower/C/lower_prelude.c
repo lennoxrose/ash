@@ -584,4 +584,5 @@ void emit_prelude(JBuf *b) {
         "    yield __vc0(x, \"iterator/0\");\n"
         "}");
     emit_prelude_long(b);
+    emit_prelude_fmt(b);
 }

@@ -257,7 +257,16 @@ static char **lower_args_ex(JMethod *m, JList *args, int *out_n, Node *recv_node
             j_buf_addc(&b, '[');
             for (int i = np - 1; i < n; i++) {
                 if (i > np - 1) j_buf_add(&b, ", ");
-                j_buf_add(&b, v[i]);
+                /* String.format / printf: the VM sees a double, float and char as a plain number, so say which it was */
+                const char *fk = NULL;
+                if (m->tmpl && !strncmp(m->tmpl, "__format(", 9) && ((Node *)args->items[i])->type) {
+                    JType *at = ty_unbox(((Node *)args->items[i])->type);
+                    if (at->kind == TY_DOUBLE) fk = "d";
+                    else if (at->kind == TY_FLOAT) fk = "f";
+                    else if (at->kind == TY_CHAR) fk = "c";
+                }
+                if (fk) j_buf_addf(&b, "{\"__fv\": %s, \"__fk\": \"%s\"}", v[i], fk);
+                else j_buf_add(&b, v[i]);
             }
             j_buf_addc(&b, ']');
             v[np - 1] = b.data;
