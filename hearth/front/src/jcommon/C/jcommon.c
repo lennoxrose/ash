@@ -255,7 +255,8 @@ static void report(const char *path, int line, int col, const char *fmt, va_list
     int color = use_color();
     const char *bold = color ? COL_BOLD : "", *red = color ? COL_RED : "", *cyan = color ? COL_CYAN : "";
     const char *gray = color ? COL_GRAY : "", *reset = color ? COL_RESET : "";
-    fprintf(stderr, "%s%serror%s%s: ", bold, red, reset, bold);
+    if (pending_code) fprintf(stderr, "%s%serror[%s]%s%s: ", bold, red, pending_code, reset, bold);
+    else fprintf(stderr, "%s%serror%s%s: ", bold, red, reset, bold);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "%s\n%s  --> %s:%d:%d%s\n", reset, cyan, path ? path : "<unknown>", line, col, reset);
     snippet(path, line, col, gray, red, reset);

@@ -7,6 +7,7 @@
 #include "diagnostics/H/diagnostics.h"
 #include "jcommon/H/jcommon.h"
 #include "jdriver/H/jdriver.h"
+#include "jexplain/H/jexplain.h"
 #include "jlower/H/jlower.h"
 
 #ifndef ASH_VERSION
@@ -21,6 +22,7 @@ void ashvm_execute_ir(char *ir) {
 static int usage(const char *prog) {
     fprintf(stderr, "usage: %s                            interactive REPL\n", prog);
     fprintf(stderr, "       %s run [--wrap-int] <file.ash>   run a program\n", prog);
+    fprintf(stderr, "       %s explain [<code>]              describe a memory-safety error code such as E0101 (no code: list them)\n", prog);
     fprintf(stderr, "       %s check [--json] <file.ash>     type-check without running; --json prints the diagnostics as JSON on stdout\n", prog);
     return 2;
 }
@@ -37,6 +39,10 @@ int main(int argc, char *argv[]) {
         if (!ir) return 1;
         ashvm_execute_ir(ir);
         return 0;
+    }
+    if (strcmp(argv[1], "explain") == 0) {
+        if (argc > 3) return usage(argv[0]);
+        return jexplain_print(argc == 3 ? argv[2] : NULL);
     }
     if (strcmp(argv[1], "check") == 0) {
         int json = argc == 4 && strcmp(argv[2], "--json") == 0;

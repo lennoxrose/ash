@@ -123,8 +123,8 @@ static void use(Walk *w, Node *n) {
         for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) dup = 1;
         if (!dup) {
             j_list_push(&w->reported, n);
-            if (first_iter) cerr(n, "variable '%s' is used before it is assigned: the first pass through the loop reaches this use before any assignment; give it a value before the loop (or where it is declared)", n->name);
-            else cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first", n->name);
+            if (first_iter) j_diag_code("E0301"), cerr(n, "variable '%s' is used before it is assigned: the first pass through the loop reaches this use before any assignment; give it a value before the loop (or where it is declared)", n->name);
+            else j_diag_code("E0301"), cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first", n->name);
         }
         mark_assigned(w, l);                          /* one report per variable and path */
         return;
@@ -149,6 +149,7 @@ static void use(Walk *w, Node *n) {
             j_diag_help("use '%s' before this point, or use the variable or field it was stored in", v);
         }
     }
+    j_diag_code("E0101");
     cerr(n, "use of moved value '%s': it was moved earlier by an assignment or by passing it to a call; lend it with &%s, clone it, or assign a new value first", n->name, n->name);
 }
 
@@ -188,6 +189,7 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
         for (int k = 0; k < w->reported.count; k++) if (w->reported.items[k] == n) dup = 1;
         if (!dup) {
             j_list_push(&w->reported, n);
+            j_diag_code("E0105");
             cerr(n, "System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you");
         }
     }
@@ -207,6 +209,7 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
                 for (int k = 0; k < w->reported.count; k++) if (w->reported.items[k] == a) dup = 1;
                 if (!dup) {
                     j_list_push(&w->reported, a);
+                    j_diag_code("E0102");
                     cerr(a, "cannot lend '%s' with '%s': '%s' keeps this parameter (stores, returns or passes it on); pass '%s' by move or clone it",
                          a->a->name, a->name, m->name, a->a->name);
                 }
@@ -229,6 +232,7 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
             if (seen[i].l != seen[j].l || (!seen[i].mut && !seen[j].mut)) continue;
             for (int k = 0; k < w->reported.count; k++) if (w->reported.items[k] == seen[j].at) goto next_pair;
             j_list_push(&w->reported, seen[j].at);
+            j_diag_code("E0103");
             cerr(seen[j].at, "cannot use '%s' here: it is already %s in this call", seen[i].l->name,
                  seen[i].mut ? "borrowed mutably" : "borrowed, and this use is mutable");
         next_pair:;
@@ -270,6 +274,7 @@ static void expr(Walk *w, Node *n) {
         case N_NEW: call_args(w, n, n->sym, NULL, &n->l1); return;
         case N_UNARY:
             if (n->name[0] == '&') {
+                j_diag_code("E0104");
                 cerr(n, "a borrow ('&%s') can only be passed as a call argument; it cannot be stored, returned or assigned, so pass '%s' by move or clone it", n->a && n->a->name ? n->a->name : "x", n->a && n->a->name ? n->a->name : "x");
                 return;
             }

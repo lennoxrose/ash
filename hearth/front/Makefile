@@ -33,6 +33,8 @@ FRONT_SRC = \
     src/jlower/C/lower_prelude_long.c \
     src/jlower/C/lower_prune.c \
     src/jdriver/C/jdriver.c \
+    src/jexplain/C/jexplain.c \
+    src/jexplain/C/explain_data.c \
     src/jrepl/C/jrepl.c
 
 obj_of = $(patsubst %.c,%.o,$(subst /C/,/O/,$(1)))

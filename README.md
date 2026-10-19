@@ -39,6 +39,7 @@ make                                    # builds bin/ashvm, bin/kiln and the res
 bin/ashvm run Main.ash                  # run a program on the VM
 bin/ashvm run --wrap-int Main.ash       # Java's 32-bit int overflow (slower arithmetic loops)
 bin/ashvm check Main.ash                # parse and type-check only
+bin/ashvm explain E0101                 # what a memory-safety error code means (also `kiln --explain`)
 bin/ashvm check --json Main.ash         # the same, diagnostics as JSON on stdout (editors; kiln has --json too)
 bin/ashvm                               # interactive REPL
 
@@ -110,7 +111,7 @@ roughly the ceiling for anything short of a full optimizing native compiler.
 
 ## Memory safety (`memory-safety` in `ash.pkg`)
 
-Every rule below, with examples, the error messages and the switches (`KILN_NO_REGIONS`, `KILN_REGION_POISON`, `ASH_REGION_TRACE`, ...), is written out in [docs/MEMORY_SAFETY.md](docs/MEMORY_SAFETY.md).
+Every memory-safety error has a stable code (`error[E0101]: use of moved value ...`); `ashvm explain E0101` prints its entry from the same page. Every rule below, with examples, the error messages and the switches (`KILN_NO_REGIONS`, `KILN_REGION_POISON`, `ASH_REGION_TRACE`, ...), is written out in [docs/MEMORY_SAFETY.md](docs/MEMORY_SAFETY.md).
 
 `memory-safety: on` is the default; `off` switches every check and every free below off and generates exactly the code Ash always did. It is read from the project's `ash.pkg` (no `ash.pkg`: the entry file's directory is the project), and only the project's own sources are checked, never the standard library or dependencies.
 

@@ -432,9 +432,9 @@ static int already(RgCtx *r, Node *n) {
     return 0;
 }
 
-#define REPORT(r, n, ...) do { if (!(r)->mute && !already((r), (n))) cerr((n), __VA_ARGS__); } while (0)
+#define REPORT(r, n, code, ...) do { if (!(r)->mute && !already((r), (n))) { j_diag_code(code); cerr((n), __VA_ARGS__); } } while (0)
 /* reported once per node `n`, with the caret on `at` (the token to change: the index, the divisor, the call) */
-#define REPORT_AT(r, n, at, ...) do { if (!(r)->mute && !already((r), (n))) cerr((at), __VA_ARGS__); } while (0)
+#define REPORT_AT(r, n, at, code, ...) do { if (!(r)->mute && !already((r), (n))) { j_diag_code(code); cerr((at), __VA_ARGS__); } } while (0)
 
 static void show(char *buf, size_t sz, Iv v) {
     if (v.lo == v.hi) snprintf(buf, sz, "%lld", (long long)v.lo);
@@ -448,7 +448,7 @@ void rg_check_index(RgCtx *r, Node *n) {
     if (i.hi < 0) {
         if (foldable(n->b)) return;                       /* check_const_index reports these */
         show(b, sizeof b, i);
-        REPORT_AT(r, n, n->b, "array index is always negative here (%s); array indexes start at 0, so fix the index or check it before this access", b);
+        REPORT_AT(r, n, n->b, "E0201", "array index is always negative here (%s); array indexes start at 0, so fix the index or check it before this access", b);
         return;
     }
     Iv len;
@@ -460,7 +460,7 @@ void rg_check_index(RgCtx *r, Node *n) {
         char l[64];
         show(b, sizeof b, i);
         show(l, sizeof l, len);
-        REPORT_AT(r, n, n->b, "array index is always out of bounds here: the index is %s and the array length is %s; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first", b, l);
+        REPORT_AT(r, n, n->b, "E0202", "array index is always out of bounds here: the index is %s and the array length is %s; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first", b, l);
     }
 }
 
@@ -474,12 +474,12 @@ void rg_check_call(RgCtx *r, Node *n) {
         int64_t lo, hi;
         char b[64], l[64];
         show(b, sizeof b, i);
-        if (i.hi < 0) { REPORT_AT(r, n, idx, "list index is always negative here (%s); list indexes start at 0, so fix the index or check it before this call", b); return; }
+        if (i.hi < 0) { REPORT_AT(r, n, idx, "E0203", "list index is always negative here (%s); list indexes start at 0, so fix the index or check it before this call", b); return; }
         if (!mnemo_len_get(r->m, id_of(n->a->sym), &lo, &hi)) return;
         len = (Iv){lo, hi};
         if (i.lo < len.hi) return;
         show(l, sizeof l, len);
-        REPORT_AT(r, n, idx, "list index is always out of bounds here: the index is %s and the list size is %s; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call", b, l);
+        REPORT_AT(r, n, idx, "E0204", "list index is always out of bounds here: the index is %s and the list size is %s; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call", b, l);
         return;
     }
     if (!string_call(n, "charAt") || n->l1.count != 1) return;
@@ -489,14 +489,14 @@ void rg_check_call(RgCtx *r, Node *n) {
     char b[64];
     if (i.hi < 0) {
         show(b, sizeof b, i);
-        REPORT_AT(r, n, idx, "string index is always negative here (%s); string indexes start at 0, so fix the index or check it before this call", b);
+        REPORT_AT(r, n, idx, "E0205", "string index is always negative here (%s); string indexes start at 0, so fix the index or check it before this call", b);
         return;
     }
     if (!str_len(r, n->a, &len) || i.lo < len.hi) return;
     char l[64];
     show(b, sizeof b, i);
     show(l, sizeof l, len);
-    REPORT_AT(r, n, idx, "string index is always out of bounds here: the index is %s and the string length is %s; valid indexes are 0 to length() - 1, so fix the index or check length() first", b, l);
+    REPORT_AT(r, n, idx, "E0206", "string index is always out of bounds here: the index is %s and the string length is %s; valid indexes are 0 to length() - 1, so fix the index or check length() first", b, l);
 }
 
 /* `switch (x) { case 3, 4: ...`: inside that case x is one of the labels */
@@ -521,7 +521,7 @@ void rg_assume_case(RgCtx *r, Node *scrut, Node *kase) {
 static void overflow(RgCtx *r, Node *n, const char *what, Iv o) {
     char b[64];
     show(b, sizeof b, o);
-    REPORT(r, n, "arithmetic overflow: %s is always outside the range of int here (%s); use long, or --wrap-int for wrap-around", what, b);
+    REPORT(r, n, "E0207", "arithmetic overflow: %s is always outside the range of int here (%s); use long, or --wrap-int for wrap-around", what, b);
 }
 
 void rg_check_binary(RgCtx *r, Node *n) {
@@ -531,7 +531,7 @@ void rg_check_binary(RgCtx *r, Node *n) {
     Iv a = eval(r, n->a), b = eval(r, n->b), o;
     if (op == '/' || op == '%') {
         if (b.lo == 0 && b.hi == 0 && !is_literal_zero(n->b))
-            REPORT_AT(r, n, n->b, "division by zero: the divisor is always 0 here; check the divisor before dividing, or use a different one");
+            REPORT_AT(r, n, n->b, "E0208", "division by zero: the divisor is always 0 here; check the divisor before dividing, or use a different one");
         return;
     }
     if (n->type->kind != TY_INT || jl_wrap_int || foldable(n)) return;
@@ -547,7 +547,7 @@ void rg_check_newarray(RgCtx *r, Node *n) {
     if (v.hi < 0) {
         char b[64];
         show(b, sizeof b, v);
-        REPORT_AT(r, n, d, "negative array size: the length is always negative here (%s); an array needs a length of 0 or more", b);
+        REPORT_AT(r, n, d, "E0209", "negative array size: the length is always negative here (%s); an array needs a length of 0 or more", b);
     }
 }
 
@@ -635,7 +635,7 @@ void rg_assign(RgCtx *r, Node *n) {
     Iv a = mnemo_rng_get(r->m, id_of(l), &lo, &hi) ? (Iv){lo, hi} : type_range(l->type->kind);
     Iv b = eval(r, n->b), o;
     int rc = mnemo_iv_op((uint8_t)c, a.lo, a.hi, b.lo, b.hi, &o.lo, &o.hi);
-    if (rc == 3 && !is_literal_zero(n->b)) REPORT_AT(r, n, n->b, "division by zero: the divisor is always 0 here; check the divisor before dividing, or use a different one");
+    if (rc == 3 && !is_literal_zero(n->b)) REPORT_AT(r, n, n->b, "E0208", "division by zero: the divisor is always 0 here; check the divisor before dividing, or use a different one");
     if (rc != 1) { rg_forget(r, l); return; }
     if (l->type->kind == TY_INT && !jl_wrap_int && (o.lo > INT32_MAX || o.hi < INT32_MIN) && (c == '+' || c == '-' || c == '*'))
         overflow(r, n, "this update", o);
@@ -804,7 +804,7 @@ void rg_check_recursion(JMethod *m) {
         if (!(m->flags & (M_STATIC | M_PRIVATE | M_FINAL))) return;
         Node *call = calls_self(e, m);
         if (call) {
-            cerr(call, "infinite recursion: '%s' calls itself on every path before any condition, so it can never return; add a base case (an `if` that returns before this call)", m->name);
+            j_diag_code("E0401"), cerr(call, "infinite recursion: '%s' calls itself on every path before any condition, so it can never return; add a base case (an `if` that returns before this call)", m->name);
             return;
         }
         if (s->kind == N_RETURN) return;

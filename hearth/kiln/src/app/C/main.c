@@ -11,6 +11,7 @@
 #include "diagnostics/H/diagnostics.h"
 #include "jcommon/H/jcommon.h"
 #include "jdriver/H/jdriver.h"
+#include "jexplain/H/jexplain.h"
 #include "jlower/H/jlower.h"
 #include "codegen/H/runtime/heap.h"
 #include "app/H/target.h"
@@ -43,6 +44,7 @@ static KilnLinkMode parse_link(const char *arg, const char *prog) {
 
 int main(int argc, char *argv[]) {
     if (argc == 2 && strcmp(argv[1], "--version") == 0) { printf("kiln %s\n", ASH_VERSION); return 0; }
+    if (argc >= 2 && argc <= 3 && strcmp(argv[1], "--explain") == 0) return jexplain_print(argc == 3 ? argv[2] : NULL); // an error code such as E0101
     // --emit-runtime -o <path> [--target=...]: writes libkilnrt.so/.dll
     // (Plan B) and exits, no .ash input at all -- an entirely separate
     // mode from compiling a program.

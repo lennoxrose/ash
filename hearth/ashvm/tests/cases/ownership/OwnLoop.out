@@ -1,4 +1,4 @@
-error: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
   --> tests/cases/ownership/OwnLoop.ash:6:20
    |
   6|             keep = a;                     // error: moved in the previous iteration

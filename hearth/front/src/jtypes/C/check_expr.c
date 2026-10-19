@@ -1069,6 +1069,7 @@ static void check_const_arith(Node *n, JType *result) {
     long long v;
     Node *culprit = NULL;
     if (fold_int(n, &v, &culprit) == 2 && culprit == n) {
+        j_diag_code("E0210");
         cerr(n, "arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long");
     }
 }
@@ -1097,9 +1098,9 @@ static long const_array_len(Node *e) {
 static void check_const_index(Node *n) {
     long long k; Node *c = NULL;
     if (fold_int(n->b, &k, &c) != 1) return;
-    if (k < 0) { cerr(n, "array index %lld is negative", k); return; }
+    if (k < 0) { j_diag_code("E0211"); cerr(n, "array index %lld is negative", k); return; }
     long len = const_array_len(n->a);
-    if (len >= 0 && k >= len) cerr(n, "array index %lld is out of bounds for an array of length %ld", k, len);
+    if (len >= 0 && k >= len) j_diag_code("E0212"), cerr(n, "array index %lld is out of bounds for an array of length %ld", k, len);
 }
 
 static JType *check_binary(Ctx *cx, Node *n) {

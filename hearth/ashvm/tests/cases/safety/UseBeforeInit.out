@@ -1,9 +1,9 @@
-error: variable 'total' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first
+error[E0301]: variable 'total' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first
   --> tests/cases/safety/UseBeforeInit.ash:4:16
    |
   4|         return total + 1;
    |                ^
-error: variable 'label' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first
+error[E0301]: variable 'label' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first
   --> tests/cases/safety/UseBeforeInit.ash:11:16
    |
  11|         return label;

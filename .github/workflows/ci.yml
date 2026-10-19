@@ -73,6 +73,10 @@ jobs:
         working-directory: ash
         run: bash hearth/front/tests/scripts/diag_check.sh
 
+      - name: error codes, documented and explained
+        working-directory: ash
+        run: bash hearth/front/tests/scripts/explain_check.sh
+
       - name: ashvm, regression
         working-directory: ash
         run: bash hearth/ashvm/tests/scripts/run_regression.sh

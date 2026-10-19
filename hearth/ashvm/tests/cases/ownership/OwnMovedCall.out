@@ -1,4 +1,4 @@
-error: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
   --> tests/cases/ownership/OwnMovedCall.ash:7:28
    |
   7|         System.out.println(a + n);        // error: a was moved by the call

@@ -1,0 +1,16 @@
+error[E0201]: array index is always negative here (-1); array indexes start at 0, so fix the index or check it before this access
+  --> tests/cases/diag/RangeNegatives.ash:7:11
+   |
+  7|         a[i] = 1;                     // E0201
+   |           ^
+error[E0205]: string index is always negative here (-2); string indexes start at 0, so fix the index or check it before this call
+  --> tests/cases/diag/RangeNegatives.ash:10:37
+   |
+ 10|         System.out.println(s.charAt(j));      // E0205
+   |                                     ^
+error[E0209]: negative array size: the length is always negative here (-3); an array needs a length of 0 or more
+  --> tests/cases/diag/RangeNegatives.ash:12:27
+   |
+ 12|         int[] b = new int[n];         // E0209
+   |                           ^
+3 error(s)

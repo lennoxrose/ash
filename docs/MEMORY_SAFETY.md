@@ -20,6 +20,7 @@ compiler.
 - [Loop regions (kiln)](#loop-regions-kiln)
 - [`System.free`](#systemfree)
 - [Switches and environment variables](#switches-and-environment-variables)
+- [Error codes](#error-codes)
 - [Checking the checks](#checking-the-checks)
 
 ## The setting
@@ -66,7 +67,7 @@ System.out.println(a[0]);              // error
 ```
 
 ```
-error: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
 ```
 
 - A call only moves its argument when the callee can keep it. The compiler works that out for project methods
@@ -98,7 +99,7 @@ store(&a);
 ```
 
 ```
-error: cannot lend 'a' with '&': 'store' keeps this parameter (stores, returns or passes it on); pass 'a' by move or clone it
+error[E0102]: cannot lend 'a' with '&': 'store' keeps this parameter (stores, returns or passes it on); pass 'a' by move or clone it
 ```
 
   Calls whose target is not fixed (overridable or library code) accept a loan, and a lent variable is never freed
@@ -160,7 +161,7 @@ System.out.println(x);
 ```
 
 ```
-error: variable 'x' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first
+error[E0301]: variable 'x' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first
 ```
 
 - Only a use that *no* path can have assigned is reported: `if (c) x = 1; use(x);` is legal (the program may know
@@ -181,7 +182,7 @@ static int f(int n) { return f(n + 1); }
 ```
 
 ```
-error: infinite recursion: 'f' calls itself on every path before any condition, so it can never return; add a base case (an `if` that returns before this call)
+error[E0401]: infinite recursion: 'f' calls itself on every path before any condition, so it can never return; add a base case (an `if` that returns before this call)
 ```
 
 Overridable instance methods are not judged (a subclass may end the recursion). The caret is on the recursive call.
@@ -276,7 +277,7 @@ With `memory-safety: off`, `System.free(x)` frees a String, array or object your
 since it cannot know where an arbitrary String came from). With safety on it is an error:
 
 ```
-error: System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you
+error[E0105]: System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you
 ```
 
 ## Switches and environment variables
@@ -299,6 +300,181 @@ only searching for the fixpoint of an outer loop stops when its state is stable,
 method it does a single pass and gives up its ranges (the moved-variable state stays exact), so the cost stays
 linear; only range errors are lost in nests that deep.
 
+## Error codes
+
+Every memory-safety error carries a stable code, shown in brackets after `error` (`error[E0101]: use of moved value
+'a': ...`) and as `"code"` in the `--json` output. The text after the colon may be reworded; the code is the name of
+the rule. `ashvm explain E0101` (or `kiln --explain E0101`) prints the entry below; `ashvm explain` alone lists the
+codes.
+
+### E0101: use of moved value
+
+A local of an owning type (a class, a String or an array) was stored somewhere or passed to project code that keeps it,
+and then used again. The error points at the use; the note under it points at the move.
+
+```java
+static int[] keep;
+static void store(int[] p) { keep = p; }
+
+int[] a = {1, 2, 3};
+store(a);                      // a moves into the static field
+System.out.println(a[0]);      // E0101
+```
+
+What to do: use the value before the move (reorder the statements), use the variable or field it was moved into
+instead, give the variable a new value (`a = new int[3];`) before using it again, or, when the callee is a call whose
+target is not fixed (an interface or an overridable method), lend the value with `&a`. A method the compiler can see
+keeps its parameter cannot be lent to (see E0102). In a loop, a variable moved in one pass is moved in the next: declare
+it inside the loop or assign it again.
+
+### E0102: cannot lend a variable to a call that keeps it
+
+`&x` lends a variable for the duration of one call. A project method whose target is fixed (`static`, `private`,
+`final`, a constructor, a class nothing extends) and that stores, returns or passes on that parameter would outlive the
+loan, so the compiler refuses it.
+
+```java
+store(&a);      // E0102: 'store' keeps this parameter
+```
+
+What to do: pass the value itself (`store(a)`, and stop using `a`), or change the method so that it only reads its
+parameter.
+
+### E0103: conflicting borrows in one call
+
+Within one call an exclusive borrow (`&mut x`) excludes every other use of the same variable, as in Rust:
+`f(&mut x, &x)`, `f(&mut x, x)` and `x.m(&mut x)` are errors, and so is a `&x` next to a mutable use.
+
+What to do: pass the variable once, or make two calls.
+
+### E0104: a borrow outside a call argument
+
+`&x` and `&mut x` are written only as call arguments. They cannot be stored, returned or assigned.
+
+```java
+int[] ys = &xs;      // E0104
+```
+
+What to do: pass `xs` by move, or use it where it is.
+
+### E0105: System.free with memory-safety on
+
+`System.free(x)` frees a value by hand and is only available with `memory-safety: off` in `ash.pkg`. With the checks on,
+memory is freed for you.
+
+What to do: delete the call, or turn the setting off for the project.
+
+### E0201: array index always negative
+
+The index of an array access is negative on every path that reaches it, so the access always throws.
+
+What to do: fix the index, or check it before the access.
+
+### E0202: array index always out of bounds
+
+The index is at or past the length of the array on every path that reaches it.
+
+```java
+int[] a = new int[4];
+int i = 4;
+a[i] = 1;           // E0202: the index is 4 and the array length is 4
+```
+
+What to do: fix the index or the array size, or check the index first. A loop that merely might run past the end is not
+reported; only a certain failure is.
+
+### E0203: list index always negative
+
+`l.get(i)`, `l.set(i, v)` or `l.remove(i)` with an index that is negative on every path.
+
+What to do: fix the index, or check it before the call.
+
+### E0204: list index always out of bounds
+
+The index is at or past the size the compiler knows the list has (it follows `add`, `remove` and `removeLast` on a list
+that only this code references).
+
+What to do: fix the index, add the element first, or check `size()` before the call.
+
+### E0205: string index always negative
+
+`s.charAt(i)` with an index that is negative on every path.
+
+What to do: fix the index, or check it before the call.
+
+### E0206: string index always out of bounds
+
+`s.charAt(i)` with an index at or past the length the compiler knows the string has (ASCII literals, concatenations of
+known strings).
+
+What to do: fix the index, or check `length()` first.
+
+### E0207: arithmetic overflow
+
+An `int` `+ - * ++ -- += -= *=` whose result is outside the 32-bit range on every path (not reported with `--wrap-int`).
+
+```java
+int x = 2000000000;
+int y = x + x;      // E0207
+```
+
+What to do: use `long`, or compile with `--wrap-int` for Java's wrap-around.
+
+### E0208: division by zero
+
+The divisor of `/` or `%` is 0 on every path (a literal `/ 0` stays a run-time exception).
+
+What to do: check the divisor before dividing, or use a different one.
+
+### E0209: negative array size
+
+`new int[n]` where `n` is negative on every path.
+
+What to do: an array needs a length of 0 or more.
+
+### E0210: constant overflow
+
+A constant `int` expression outside the 32-bit range, such as `2147483647 + 1` or `Integer.MAX_VALUE + 1`
+(not reported with `--wrap-int`).
+
+What to do: use an `L` suffix to compute in `long`.
+
+### E0211: constant array index is negative
+
+A constant index into a literal or `final` array is negative.
+
+What to do: array indexes start at 0.
+
+### E0212: constant array index out of bounds
+
+A constant index into a literal or `final` array is at or past its length.
+
+What to do: fix the index or the array.
+
+### E0301: variable used before it is assigned
+
+A local that no path assigns before it is read. `if (c) x = 1; use(x);` is legal (the program may know that `c` holds);
+only a use that no path can have assigned is reported, and so is a use in the first pass of a loop that reads the
+variable before the body assigns it.
+
+```java
+int x;
+System.out.println(x);      // E0301
+```
+
+What to do: give the variable a value where it is declared, or assign it first.
+
+### E0401: infinite recursion
+
+A `static`, `private` or `final` method that calls itself on every path before any branch, loop or `return` can never
+finish.
+
+```java
+static int f(int n) { return f(n + 1); }      // E0401
+```
+
+What to do: add a base case, an `if` that returns before the recursive call.
+
 ## Checking the checks
 
 ```sh
@@ -310,6 +486,7 @@ hearth/ashvm/tests/scripts/memory_check.sh           # the memory figures
 hearth/ashvm/tests/scripts/ownership_fuzz.sh         # random programs: same output with safety on and off
 KILN=1 KILN_REGION_POISON=1 hearth/ashvm/tests/scripts/ownership_fuzz.sh
 hearth/kiln/tests/scripts/windows_emulated_check.sh  # the PE output under the Unicorn emulator
+hearth/front/tests/scripts/explain_check.sh          # every error code is documented above, and `ashvm explain` prints it
 ```
 
 The test programs live in `hearth/ashvm/tests/cases/{ownership,safety,memoff}`, `hearth/kiln/tests/cases/ownership`
