@@ -37,4 +37,23 @@ int mnemo_join(MnemoWalk *w, uint32_t h);          /* current := current joined 
 int mnemo_join_into(MnemoWalk *w, uint32_t h);     /* snapshot := snapshot joined with current */
 void mnemo_release(MnemoWalk *w, uint32_t h);
 
+/* ---- value ranges: what is known about integer values and array lengths on the current path ----
+ * Same save / restore / join rules as the moved set. A variable with no entry is unknown. Joining
+ * drops every fact that is not known on both paths. Bounds INT64_MIN / INT64_MAX mean unbounded. */
+
+void mnemo_rng_set(MnemoWalk *w, uint64_t id, int64_t lo, int64_t hi);    /* lo > hi forgets the range */
+void mnemo_rng_clear(MnemoWalk *w, uint64_t id);
+int mnemo_rng_get(MnemoWalk *w, uint64_t id, int64_t *lo, int64_t *hi);   /* 1 when known (and the path is live) */
+void mnemo_len_set(MnemoWalk *w, uint64_t id, int64_t lo, int64_t hi);    /* array length range; lo < 0 forgets it */
+void mnemo_len_clear(MnemoWalk *w, uint64_t id);
+int mnemo_len_get(MnemoWalk *w, uint64_t id, int64_t *lo, int64_t *hi);
+/* A branch condition held: narrow id to [lo, hi]. Returns 0 (and kills the path) when nothing is left. */
+int mnemo_rng_refine(MnemoWalk *w, uint64_t id, int64_t lo, int64_t hi);
+void mnemo_havoc(MnemoWalk *w);                    /* forget every range and length */
+int mnemo_join_widen(MnemoWalk *w, uint32_t h);    /* loop back edge: bounds that grew go to infinity */
+int mnemo_equal(MnemoWalk *w, uint32_t h);         /* current state == snapshot (loop fixpoint test) */
+/* Interval arithmetic for op in + - * / % &. Returns 1 (result in *olo..*ohi), 2 when the exact result
+ * does not fit in 64 bits (unknown), 3 when the divisor is exactly zero, 0 for another operator. */
+int mnemo_iv_op(uint8_t op, int64_t alo, int64_t ahi, int64_t blo, int64_t bhi, int64_t *olo, int64_t *ohi);
+
 #endif

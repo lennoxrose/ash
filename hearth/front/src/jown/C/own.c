@@ -5,6 +5,7 @@
 #include "jcommon/H/jcommon.h"
 #include "jown/H/own.h"
 #include "mnemo/H/flow/flow.h"
+#include "jown/H/range.h"
 #include "jtypes/H/check.h"
 #include "jtypes/H/jtypes.h"
 
@@ -52,6 +53,7 @@ typedef struct {
     MnemoWalk *m;
     Target *targets;
     JList reported;    /* Node* already diagnosed, so the second loop pass stays quiet */
+    RgCtx rg;          /* value-range facts (range.c); shares the MnemoWalk */
 } Walk;
 
 static uint64_t id_of(JLocal *l) { return (uint64_t)(uintptr_t)l; }
@@ -106,7 +108,12 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
     Borrow seen[32];
     int ns = 0;
     if (m && m->tmpl && !strncmp(m->tmpl, "mem_release(", 12)) {
-        cerr(n, "System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you");
+        int dup = 0;
+        for (int k = 0; k < w->reported.count; k++) if (w->reported.items[k] == n) dup = 1;
+        if (!dup) {
+            j_list_push(&w->reported, n);
+            cerr(n, "System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you");
+        }
     }
     if (recv) {
         expr(w, recv);
@@ -127,6 +134,7 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
                          a->a->name, a->name, m->name, a->a->name);
                 }
             }
+            if (a->name[1] == 'm') rg_forget(&w->rg, a->a->sym);        /* the callee may write it */
             if (ns < 32) seen[ns++] = (Borrow){a->a->sym, a->name[1] == 'm', a};
         } else if (takes && !param_borrowed(m, i)) {
             store(w, a);
@@ -173,6 +181,7 @@ static void expr(Walk *w, Node *n) {
                 expr(w, n->a);
                 expr(w, n->b);
             }
+            rg_assign(&w->rg, n);
             return;
         case N_ARRAYINIT:
             for (int i = 0; i < n->l1.count; i++) store(w, n->l1.items[i]);
@@ -184,23 +193,36 @@ static void expr(Walk *w, Node *n) {
                 cerr(n, "a borrow ('%s') can only be passed as a call argument", n->name);
                 return;
             }
-            break;
+            children(w, n);
+            if ((n->name[0] == '+' && n->name[1] == '+') || (n->name[0] == '-' && n->name[1] == '-')) rg_incdec(&w->rg, n);
+            return;
+        case N_POSTFIX:
+            children(w, n);
+            rg_incdec(&w->rg, n);
+            return;
+        case N_INDEX: children(w, n); rg_check_index(&w->rg, n); return;
+        case N_NEWARRAY: children(w, n); rg_check_newarray(&w->rg, n); return;
         case N_BINARY:
             if (!strcmp(n->name, "&&") || !strcmp(n->name, "||")) {   /* right side may not run */
                 expr(w, n->a);
                 uint32_t after_a = mnemo_save(m);
+                rg_assume(&w->rg, n->a, n->name[0] == '&');
                 expr(w, n->b);
                 mnemo_join(m, after_a);
                 mnemo_release(m, after_a);
                 return;
             }
-            break;
+            children(w, n);
+            rg_check_binary(&w->rg, n);
+            return;
         case N_COND: {
             expr(w, n->a);
             uint32_t entry = mnemo_save(m);
+            rg_assume(&w->rg, n->a, 1);
             expr(w, n->b);
             uint32_t then_s = mnemo_save(m);
             mnemo_restore(m, entry);
+            rg_assume(&w->rg, n->a, 0);
             expr(w, n->c);
             mnemo_join(m, then_s);
             mnemo_release(m, entry);
@@ -254,37 +276,67 @@ static void pop_target(Walk *w, Target *t) {
     mnemo_release(w->m, t->cont);
 }
 
-/* Loops run their body again when a move survives to the back edge, so every loop is walked twice;
- * the second pass starts from the entry state joined with the end of the first body. */
+/* A loop is walked until its head state stops changing, then once more with the diagnostics on. The head
+ * is the entry state joined with every back edge: moved variables only grow, and a value range that
+ * grows is widened to infinity, so this takes a few passes. A condition narrows the ranges for the body
+ * and for the exit. A loop that never settles forgets its ranges rather than guessing. */
 static void loop(Walk *w, Node *n) {
     MnemoWalk *m = w->m;
     Target t;
     push_target(w, &t, 0);
     if (n->kind == N_FOREACH) expr(w, n->b);          /* the iterable is evaluated once */
-    uint32_t entry = mnemo_save(m);
+    uint32_t head = mnemo_save(m);
     uint32_t leave = mnemo_save_dead(m);              /* states that leave through the condition */
-    for (int pass = 0; pass < 2; pass++) {
+    int final = 0;
+    for (int pass = 0; pass < 10; pass++) {
+        if (!final) w->rg.mute++;
+        mnemo_restore(m, head);
         if (n->kind == N_DO) {
             stmt(w, n->b);
             mnemo_join(m, t.cont);
-            if (n->a) expr(w, n->a);
-            mnemo_join_into(m, leave);
+            if (n->a) {
+                expr(w, n->a);
+                uint32_t s = mnemo_save(m);
+                rg_assume(&w->rg, n->a, 0);
+                mnemo_join_into(m, leave);
+                mnemo_restore(m, s);
+                mnemo_release(m, s);
+                rg_assume(&w->rg, n->a, 1);
+            } else {
+                mnemo_join_into(m, leave);
+            }
         } else {
-            if (n->kind == N_FOREACH) { if (n->sym) mnemo_reinit(m, id_of(n->sym)); }
-            else if (n->a) expr(w, n->a);
-            mnemo_join_into(m, leave);
+            if (n->kind == N_FOREACH) {
+                if (n->sym) { mnemo_reinit(m, id_of(n->sym)); rg_forget(&w->rg, n->sym); }
+                mnemo_join_into(m, leave);
+            } else if (n->a) {
+                expr(w, n->a);
+                uint32_t s = mnemo_save(m);
+                rg_assume(&w->rg, n->a, 0);
+                mnemo_join_into(m, leave);
+                mnemo_restore(m, s);
+                mnemo_release(m, s);
+                rg_assume(&w->rg, n->a, 1);
+            }                                         /* `for (;;)` leaves only through break */
             stmt(w, n->kind == N_FOREACH ? n->c : n->b);
             mnemo_join(m, t.cont);
             if (n->kind == N_FOR) for (int i = 0; i < n->l2.count; i++) expr(w, n->l2.items[i]);
         }
+        if (!final) w->rg.mute--;
+        if (final) break;
         uint32_t end = mnemo_save(m);
-        mnemo_restore(m, entry);
-        mnemo_join(m, end);                           /* back edge */
+        mnemo_restore(m, head);
+        mnemo_join_widen(m, end);                     /* back edge */
         mnemo_release(m, end);
+        int settled = mnemo_equal(m, head);
+        if (!settled && pass >= 8) { mnemo_havoc(m); settled = 1; }
+        mnemo_release(m, head);
+        head = mnemo_save(m);
+        if (settled && pass >= 1) final = 1;
     }
     mnemo_restore(m, leave);
     mnemo_join(m, t.brk);
-    mnemo_release(m, entry);
+    mnemo_release(m, head);
     mnemo_release(m, leave);
     pop_target(w, &t);
 }
@@ -296,14 +348,17 @@ static void stmt(Walk *w, Node *n) {
         case N_LOCAL:
             if (n->b) store(w, n->b);
             if (n->sym) mnemo_reinit(m, id_of(n->sym));   /* a fresh variable, also on every loop iteration */
+            rg_declare(&w->rg, n);
             return;
         case N_EXPRSTMT: expr(w, n->a); return;
         case N_IF: {
             expr(w, n->a);
             uint32_t entry = mnemo_save(m);
+            rg_assume(&w->rg, n->a, 1);
             stmt(w, n->b);
             uint32_t then_s = mnemo_save(m);
             mnemo_restore(m, entry);
+            rg_assume(&w->rg, n->a, 0);
             if (n->c) stmt(w, n->c);
             mnemo_join(m, then_s);
             mnemo_release(m, entry);
@@ -320,10 +375,13 @@ static void stmt(Walk *w, Node *n) {
         case N_CONTINUE: jump(w, 1); return;
         case N_TRY: {
             uint32_t entry = mnemo_save(m);
+            if (n->l1.count) w->rg.mute++;             /* a catch may be the point: the program can provoke the exception */
             stmt(w, n->b);
+            if (n->l1.count) w->rg.mute--;
             uint32_t out = mnemo_save(m);
             mnemo_restore(m, entry);
             mnemo_join(m, out);                        /* the try block may stop anywhere */
+            rg_forget_assigned(&w->rg, n->b);          /* ... so what it assigns is unknown in the handlers */
             uint32_t into_catch = mnemo_save(m);
             for (int i = 0; i < n->l1.count; i++) {
                 mnemo_restore(m, into_catch);
@@ -854,8 +912,10 @@ static void check_method(JMethod *m, int flow) {
     if (!m->decl || !m->decl->b) return;
     analyze_method(m);
     if (!flow) return;
+    rg_check_recursion(m);
     Walk w = {0};
     w.m = mnemo_walk_new();
+    w.rg.m = w.m;
     stmt(&w, m->decl->b);
     mnemo_walk_free(w.m);
 }

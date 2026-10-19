@@ -23,6 +23,7 @@ FRONT_SRC = \
     src/jtypes/C/check_stmt.c \
     src/jtypes/C/check_class.c \
     src/jown/C/own.c \
+    src/jown/C/range.c \
     src/jlower/C/lower_expr.c \
     src/jlower/C/lower_stmt.c \
     src/jlower/C/lower_class.c \
