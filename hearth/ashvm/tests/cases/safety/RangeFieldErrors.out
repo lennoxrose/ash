@@ -1,0 +1,11 @@
+error: array index is always out of bounds here: the index is 8 and the array length is 8
+  --> ashvm/tests/cases/safety/RangeFieldErrors.ash:7:16
+   |
+  7|         return table[i];
+   |                ^
+error: array index is always out of bounds here: the index is 4 and the array length is 4
+  --> ashvm/tests/cases/safety/RangeFieldErrors.ash:12:16
+   |
+ 12|         return PRIMES[k];
+   |                ^
+2 error(s)

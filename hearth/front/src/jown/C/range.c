@@ -88,6 +88,20 @@ static int array_len(RgCtx *r, Node *a, Iv *out) {
         *out = (Iv){lo, hi};
         return 1;
     }
+    /* a final field initialised with an array of constant size keeps that length for good */
+    if ((a->kind == N_NAME && (a->rk == R_FIELD || a->rk == R_STATIC_FIELD || a->rk == R_THIS_FIELD)) ||
+        (a->kind == N_FIELDACC && a->a && a->a->kind == N_THIS && a->sym)) {
+        JField *f = a->sym;
+        static int depth;
+        if (f && (f->flags & M_FINAL) && f->decl && f->decl->b && depth < 4 &&
+            (f->decl->b->kind == N_ARRAYINIT || f->decl->b->kind == N_NEWARRAY)) {
+            Node *init = f->decl->b;
+            int ok = init->kind == N_ARRAYINIT || (init->b && init->b->kind == N_ARRAYINIT) ||
+                     (init->l1.count && foldable(init->l1.items[0]));
+            if (ok) { depth++; int r2 = array_len(r, init, out); depth--; return r2; }
+        }
+        return 0;
+    }
     if (a->kind == N_ARRAYINIT) { *out = (Iv){a->l1.count, a->l1.count}; return 1; }
     if (a->kind == N_NEWARRAY) {
         if (a->b && a->b->kind == N_ARRAYINIT) { *out = (Iv){a->b->l1.count, a->b->l1.count}; return 1; }
