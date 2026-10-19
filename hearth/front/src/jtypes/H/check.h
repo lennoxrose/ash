@@ -23,6 +23,7 @@ struct JLocal {
     int *elem_of;    /* jown: a for-each variable over such a container: the container's `elems` flag */
     int param_ok;    /* jown: a parameter the method only reads, so a caller keeps ownership of what it passes */
     int param_elems_ok; /* jown: ...and it never takes an element out of it, so the caller's `elems` status survives the call */
+    int ul_list;     /* jown/region: a List local nobody else can reference (see ul_prescan): 0 no, else the lambda depth it was declared at + 1 */
     int rl_list;     /* jown/range: a List / ArrayList local whose size is tracked (see rg_prescan) */
     int drop;        /* jown proved this local is the sole owner of a fresh String/array: free it at scope end */
 };

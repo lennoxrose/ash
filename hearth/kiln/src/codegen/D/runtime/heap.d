@@ -7,7 +7,8 @@ src/codegen/O/runtime/heap.o: src/codegen/C/runtime/heap.c \
  src/elf/H/elf_dynamic_call.h src/elf/H/elf_dynamic.h \
  src/codegen/H/emit/ash_gpu_import_enum.h \
  src/codegen/H/emit/ash_gpu_exports.def src/elf/H/elf_writer.h \
- src/app/H/target.h src/codegen/H/emit/value.h
+ src/app/H/target.h src/codegen/H/emit/value.h \
+ src/codegen/H/emit/emit_sse.h
 src/codegen/H/runtime/heap.h:
 src/codegen/H/emit/emit.h:
 src/codegen/H/emit/layout.h:
@@ -24,3 +25,4 @@ src/codegen/H/emit/ash_gpu_exports.def:
 src/elf/H/elf_writer.h:
 src/app/H/target.h:
 src/codegen/H/emit/value.h:
+src/codegen/H/emit/emit_sse.h:

@@ -1,0 +1,11 @@
+mine 0 0
+mine 1 2
+mine 2 4
+mine 3 6
+fast: 5 20 3 26 13 calls=9
+sameLocal: CME after 1
+passedToCallee: CME after 1
+viaChain: CME after 1
+viaRecursion: CME after 1
+viaLambda: CME after 1
+nestedOwn: CME after 1

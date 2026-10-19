@@ -323,8 +323,8 @@ void codegen_builtin_mem_free_elems(void) {
 void codegen_builtin_mem_region_enter(void) {
     expect(TOKEN_RPAREN, "expected ')' after 'mem_region_enter('");
     heap_emit_checkpoint(code);                                  // RAX = heap pointer
-    emit_cvtsi2sd(code, XMM0, REG_RAX);
-    emit_movq_reg_from_xmm(code, REG_RAX, XMM0);
+    // kept as the raw address in a number slot: nothing ever computes with it, and a round trip through a double
+    // (two conversions on the path of every iteration) costs more than the allocation it brackets
     emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
     emit_push_reg(code, REG_RBX);
     emit_push_reg(code, REG_RAX);
@@ -333,10 +333,8 @@ void codegen_builtin_mem_region_enter(void) {
 void codegen_builtin_mem_region_leave(void) {
     codegen_expression();
     expect(TOKEN_RPAREN, "expected ')' after argument");
-    emit_pop_reg(code, REG_RAX);                                 // payload: the checkpoint as a double
+    emit_pop_reg(code, REG_RDI);                                 // payload: the checkpoint, the raw address
     emit_pop_reg(code, REG_RBX);
-    emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
-    emit_cvttsd2si(code, REG_RDI, XMM0);
     heap_emit_region_reset(code);
     push_nil();
 }

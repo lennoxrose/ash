@@ -16,6 +16,7 @@ void emit_movq_reg_from_xmm(CodeBuf *buf, Reg dst, XReg src); // MOVQ r64, xmm -
 void emit_movsd_xmm_xmm(CodeBuf *buf, XReg dst, XReg src);
 void emit_movsd_load_disp32(CodeBuf *buf, XReg dst, Reg base, int32_t disp);
 void emit_movsd_store_disp32(CodeBuf *buf, Reg base, int32_t disp, XReg src);
+void emit_movups_store_disp32(CodeBuf *buf, Reg base, int32_t disp, XReg src); // 16 bytes, no alignment needed
 void emit_pxor_xmm_xmm(CodeBuf *buf, XReg reg); // zeroes a register (reg,reg) -- also used as "load +0.0"
 
 void emit_addsd(CodeBuf *buf, XReg dst, XReg src);

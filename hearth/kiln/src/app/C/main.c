@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
     char *ir = jdriver_compile_file(input_path, wrap_int);
     if (!ir) return 1;
     if (strstr(ir, "mem_free(") || strstr(ir, "mem_cat(") || strstr(ir, "mem_free_arr(") || strstr(ir, "mem_free_obj(") || strstr(ir, "mem_free_map(") || strstr(ir, "mem_free_elems(") || strstr(ir, "mem_newarr1(")) {
-        heap_enable_free_lists(strstr(ir, "mem_free_arr(") != NULL || strstr(ir, "mem_free_obj(") != NULL || strstr(ir, "mem_free_map(") != NULL || strstr(ir, "mem_newarr1(") != NULL);
+        heap_enable_free_lists(strstr(ir, "mem_free_arr(") != NULL || strstr(ir, "mem_free_obj(") != NULL || strstr(ir, "mem_free_map(") != NULL || strstr(ir, "mem_newarr1(") != NULL, strstr(ir, "mem_region_enter(") != NULL);
     }
     diagnostics_set_source(ir, "<internal ir>");
 

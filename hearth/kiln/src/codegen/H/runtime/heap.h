@@ -20,7 +20,7 @@
 // to 512 bytes through one list per size class (heads in the globals region, kiln_freelist_addr()). The plain
 // routine (heap_emit_alloc) is never touched, so arrays, maps and programs that never free cost exactly what
 // they always did. Strings are the only thing kiln frees (heap_emit_free_string_rax).
-void heap_enable_free_lists(int blocks); // blocks: the program also frees arrays or objects (mem_free_arr / mem_newarr1 / mem_free_obj)
+void heap_enable_free_lists(int blocks, int regions); // blocks: the program also frees arrays or objects (mem_free_arr / mem_newarr1 / mem_free_obj); regions: it has loop regions (mem_region_enter), so every free marks slot 0 of the table
 int heap_free_lists_on(void);
 int heap_free_arrays_on(void);
 // RAX = payload of a heap string; puts its block on the free list. Clobbers RAX, RCX, RDX, RSI.

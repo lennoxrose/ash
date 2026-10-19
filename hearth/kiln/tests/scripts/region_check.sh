@@ -9,6 +9,9 @@
 #   3. The same programs without regions (KILN_NO_REGIONS=1) print the same, and a loop of temporaries runs in a
 #      few MB with regions against a hundred or more without.
 #   4. Every other program of the regression suite also passes with poison on.
+#   5. A loop whose only allocations are Strings and arrays that a sole-owner local gives back every iteration is not
+#      a region (it gains nothing: the blocks are recycled while hot), unless ASH_REGION_ALL=1, which the counts
+#      above use so that these loops keep being tested with poison.
 set -uo pipefail
 ulimit -v 3000000
 cd "$(dirname "$0")/../.." # -> kiln/
@@ -21,6 +24,7 @@ fail=0
 check() { # name expected_region_loops
     local f="tests/cases/ownership/$1.ash"
     local n
+    export ASH_REGION_ALL=1
     n=$(ASH_REGION_TRACE=1 "$KILN" "$f" -o "$TMP/$1" 2>&1 | grep -c '^region loop:')
     [ "$n" == "$2" ] || { echo "FAIL: $1 has $n region loops, expected $2"; fail=1; }
     KILN_REGION_POISON=1 "$KILN" "$f" -o "$TMP/$1.poison" > "$TMP/$1.err" 2>&1 || { echo "FAIL: $1 does not compile"; head -5 "$TMP/$1.err"; fail=1; return; }
@@ -29,6 +33,7 @@ check() { # name expected_region_loops
     KILN_NO_REGIONS=1 "$KILN" "$f" -o "$TMP/$1.plain" > /dev/null 2>&1
     "$TMP/$1.plain" > "$TMP/$1.plain.out" 2>&1 < /dev/null
     cmp -s "$TMP/$1.plain.out" "${f%.ash}.out" || { echo "FAIL: $1 without regions differs"; fail=1; }
+    unset ASH_REGION_ALL
     echo "ok: $1 ($n region loops)"
 }
 check RegionLoops 12
@@ -134,12 +139,31 @@ echo "maps: regions: ${on}  without: ${off}  (peak MB, last line of output)"
 [ "${on%% *}" -le 16 ] || { echo "FAIL: peak with regions is ${on%% *} MB"; fail=1; }
 [ "${off%% *}" -ge $(( ${on%% *} * 3 )) ] || { echo "FAIL: without regions is not clearly larger"; fail=1; }
 
+cat > "$TMP/p/Droppable.ash" <<'JAVA'
+public class Droppable {
+    public static void main(String[] args) {
+        long total = 0;
+        for (int i = 0; i < 1000; i++) {
+            String s = "item-" + i;
+            int[] a = new int[4];
+            a[1] = s.length();
+            total += a[1] + a.length;
+        }
+        System.out.println(total);
+    }
+}
+JAVA
+plain=$(ASH_REGION_TRACE=1 "$KILN" "$TMP/p/Droppable.ash" -o "$TMP/p/d1" 2>&1 | grep -c '^region loop:')
+forced=$(ASH_REGION_ALL=1 ASH_REGION_TRACE=1 "$KILN" "$TMP/p/Droppable.ash" -o "$TMP/p/d2" 2>&1 | grep -c '^region loop:')
+[ "$plain" == 0 ] && [ "$forced" == 1 ] || { echo "FAIL: a loop of droppable Strings and arrays has $plain region loops (expected 0), $forced when forced (expected 1)"; fail=1; }
+[ "$("$TMP/p/d1")" == "$("$TMP/p/d2")" ] || { echo "FAIL: Droppable differs"; fail=1; }
+
 for f in tests/cases/*/*.ash ../front/tests/cases/run/*_j.ash ../../examples/*.ash; do
     n=$(basename "$f" .ash)
     [ "$n" == run_double_j ] && continue
     flags=()
     case "$f" in *_wrap_*) flags=(--wrap-int);; esac
-    KILN_REGION_POISON=1 "$KILN" "$f" -o "$TMP/$n" "${flags[@]}" > /dev/null 2>&1 || { echo "FAIL: $f does not compile with poison"; fail=1; continue; }
+    ASH_REGION_ALL=1 KILN_REGION_POISON=1 "$KILN" "$f" -o "$TMP/$n" "${flags[@]}" > /dev/null 2>&1 || { echo "FAIL: $f does not compile with poison"; fail=1; continue; }
     rm -rf /tmp/ash_stdlib_test_dir /tmp/ash_example_io
     "$TMP/$n" > "$TMP/$n.out" 2>&1 < /dev/null
     cmp -s "$TMP/$n.out" "${f%.ash}.out" || { echo "FAIL: $f differs with poison"; fail=1; }

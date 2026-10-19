@@ -199,9 +199,15 @@ copy, or collect the changes and apply them after the loop`.
 for (int x : xs) xs.add(x);   // throws ConcurrentModificationException at the second step
 ```
 
-The check costs run-time speed, so the compiler only emits it when the loop body could change a list's size: a body
-whose only calls are String methods, `Math`, `println` of values and `get` / `size` / `isEmpty` / `set` on
-a list, with no project code, constructor or lambda, is lowered to the plain index loop with no check. Arrays have
+The check costs run-time speed, so the compiler only emits it when the loop body could change a list's size. It is
+left out (the plain index loop) when the body's calls are all harmless: String methods, `Math`, `println` of values,
+`get` / `size` / `isEmpty` / `set` on a list, and calls to project code whose target is fixed (`static`, `private` or
+`final`) and whose own body is harmless in the same way, transitively (a recursion is judged as a whole). It is also
+left out for lists nobody else can reference: a list local that only ever holds fresh `new ArrayList<>()`s and is
+used only as the receiver of `get` / `set` / `size` / `isEmpty` / `contains` / `add` / `remove` / `removeLast`, as the
+iterable of a for-each, or returned. Adding to such a list while walking another list needs no check, and walking such
+a list needs none either, whatever the body calls, unless the body adds to or removes from that same local. Anything
+else (an alias, a list passed on, a field, a lambda, a view such as `subList`) keeps the check. Arrays have
 no check (their size cannot change). Not mirrored: Java counts modifications and Ash compares sizes, so an `add`
 followed by a `remove` that leaves the size equal is not detected.
 
@@ -247,7 +253,10 @@ Windows static builds, `memory-safety: on`. A loop body qualifies when:
   never to an outer variable, a field, an element of an outer array or an outer list; primitives may leave freely;
 - a for-each is allowed over an array or `ArrayList` (the loop variable of a reference type is only read).
 
-`break` and `return` skip the rewind, which only leaves the memory allocated. The loop condition and update run
+A loop whose only allocations are Strings and arrays that a sole-owner local already gives back every iteration is not
+made a region: it would gain nothing (the blocks are recycled while they are hot) and cost the bookkeeping. The body
+block of a region also does not free its own locals one by one before the rewind. `break` and `return` skip the
+rewind, which only leaves the memory allocated. The loop condition and update run
 outside the region. A rewind also empties the free lists (a block freed inside the region would otherwise be handed
 out again over newer data): a leak, never an overlap. Everything else is an ordinary loop.
 
@@ -279,7 +288,9 @@ error: System.free is only available with 'memory-safety: off' in ash.pkg: with 
 | `--link=shared` | `kiln` | the old allocator: no frees, no regions |
 | `KILN_NO_REGIONS=1` | environment, when running `kiln` | no loop regions (frees by ownership still happen) |
 | `KILN_REGION_POISON=1` | environment, when running `kiln` | every rewind first overwrites the reclaimed bytes with `0xDD`, so a value used after its iteration shows up as garbage; for testing the region analysis |
-| `ASH_REGION_TRACE=1` / `2` | environment, when running `kiln` | `1` lists the region loops, `2` also says why a loop is not one |
+| `ASH_REGION_ALL=1` | environment, when running `kiln` | also make regions of loops that gain nothing (only Strings / arrays a sole owner frees); the region tests use it so that those loops keep being tested with poison |
+| `ASH_FOREACH_CHECK_ALL=1` | environment, when running `ashvm` or `kiln` | every for-each over a list keeps its size check (the fuzzers compare against it to see that no check was left out wrongly) |
+| `ASH_REGION_TRACE=1` / `2` | environment, when running `kiln` or `ashvm` | `1` lists the region loops (and, in `ashvm` too, says for each for-each over a list whether it keeps its size check), `2` also says why a loop is not one |
 | `ASH_PATH` | environment | where the standard library lives (`.../src/main/ash`) |
 | `make GC=1` | building `ashvm` | an opt-in collector, independent of the above; `ASH_GC_STATS` (any value) prints its counters at exit and `ASH_GC_STRESS=1` collects at every opportunity |
 

@@ -8,13 +8,14 @@
 #include "jparse/H/jast.h"
 
 #define JOWN_REGION_LOOP 0x40000       /* Node.flags of an N_WHILE / N_DO / N_FOR */
+#define JOWN_REGION_BODY 0x80000       /* Node.flags of the body block of a loop lowered with a region: its end frees nothing, the rewind does */
 
 int region_loop_ok(Node *loop);
 /* sets JOWN_REGION_LOOP on every loop of the method body that qualifies */
 void region_mark_loops(Node *body);
 
-/* a for-each body that provably cannot change the size of any list (no call but the harmless ones, no project code):
- * the ConcurrentModificationException check can be left out of the lowering */
-int foreach_body_keeps_sizes(Node *body);
+/* a for-each (over the expression `iter`) whose body provably cannot change the size of the list it walks: the
+ * ConcurrentModificationException check can be left out of the lowering. Read the rules in region.c. */
+int foreach_body_keeps_sizes(Node *iter, Node *body);
 
 #endif

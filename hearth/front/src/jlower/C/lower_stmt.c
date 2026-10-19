@@ -65,7 +65,9 @@ void lblock_body(JBuf *b, Node *block, int ind) {
         if (s->kind == N_LOCAL && s->sym && ((JLocal *)s->sym)->drop && jl_drop_ok(((JLocal *)s->sym)->type) && L.drop_n < 64) L.drops[L.drop_n++] = s->sym;
     }
     int n = block->l1.count;
-    if (!n || !ends_path(block->l1.items[n - 1])) emit_drops(b, mark, ind);
+    /* the body of a region loop: the rewind that follows gives everything back at once, so freeing the body's own
+     * locals one by one first would only fill the free lists the rewind then has to empty */
+    if ((!n || !ends_path(block->l1.items[n - 1])) && !(block->flags & JOWN_REGION_BODY)) emit_drops(b, mark, ind);
     L.drop_n = mark;
 }
 
@@ -78,6 +80,8 @@ static char *region_enter(JBuf *b, Node *loop, int ind) {
     char *cp = new_temp();
     if (getenv("ASH_REGION_TRACE")) fprintf(stderr, "region loop: %s:%d\n", loop->path ? loop->path : "?", loop->line);
     emit_line(b, ind, "local %s = mem_region_enter();", cp);
+    Node *body = loop->kind == N_FOREACH ? loop->c : loop->b;
+    if (body) body->flags |= JOWN_REGION_BODY;
     return cp;
 }
 
@@ -451,7 +455,7 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
     ctx.fin_mark = L.fin_n;
     ctx.up = L.loop;
     flush_pre(b, ind);
-    if (n->b->type->kind == TY_ARRAY || (native_iterable(n->b->type) && foreach_body_keeps_sizes(n->c))) {
+    if (n->b->type->kind == TY_ARRAY || (native_iterable(n->b->type) && foreach_body_keeps_sizes(n->b, n->c))) {
         /* an array cannot change size; neither can a list that a body without project code and without list
          * mutators walks, so the check below is left out and the loop is the plain, fastest one */
         emit_line(b, ind, "each %s in %s {", name, it);

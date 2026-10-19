@@ -750,6 +750,16 @@ static JType *tracked_type(Node *n) {
     return field_node(n) ? ((JField *)n->sym)->type : ((JLocal *)n->sym)->type;
 }
 
+/* does `n` assign the local `l` (plain or compound assignment, ++ / --)? */
+static int assigns_local(Node *n, JLocal *l) {
+    if (!n) return 0;
+    if (n->kind == N_ASSIGN && n->a && n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym == l) return 1;
+    if (assigns_local(n->a, l) || assigns_local(n->b, l) || assigns_local(n->c, l)) return 1;
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) if (assigns_local(ls[k]->items[i], l)) return 1;
+    return 0;
+}
+
 static void untrack(Node *n) {
     if (field_node(n)) ((JField *)n->sym)->own = 0;
     else if (n->sym) ((JLocal *)n->sym)->drop = 0;
@@ -979,6 +989,9 @@ static void scan(Node *n, int in_lambda) {
         }
         case N_FOREACH:
             if (n->sym && elems_flag(n->b)) ((JLocal *)n->sym)->elem_of = elems_flag(n->b);   /* the loop variable aliases the elements */
+            /* the loop keeps walking the value the iterable had when it began: a body that stores another one in that
+             * local would free the old array / list under the loop (a reassignment of a sole owner frees the old value) */
+            if (n->b && n->b->kind == N_NAME && n->b->rk == R_LOCAL && n->b->sym && is_tracked(n->b) && assigns_local(n->c, n->b->sym)) untrack(n->b);
             benign(n->b, in_lambda);
             scan(n->c, in_lambda);
             return;

@@ -5,6 +5,7 @@
 #include "elf/H/elf_dynamic_call.h"
 #include "app/H/target.h"
 #include "codegen/H/emit/value.h"
+#include "codegen/H/emit/emit_sse.h"
 
 // Chunk-based growth, replacing the old single fixed 16MB grab: the arena
 // starts with one chunk and the alloc routine below grows it by another
@@ -55,10 +56,12 @@ static int alloc_routine_offset = -1;
 
 static int free_lists_on;
 static int arrays_on;
+static int regions_on;      // the program has loop regions: every free also marks the table dirty (see heap_emit_region_reset)
 
-void heap_enable_free_lists(int blocks) {
+void heap_enable_free_lists(int blocks, int regions) {
     free_lists_on = kiln_get_link_mode() == KILN_LINK_STATIC && !kiln_is_compiling_so();   // Linux and Windows static builds
     arrays_on = free_lists_on && blocks;
+    regions_on = free_lists_on && regions;
 }
 
 int heap_free_arrays_on(void) { return arrays_on; }
@@ -100,6 +103,7 @@ static void emit_free_block(CodeBuf *code) {
     emit_sar_reg_by1(code, REG_RSI);
     emit_mov_reg_imm64(code, REG_RCX, kiln_freelist_addr());
     emit_add_reg_reg(code, REG_RSI, REG_RCX);                     // RSI = &head
+    if (regions_on) emit_store_mem_disp32(code, REG_RCX, 0, REG_RAX);   // slot 0 of the table: "something was freed" (the block, never 0)
     emit_load_mem_disp32(code, REG_RCX, REG_RSI, 0);
     emit_store_mem_disp32(code, REG_RAX, 0, REG_RCX);             // block.next = head
     emit_store_mem_disp32(code, REG_RSI, 0, REG_RAX);             // head = block
@@ -378,9 +382,17 @@ void heap_emit_region_reset(CodeBuf *code) {
         emit_patch_jump(code, done);
     }
     if (free_lists_on) {
+        // slot 0 is non-zero once any block was freed since the lists were last emptied; when it is zero every
+        // list is empty already (a pop only removes), so an iteration that freed nothing pays one load and a branch
         emit_mov_reg_imm64(code, REG_RSI, kiln_freelist_addr());
+        emit_load_mem_disp32(code, REG_RAX, REG_RSI, 0);
+        emit_cmp_reg_imm32(code, REG_RAX, 0);
+        int clean = emit_jcc_rel32(code, COND_E);
+        emit_pxor_xmm_xmm(code, XMM0);
+        for (int k = 0; k < 16; k++) emit_movups_store_disp32(code, REG_RSI, k * 16, XMM0);   // slots 0..31
         emit_mov_reg_imm64(code, REG_RBX, 0);
-        for (int k = 0; k < 33; k++) emit_store_mem_disp32(code, REG_RSI, k * 8, REG_RBX);
+        emit_store_mem_disp32(code, REG_RSI, 32 * 8, REG_RBX);                                // slot 32
+        emit_patch_jump(code, clean);
     }
     heap_emit_reset(code);
 }

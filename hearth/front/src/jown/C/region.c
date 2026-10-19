@@ -329,8 +329,9 @@ static int stmt_ok2(Rg *g, Node *s) {
 }
 
 /* the body is also walked for statements that merely have to exist; a body with no allocation at all gains
- * nothing from a region, so require at least one allocating construct */
+ * nothing from a region, so require at least one allocating construct that nothing else gives back */
 static int allocates(Node *n);
+static int alloc_all;                              /* ASH_REGION_ALL=1: judge every loop that allocates anything (the tests do) */
 static int callee_allocates(JMethod *m) {
     if (!m || m->rg_pure != 1 || !m->decl) return 0;
     return allocates(m->decl->b);
@@ -338,6 +339,14 @@ static int callee_allocates(JMethod *m) {
 
 static int allocates(Node *n) {
     if (!n) return 0;
+    /* a String or array that a sole-owner local holds is given back at the end of the iteration anyway (jown, own.c),
+     * and the block is recycled while it is hot; a region would only add its own bookkeeping to that. (A list is
+     * different: its growth leaves the old blocks behind, only the last one is freed.) */
+    if (!alloc_all) {
+        if (n->kind == N_LOCAL && n->sym && ((JLocal *)n->sym)->drop && (is_str(((JLocal *)n->sym)->type) || array_t(((JLocal *)n->sym)->type))) return 0;
+        if (n->kind == N_ASSIGN && n->a && n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym && ((JLocal *)n->a->sym)->drop &&
+            (is_str(n->a->type) || array_t(n->a->type))) return 0;
+    }
     if (n->kind == N_CALL && n->sym && ((JMethod *)n->sym)->rg_pure == 1 && callee_allocates(n->sym)) return 1;
     if (n->kind == N_NEWARRAY || n->kind == N_ARRAYINIT || n->kind == N_NEW) return 1;
     if (n->kind == N_BINARY && !strcmp(n->name, "+") && is_str(n->type)) return 1;
@@ -384,6 +393,7 @@ static int region_pure_callee(JMethod *m) {
 }
 
 int region_loop_ok(Node *loop) {
+    alloc_all = getenv("ASH_REGION_ALL") != NULL;
     if (loop->kind != N_WHILE && loop->kind != N_DO && loop->kind != N_FOR && loop->kind != N_FOREACH) return 0;
     Rg *g = j_alloc(sizeof(Rg));
     Node *body = loop->kind == N_FOREACH ? loop->c : loop->b;
@@ -413,25 +423,141 @@ static void mark(Node *n) {
     for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) mark(ls[k]->items[i]);
 }
 
-void region_mark_loops(Node *body) { mark(body); }
+static void ul_prescan(Node *body);
+void region_mark_loops(Node *body) { ul_prescan(body); mark(body); }
 
 /* ------------------------------------------------------------------ for-each over a list: can the body resize it?
  *
  * Lowering a for-each over an ArrayList with Java's ConcurrentModificationException check costs about 50% more
- * per iteration than the plain index loop, so lower_foreach only emits the check when the body could change a
- * list's size. That is decided here by reading the body: it cannot if it makes no call except the few below, and
- * runs no code of the project (a callee, a constructor, a lambda, `toString` through a string concatenation, a user
- * Iterable). The allowed calls are String methods, Math, print / println of values, and get / size / isEmpty / set
- * on a list (none of which changes a size). Anything else counts as "may resize". */
+ * per iteration than the plain index loop, so lower_foreach only emits the check when the body could change the size
+ * of the list it walks. Three facts allow leaving it out, each read off the source:
+ *
+ *   1. The body makes no call but the harmless ones (String methods, Math, print / println of values, get / size /
+ *      isEmpty / set on a list), builds no project object, runs no lambda and does no string concatenation of an
+ *      object (`toString` is project code).
+ *   2. A call to project code is harmless when its target is fixed (static, private or final) and its own body
+ *      satisfies these same rules, transitively (`lk_keep` on the method; a cycle is settled by its root).
+ *   3. A list nobody else can reference (`ul_list`: a local that only ever holds fresh `new ArrayList<>()`s and is
+ *      only used as the receiver of get / set / size / isEmpty / contains / add / remove / removeLast, as the
+ *      iterable of a for-each, or returned) cannot be resized by anything but the calls on that local itself. So
+ *      adding to such a list while walking another list is harmless, and walking such a list is harmless whatever
+ *      the body calls, as long as the body has no add / remove on that same local.
+ * Anything else counts as "may resize". */
+
+static int ul_reader(const char *nm, int na) {
+    return (!strcmp(nm, "size") && na == 0) || (!strcmp(nm, "isEmpty") && na == 0) || (!strcmp(nm, "get") && na == 1) ||
+           (!strcmp(nm, "set") && na == 2) || (!strcmp(nm, "contains") && na == 1);
+}
+static int ul_mutator(const char *nm, int na) {
+    return (!strcmp(nm, "add") && (na == 1 || na == 2)) || (!strcmp(nm, "remove") && na == 1) || (!strcmp(nm, "removeLast") && na == 0);
+}
+
+static int ul_boundary(Node *n) {
+    return n->kind == N_LAMBDA || n->kind == N_METHODREF || n->kind == N_CLASS || n->kind == N_INTERFACE || n->kind == N_ENUM ||
+           n->kind == N_RECORD || n->kind == N_METHOD || n->kind == N_CTOR || (n->kind == N_NEW && n->b);
+}
+
+static void ul_candidates(Node *n, int depth) {
+    if (!n) return;
+    if (n->kind == N_LOCAL && n->sym) {
+        JLocal *l = n->sym;
+        l->ul_list = list_t(l->type) && fresh_arraylist(n->b) ? depth + 1 : 0;
+    }
+    int d = depth + ul_boundary(n);
+    ul_candidates(n->a, d); ul_candidates(n->b, d); ul_candidates(n->c, d);
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) ul_candidates(ls[k]->items[i], d);
+}
+
+static int ul_use_ok(Node *parent, Node *n) {
+    if (!parent) return 0;
+    if (parent->kind == N_FOREACH) return parent->b == n;
+    if (parent->kind == N_RETURN) return parent->a == n;           /* the list leaves with the method; nothing else runs with it */
+    JMethod *m = parent->kind == N_CALL ? parent->sym : NULL;
+    return m && parent->a == n && parent->flags != 1 && list_class(m->cls) &&
+           (ul_reader(m->name, parent->l1.count) || ul_mutator(m->name, parent->l1.count));
+}
+
+static void ul_uses(Node *n, Node *parent, int depth) {
+    if (!n) return;
+    int d = depth + ul_boundary(n);
+    if (n->kind == N_ASSIGN && n->a && n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym && ((JLocal *)n->a->sym)->ul_list) {
+        JLocal *l = n->a->sym;
+        if (d != l->ul_list - 1 || strcmp(n->name, "=") || !fresh_arraylist(n->b)) l->ul_list = 0;
+        ul_uses(n->b, n, d);
+        return;
+    }
+    if (n->kind == N_NAME && n->rk == R_LOCAL && n->sym && ((JLocal *)n->sym)->ul_list) {
+        JLocal *l = n->sym;
+        if (d != l->ul_list - 1 || !ul_use_ok(parent, n)) l->ul_list = 0;
+    }
+    ul_uses(n->a, n, d); ul_uses(n->b, n, d); ul_uses(n->c, n, d);
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) ul_uses(ls[k]->items[i], n, d);
+}
+
+/* before the loops of a method are judged: which of its list locals nobody else can reference */
+static void ul_prescan(Node *body) {
+    ul_candidates(body, 0);
+    ul_uses(body, NULL, 0);
+}
+
+static int ul_local(Node *e) {
+    return e && e->kind == N_NAME && e->rk == R_LOCAL && e->sym && ((JLocal *)e->sym)->ul_list > 0;
+}
+
+static JLocal *lk_iter;                 /* the local the loop under judgement walks, when it is a plain name */
+static int lk_ok(Node *n);
+
+static JList lk_tentative;              /* methods judged "yes" while an analysis they may depend on is still running */
+static int lk_depth;
+
+/* a method whose body, transitively, cannot change the size of a list that the caller can see */
+static int callee_keeps(JMethod *m) {
+    if (m->lk_keep == 1 || m->lk_keep == 3 || m->lk_keep == 4) return 1;      /* settled yes, or assumed by a cycle */
+    if (m->lk_keep == 2) return 0;
+    JClass *c = m->cls;
+    if (!project_cls(c) || (c->kind != N_CLASS && c->kind != N_RECORD) || m->tmpl || m->is_ctor || m->synthetic || !m->decl ||
+        !m->decl->b || m->decl->b->kind != N_BLOCK || (m->flags & (M_VARARGS | M_ABSTRACT | M_NATIVE)) ||
+        !(m->flags & (M_STATIC | M_PRIVATE | M_FINAL)) || lk_depth > 64) {
+        m->lk_keep = 2;
+        return 0;
+    }
+    m->lk_keep = 3;
+    lk_depth++;
+    int ok = lk_ok(m->decl->b);
+    lk_depth--;
+    if (!ok) {
+        m->lk_keep = 2;                                  /* a no stands whatever was assumed on the way */
+    } else if (lk_depth > 0) {
+        m->lk_keep = 4;                                  /* yes, if the methods still being analysed turn out yes */
+        j_list_push(&lk_tentative, m);
+    } else {
+        m->lk_keep = 1;
+    }
+    if (lk_depth == 0) {                                 /* the root decides for everything judged under it */
+        for (int i = 0; i < lk_tentative.count; i++) {
+            JMethod *t = lk_tentative.items[i];
+            if (t->lk_keep == 4) t->lk_keep = ok ? 1 : 0;
+        }
+        lk_tentative.count = 0;
+    }
+    return ok;
+}
 
 static int lk_call(Node *e) {
     JMethod *m = e->sym;
     if (!m || e->flags == 1 || !m->cls || !m->cls->qname) return 0;
+    const char *q = m->cls->qname, *nm = m->name;
+    if (list_class(m->cls) && ul_local(e->a)) {
+        if (ul_reader(nm, e->l1.count)) return 1;
+        return ul_mutator(nm, e->l1.count) && (JLocal *)e->a->sym != lk_iter;
+    }
+    if (project_cls(m->cls)) return callee_keeps(m);
     for (int i = 0; i < e->l1.count; i++) {
         JType *t = ((Node *)e->l1.items[i])->type;
         if (!is_value(t) && !prim_or_box(t)) return 0;
     }
-    const char *q = m->cls->qname, *nm = m->name;
     if (m->cls == jt_string()) {
         static const char *const ok[] = {"length", "charAt", "equals", "isEmpty", "indexOf", "substring", "startsWith", "endsWith", "contains", "compareTo", "toUpperCase", "toLowerCase", "trim", NULL};
         for (int i = 0; ok[i]; i++) if (!strcmp(nm, ok[i])) return e->a && is_str(e->a->type);
@@ -467,4 +593,27 @@ static int lk_ok(Node *n) {
     return 1;
 }
 
-int foreach_body_keeps_sizes(Node *body) { return lk_ok(body); }
+/* does the code under `n` add to or remove from the list local `l`? */
+static int mutates_local(Node *n, JLocal *l) {
+    if (!n) return 0;
+    if (n->kind == N_CALL && n->sym && n->a && n->a->kind == N_NAME && n->a->sym == l && ul_mutator(((JMethod *)n->sym)->name, n->l1.count)) return 1;
+    if (mutates_local(n->a, l) || mutates_local(n->b, l) || mutates_local(n->c, l)) return 1;
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) if (mutates_local(ls[k]->items[i], l)) return 1;
+    return 0;
+}
+
+int foreach_body_keeps_sizes(Node *iter, Node *body) {
+    int ok;
+    if (getenv("ASH_FOREACH_CHECK_ALL")) return 0;       /* a test aid: every for-each keeps its size check */
+    /* a list nobody else can reference: only the calls on that local itself can resize it */
+    if (ul_local(iter) && !mutates_local(body, iter->sym)) {
+        ok = 1;
+    } else {
+        lk_iter = ul_local(iter) ? iter->sym : NULL;
+        ok = lk_ok(body);
+        lk_iter = NULL;
+    }
+    if (getenv("ASH_REGION_TRACE") && iter && iter->line) fprintf(stderr, "for-each %s:%d: %s\n", iter->path ? iter->path : "?", iter->line, ok ? "no size check" : "size check");
+    return ok;
+}
