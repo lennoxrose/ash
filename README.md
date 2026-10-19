@@ -45,6 +45,7 @@ bin/ashvm check Main.ash                # parse and type-check only
 bin/ashvm fmt --write Main.ash          # fix indentation and trailing white space (`--check` lists files that would change)
 bin/ashvm explain E0101                 # what a memory-safety error code means (also `kiln --explain`)
 bin/ashvm check --json Main.ash         # the same, diagnostics as JSON on stdout (editors; kiln has --json too)
+bin/ashvm lsp                           # language server on stdin / stdout: diagnostics, hover (types), go to definition
 bin/ashvm                               # interactive REPL
 
 bin/kiln Main.ash -o main               # compile to a native ELF binary (no VM, no libc)
@@ -129,6 +130,23 @@ With it on, at compile time:
 And at run time memory is freed with no collector (`ashvm`: Strings, arrays, lists, objects, maps and sets; `kiln`: Strings, one-dimensional arrays, objects, maps and sets): a local that is the sole owner of a fresh String, array, `ArrayList`, `HashMap` / `HashSet` or plain object (`new T(..)` whose `this` never escapes, or the fresh result of a project method that returns one) and is only read is freed (with the String and array fields that only it ever references) at the end of its scope, before `return`/`break`/`continue`, and before it is reassigned; concatenation temporaries are freed as soon as they are used, and a list or `String[]` of fresh Strings that are only read in harmless ways frees those Strings with it. Everything the compiler cannot prove unshared is simply left alone, so a leak is possible but a use-after-free is not. In `kiln` (Linux static builds), a loop whose body keeps nothing it allocates past the iteration (no calls into project code, no stores of references to anything declared outside the loop; see `hearth/front/src/jown/C/region.c`) also gives the whole iteration's allocations back at once by moving the heap pointer back. A loop building millions of short-lived strings and arrays runs in a few MB.
 
 With `memory-safety: off`, `System.free(x)` frees a String, array or object yourself in `ashvm` (`kiln` ignores it); it is an error with safety on. `kiln` runs the same checks and frees them too (static builds, Linux and Windows; `--link=shared` builds keep the old allocator). The shared move-flow engine is the Rust library `bin/lib/mnemo.a` (`hearth/mnemo`), linked by both engines.
+
+## Editor support (`ashvm lsp`)
+
+`ashvm lsp` is a Language Server Protocol server over stdio, for any editor with an LSP client (point it at the command
+`ashvm lsp` for `*.ash` files, started in the project directory or with `ASH_PATH` set like for `ashvm run`):
+
+- **Diagnostics** (`textDocument/publishDiagnostics`) are the ones of `ashvm check --json` for the text in the editor, with
+  the error code (`E0101`), the help lines in the message and the notes (where a value was moved) as related information;
+  errors in the files the document imports are published on those files, and cleared when they are gone.
+- **Hover** shows the type of the local, parameter, field, method, class or expression under the cursor, and
+  **go to definition** jumps to where that local, field, method or class is declared (the built-in core library, which
+  has no file, has no definition to jump to).
+- Positions are UTF-16 as the protocol wants, or UTF-8 when the client asks for it. The file is analysed in the project it
+  belongs to (the nearest directory above it with an `ash.pkg`), by a child process per request, so a file the compiler
+  chokes on (or one that takes more than 10 seconds) costs one warning on that file, never the session; bursts of edits
+  are coalesced into one analysis. `hearth/ashvm/tests/scripts/lsp_check.sh` drives it with a scripted client,
+  bad input included.
 
 ## Package manager (`apm`)
 

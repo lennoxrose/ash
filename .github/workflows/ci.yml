@@ -85,6 +85,10 @@ jobs:
         working-directory: ash
         run: bash hearth/ashvm/tests/scripts/run_regression.sh
 
+      - name: ashvm, language server (scripted LSP client)
+        working-directory: ash
+        run: bash hearth/ashvm/tests/scripts/lsp_check.sh
+
       - name: kiln, regression
         working-directory: ash
         run: bash hearth/kiln/tests/scripts/run_regression.sh

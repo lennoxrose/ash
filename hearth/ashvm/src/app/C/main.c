@@ -9,6 +9,7 @@
 #include "jdriver/H/jdriver.h"
 #include "jexplain/H/jexplain.h"
 #include "jfmt/H/jfmt.h"
+#include "jlsp/H/jlsp.h"
 #include "jlower/H/jlower.h"
 
 #ifndef ASH_VERSION
@@ -24,6 +25,7 @@ static int usage(const char *prog) {
     fprintf(stderr, "usage: %s                            interactive REPL\n", prog);
     fprintf(stderr, "       %s run [--wrap-int] <file.ash>   run a program\n", prog);
     fprintf(stderr, "       %s fmt [--check|--write] <file.ash>...   fix indentation and trailing white space (to stdout; --write edits the files, --check lists files that would change)\n", prog);
+    fprintf(stderr, "       %s lsp                           language server on stdin / stdout (diagnostics, hover, go to definition)\n", prog);
     fprintf(stderr, "       %s explain [<code>]              describe a memory-safety error code such as E0101 (no code: list them)\n", prog);
     fprintf(stderr, "       %s check [--json] <file.ash>     type-check without running; --json prints the diagnostics as JSON on stdout\n", prog);
     return 2;
@@ -67,6 +69,10 @@ int main(int argc, char *argv[]) {
             } else fputs(out, stdout);
         }
         return status;
+    }
+    if (strcmp(argv[1], "lsp") == 0) {
+        if (argc != 2) return usage(argv[0]);
+        return jlsp_serve();
     }
     if (strcmp(argv[1], "explain") == 0) {
         if (argc > 3) return usage(argv[0]);

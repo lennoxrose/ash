@@ -37,7 +37,9 @@ static const int builtin_arity[] = {
 
 int vm_builtin_lookup(const char *name, int len) {
     for (int i = 0; i < NUM_BUILTINS; i++) {
-        if ((int)strlen(builtin_names[i]) == len && strncmp(builtin_names[i], name, len) == 0) return i;
+        const char *b = builtin_names[i];
+        /* the first letter rules out nearly all of them without a strlen (this runs for every call of the program and the library) */
+        if (b[0] == name[0] && (int)strlen(b) == len && strncmp(b, name, len) == 0) return i;
     }
     return -1;
 }

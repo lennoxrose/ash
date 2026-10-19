@@ -37,7 +37,8 @@ FRONT_SRC = \
     src/jfmt/C/jfmt.c \
     src/jexplain/C/jexplain.c \
     src/jexplain/C/explain_data.c \
-    src/jrepl/C/jrepl.c
+    src/jrepl/C/jrepl.c \
+    src/jlsp/C/jlsp.c
 
 obj_of = $(patsubst %.c,%.o,$(subst /C/,/O/,$(1)))
 dep_of = $(patsubst %.c,%.d,$(subst /C/,/D/,$(1)))
