@@ -77,6 +77,7 @@ struct JMethod {
     int own_done;  /* jown: sole-owner analysis of the body has run */
     JClass *fresh_cls; /* jown: the exact class of the fresh object every return hands over (NULL for String / array) */
     int fresh_ret; /* jown: 0 unknown, 1 every return is a fresh heap value, 2 not, 3 being analysed */
+    int rg_pure;   /* jown/region: 0 unknown, 1 a call keeps nothing it allocates and returns a primitive, 2 not, 3 being analysed */
     int this_esc;  /* jown: 0 unknown, 1 `this` does not escape, 2 it may, 3 being analysed */
 };
 

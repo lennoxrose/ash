@@ -35,6 +35,8 @@ check RegionLoops 12
 check RegionEscapes 0
 check RegionForEach 16
 check RegionForEachEscapes 0
+check RegionCalls 11
+check RegionCallEscapes 0
 
 mkdir "$TMP/p"
 printf 'name: m\nversion: 0.1.0\nmemory-safety: on\n' > "$TMP/p/ash.pkg"
@@ -66,6 +68,28 @@ echo "regions: ${on}  without: ${off}  (peak MB, last line of output)"
 [ "${on#* }" == "${off#* }" ] || { echo "FAIL: outputs differ"; fail=1; }
 [ "${on%% *}" -le 16 ] || { echo "FAIL: peak with regions is ${on%% *} MB"; fail=1; }
 [ "${off%% *}" -ge $(( ${on%% *} * 4 )) ] || { echo "FAIL: without regions is not clearly larger"; fail=1; }
+
+cat > "$TMP/p/Calls.ash" <<'JAVA'
+public class Calls {
+    static int width(String s) {
+        String padded = "[" + s + "]";
+        int[] junk = new int[16];
+        junk[3] = padded.length();
+        return junk[3];
+    }
+    public static void main(String[] args) {
+        long total = 0;
+        for (int i = 0; i < 2000000; i++) total += width("item-" + i);
+        System.out.println(total);
+    }
+}
+JAVA
+"$KILN" "$TMP/p/Calls.ash" -o "$TMP/p/cwith" && KILN_NO_REGIONS=1 "$KILN" "$TMP/p/Calls.ash" -o "$TMP/p/cwithout" || { echo "compile failed"; exit 1; }
+on=$(peak "$TMP/p/cwith"); off=$(peak "$TMP/p/cwithout")
+echo "calls: regions: ${on}  without: ${off}  (peak MB, last line of output)"
+[ "${on#* }" == "${off#* }" ] || { echo "FAIL: call outputs differ"; fail=1; }
+[ "${on%% *}" -le 16 ] || { echo "FAIL: peak with regions is ${on%% *} MB"; fail=1; }
+[ "${off%% *}" -ge $(( ${on%% *} * 3 )) ] || { echo "FAIL: without regions is not clearly larger"; fail=1; }
 
 for f in tests/cases/*/*.ash ../front/tests/cases/run/*_j.ash ../../examples/*.ash; do
     n=$(basename "$f" .ash)

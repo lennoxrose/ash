@@ -32,6 +32,7 @@ typedef struct {
     JLocal *inner[MAX_INNER];
     int n;
     int overflow;
+    int callee;          /* analysing the body of a method called from a region loop: `return` must hand back a primitive */
 } Rg;
 
 static int is_prim(JType *t) {
@@ -95,6 +96,18 @@ static int name_in(Rg *g, Node *e) {
     return e && e->kind == N_NAME && e->rk == R_LOCAL && e->sym && is_inner(g, e->sym);
 }
 
+static int region_pure_callee(JMethod *m);
+
+/* the project's own classes (a standard-library class keeps going through the lists of harmless calls below) */
+static int project_cls(JClass *c) {
+    return c && c->mem_on && c->qname && strncmp(c->qname, "ash.", 4) != 0;
+}
+
+/* a name that stands for a class or a package (`Util.f(x)`, `pkg.Util.f(x)`) evaluates to nothing */
+static int type_name(Node *e) {
+    return e && (e->kind == N_NAME || e->kind == N_FIELDACC) && (e->rk == R_CLASS || e->rk == R_PACKAGE);
+}
+
 static int call_ok(Rg *g, Node *e) {
     JMethod *m = e->sym;
     if (!m || e->flags == 1 || !m->cls || !m->cls->qname) return 0;
@@ -104,6 +117,12 @@ static int call_ok(Rg *g, Node *e) {
      * equals is project code, or a container the callee could keep */
     for (int i = 0; i < nargs; i++) if (!is_value(((Node *)e->l1.items[i])->type)) return 0;
     if (!args_ok(g, &e->l1)) return 0;
+    /* project code that provably keeps nothing and answers with a primitive: its allocations die with ours */
+    if (project_cls(m->cls) && !m->tmpl) {
+        if (!region_pure_callee(m)) return 0;
+        if (e->a && !type_name(e->a) && !expr_ok(g, e->a)) return 0;
+        return 1;
+    }
     /* "x".equals(y) resolves to Object.equals; a String receiver is final, so it is String.equals */
     if (!strcmp(nm, "equals") && nargs == 1 && e->a && is_str(e->a->type)) return expr_ok(g, e->a);
     if (m->cls == jt_string()) {
@@ -237,15 +256,24 @@ static int stmt_ok2(Rg *g, Node *s) {
             return stmt_ok(g, s->b);
         }
         case N_FOREACH: return foreach_ok(g, s);
-        case N_RETURN: return expr_ok(g, s->a) && (!s->a || is_value(s->a->type));
+        case N_RETURN:
+            if (g->callee) return s->a && is_prim(s->a->type) && expr_ok(g, s->a);
+            return expr_ok(g, s->a) && (!s->a || is_value(s->a->type));
         default: return 0;
     }
 }
 
 /* the body is also walked for statements that merely have to exist; a body with no allocation at all gains
  * nothing from a region, so require at least one allocating construct */
+static int allocates(Node *n);
+static int callee_allocates(JMethod *m) {
+    if (!m || m->rg_pure != 1 || !m->decl) return 0;
+    return allocates(m->decl->b);
+}
+
 static int allocates(Node *n) {
     if (!n) return 0;
+    if (n->kind == N_CALL && n->sym && ((JMethod *)n->sym)->rg_pure == 1 && callee_allocates(n->sym)) return 1;
     if (n->kind == N_NEWARRAY || n->kind == N_ARRAYINIT || n->kind == N_NEW) return 1;
     if (n->kind == N_BINARY && !strcmp(n->name, "+") && is_str(n->type)) return 1;
     if (n->kind == N_CALL && n->sym && ((JMethod *)n->sym)->cls == jt_string() && !strcmp(((JMethod *)n->sym)->name, "substring")) return 1;
@@ -254,6 +282,40 @@ static int allocates(Node *n) {
     JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
     for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) if (allocates(ls[k]->items[i])) return 1;
     return 0;
+}
+
+/* A call to project code may be made inside a region loop when the callee is fixed at compile time (static,
+ * private or final), takes and returns only primitives and Strings, and keeps nothing it allocates: its body must
+ * satisfy the rules of a loop body (every reference stored goes to a variable of the callee itself, no
+ * constructor of a project class, no lambda / try / throw / switch) and every call in it must in turn be such a
+ * method or one of the harmless library calls. A recursive cycle is never accepted. Whatever the callee
+ * allocates is then unreachable once it has returned, so the region of the calling iteration reclaims it. */
+static int region_pure_callee(JMethod *m) {
+    if (m->rg_pure == 1) return 1;
+    if (m->rg_pure >= 2) return 0;                    /* no, or a recursive cycle */
+    m->rg_pure = 2;
+    JClass *c = m->cls;
+    if (!project_cls(c)) return 0;
+    if (c->kind != N_CLASS && c->kind != N_RECORD) return 0;
+    if (m->tmpl || m->is_ctor || m->synthetic || !m->decl || !m->decl->b || m->decl->b->kind != N_BLOCK) return 0;
+    if ((m->flags & (M_VARARGS | M_ABSTRACT | M_NATIVE)) || !(m->flags & (M_STATIC | M_PRIVATE | M_FINAL))) return 0;
+    if (m->tparams.count || !is_prim(m->ret)) return 0;
+    if (m->decl->l1.count != m->params.count) return 0;
+    Rg *g = j_alloc(sizeof(Rg));
+    g->callee = 1;
+    for (int i = 0; i < m->params.count; i++) {
+        if (!is_value(((JParam *)m->params.items[i])->type)) return 0;
+        Node *pn = m->decl->l1.items[i];
+        JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
+        if (!l) return 0;
+        if (g->n < MAX_INNER) g->inner[g->n++] = l; else return 0;
+    }
+    collect(g, m->decl->b);
+    if (g->overflow) return 0;
+    m->rg_pure = 3;
+    int ok = stmt_ok(g, m->decl->b);
+    m->rg_pure = ok ? 1 : 2;
+    return ok;
 }
 
 int region_loop_ok(Node *loop) {
