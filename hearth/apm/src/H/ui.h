@@ -7,6 +7,7 @@
 // (piping to a file or another program should never see escape codes).
 void ui_ok(const char *fmt, ...);      // green check -- succeeded
 void ui_err(const char *fmt, ...);     // red cross, to stderr -- failed
+void ui_warn(const char *fmt, ...);    // yellow !, to stderr -- worth a look, not a failure
 void ui_info(const char *fmt, ...);    // cyan arrow -- in progress / notice
 void ui_bullet(const char *fmt, ...);  // dim bullet -- a sub-item (dependency list, etc.)
 void ui_header(const char *fmt, ...);  // bold -- a section/project name header

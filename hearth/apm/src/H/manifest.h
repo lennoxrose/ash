@@ -5,7 +5,7 @@
 
 #define MANIFEST_MAX_ENTRIES 64
 #define MANIFEST_NAME_LEN 128
-#define MANIFEST_VALUE_LEN 256
+#define MANIFEST_VALUE_LEN 1024
 #define MANIFEST_FILE "ash.pkg"
 
 // One "name: value" line of a section. In [dependencies] / [dev-dependencies] the value is a raw
@@ -50,7 +50,7 @@ typedef struct {
     char homepage[MANIFEST_VALUE_LEN];
     char repository[MANIFEST_VALUE_LEN];
     char bugs[MANIFEST_VALUE_LEN];
-    char main[MANIFEST_NAME_LEN];
+    char main[2 * MANIFEST_NAME_LEN + 2];
     char keywords[MANIFEST_VALUE_LEN];
     char memory_safety[8];
     EntryList deps;
@@ -65,8 +65,15 @@ void manifest_init_default(Manifest *m, const char *project_name);
 // Returns 1 on success, 0 if the file doesn't exist.
 int manifest_load(const char *dir, Manifest *out);
 
-// Writes ash.pkg into `dir`, overwriting any existing one.
+// Writes ash.pkg into `dir`. An existing file is edited, not regenerated: comments, blank lines, unknown keys and
+// sections and the author's order stay, only changed values are rewritten and new keys / entries added.
 int manifest_save(const char *dir, const Manifest *m);
+
+// Reads ash.pkg again as text and reports what `apm check` should tell the author: unknown keys and sections (with
+// a guess), duplicates, `memory-safety` with a value the compiler would not take as meant or in the wrong place.
+// `problem` is 1 for something that must be fixed, 0 for a warning.
+typedef void (*ManifestLintFn)(int problem, int line, const char *msg, void *ctx);
+void manifest_lint(const char *dir, ManifestLintFn report, void *ctx);
 
 // Adds a new entry or overwrites an existing one with the same name.
 // Returns 0 if the table is full.

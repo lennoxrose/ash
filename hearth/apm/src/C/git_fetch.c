@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "H/git_fetch.h"
+#include "H/fsutil.h"
 
 int git_fetch_is_github_spec(const char *value) {
     return strncmp(value, "github:", 7) == 0;
@@ -49,6 +50,11 @@ static int parse_github_spec(const char *spec, char *user, int user_size, char *
     return 1;
 }
 
+int git_fetch_spec_ok(const char *spec) {
+    char user[128], repo[128], ref[128];
+    return git_fetch_is_github_spec(spec) && parse_github_spec(spec, user, sizeof(user), repo, sizeof(repo), ref, sizeof(ref));
+}
+
 void git_fetch_infer_name(const char *spec, char *out, int out_size) {
     char user[128], repo[128], ref[128];
     if (git_fetch_is_github_spec(spec) && parse_github_spec(spec, user, sizeof(user), repo, sizeof(repo), ref, sizeof(ref))) {
@@ -65,17 +71,12 @@ int git_fetch_github(const char *spec, const char *dest_dir) {
         return 0;
     }
 
-    char cmd[1024];
-    if (ref[0] != '\0') {
-        snprintf(cmd, sizeof(cmd), "git clone --quiet --depth 1 --branch %s https://github.com/%s/%s.git %s",
-                 ref, user, repo, dest_dir);
-    } else {
-        snprintf(cmd, sizeof(cmd), "git clone --quiet --depth 1 https://github.com/%s/%s.git %s",
-                 user, repo, dest_dir);
-    }
-
-    int rc = system(cmd);
-    if (rc != 0) {
+    char url[400];
+    snprintf(url, sizeof(url), "https://github.com/%s/%s.git", user, repo);
+    // an argument vector, not a shell line: neither the spec nor the destination can be taken for shell syntax
+    char *with_ref[] = { "git", "clone", "--quiet", "--depth", "1", "--branch", ref, "--", url, (char *)dest_dir, NULL };
+    char *no_ref[] = { "git", "clone", "--quiet", "--depth", "1", "--", url, (char *)dest_dir, NULL };
+    if (!fsutil_run(ref[0] != '\0' ? with_ref : no_ref)) {
         fprintf(stderr, "apm: 'git clone' failed for %s\n", spec);
         return 0;
     }

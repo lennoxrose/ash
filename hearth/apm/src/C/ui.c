@@ -44,6 +44,12 @@ void ui_err(const char *fmt, ...) {
     va_end(args);
 }
 
+void ui_warn(const char *fmt, ...) {
+    va_list args; va_start(args, fmt);
+    emit(stderr, "\x1b[33m", "!", fmt, args); // yellow exclamation mark
+    va_end(args);
+}
+
 void ui_info(const char *fmt, ...) {
     va_list args; va_start(args, fmt);
     emit(stdout, CYAN, "\xe2\x86\x92", fmt, args); // U+2192 RIGHTWARDS ARROW

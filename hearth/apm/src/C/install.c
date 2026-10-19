@@ -10,6 +10,11 @@
 // apm can actually resolve without a server. path:/plain-version
 // dependencies are a later addition, not scoped in yet.
 int install_dependency(const char *project_dir, const Dependency *dep) {
+    // the name becomes a directory under @ash-modules: "../x" or a name with a space or ';' must never get that far
+    if (!fsutil_safe_name(dep->name)) {
+        ui_err("'%s' is not a usable dependency name (letters, digits, '-', '_' and '.' only, not starting with '.')", dep->name);
+        return 0;
+    }
     char dest[1024];
     snprintf(dest, sizeof(dest), "%s/@ash-modules/%s", project_dir, dep->name);
 
@@ -30,9 +35,7 @@ int install_dependency(const char *project_dir, const Dependency *dep) {
     snprintf(root, sizeof(root), "%s/src/main/ash", dest);
     if (!fsutil_dir_exists(root)) {
         ui_err("'%s' has no src/main/ash source root -- every Ash module must keep its sources there (apm new scaffolds one)", dep->name);
-        char rm[1200];
-        snprintf(rm, sizeof(rm), "rm -rf '%s'", dest);
-        if (system(rm) != 0) ui_err("could not remove %s", dest);
+        if (!fsutil_rm_rf(dest)) ui_err("could not remove %s", dest);
         return 0;
     }
     ui_ok("%s installed", dep->name);

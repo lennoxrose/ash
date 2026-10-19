@@ -1,9 +1,11 @@
+#define _POSIX_C_SOURCE 200809L // fork, execvp, lstat, setenv under -std=c11
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include "H/fsutil.h"
 
 int fsutil_dir_exists(const char *path) {
@@ -70,4 +72,48 @@ int fsutil_copy_dir(const char *src_dir, const char *dest_dir) {
     }
     closedir(d);
     return ok;
+}
+
+// Runs a program with an argument vector, without a shell: nothing in argv can be taken for shell syntax.
+int fsutil_run(char *const argv[]) {
+    fflush(stdout);
+    fflush(stderr);
+    pid_t pid = fork();
+    if (pid < 0) return 0;
+    if (pid == 0) {
+        setenv("GIT_TERMINAL_PROMPT", "0", 1); // a git that cannot find a repository must fail, not ask for a GitHub login
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return 0;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+int fsutil_rm_rf(const char *path) {
+    struct stat st;
+    if (lstat(path, &st) != 0) return 1;
+    if (!S_ISDIR(st.st_mode)) return unlink(path) == 0;
+    DIR *d = opendir(path);
+    if (!d) return 0;
+    int ok = 1;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        char sub[1100];
+        snprintf(sub, sizeof(sub), "%s/%s", path, e->d_name);
+        if (!fsutil_rm_rf(sub)) ok = 0;
+    }
+    closedir(d);
+    return rmdir(path) == 0 && ok;
+}
+
+int fsutil_safe_name(const char *name) {
+    size_t n = strlen(name);
+    if (n == 0 || n > 100 || name[0] == '.') return 0;
+    for (size_t i = 0; i < n; i++) {
+        char c = name[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) return 0;
+    }
+    return 1;
 }

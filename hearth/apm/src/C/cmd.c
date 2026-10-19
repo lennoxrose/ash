@@ -77,7 +77,7 @@ int cmd_new(const char *project_dir, int argc, char **argv) {
     package_id(name, pkg, sizeof(pkg));
     class_id(pkg, cls, sizeof(cls));
 
-    char root[1024], src[1100], path[1200];
+    char root[1024], src[1100], path[1400];
     snprintf(root, sizeof(root), "%s/%s", project_dir, name);
     if (fsutil_dir_exists(root)) { ui_err("%s already exists", root); return 1; }
     snprintf(src, sizeof(src), "%s/src/main/ash/%s", root, pkg);
@@ -111,7 +111,7 @@ int cmd_new(const char *project_dir, int argc, char **argv) {
 //   ash.pkg has name, version, description, license; README.md and LICENSE exist;
 //   sources live under src/main/ash; every .ash file is <Type>.ash (UpperCamelCase), declares
 //   `package a.b;` matching its directory a/b, and declares a type named like the file.
-typedef struct { int problems; } Check;
+typedef struct { int problems; int warnings; } Check;
 
 static void check_fail(Check *c, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static void check_fail(Check *c, const char *fmt, ...) {
@@ -178,9 +178,9 @@ static void check_tree(Check *c, const char *root, const char *rel) {
     if (!d) return;
     for (struct dirent *e = readdir(d); e; e = readdir(d)) {
         if (e->d_name[0] == '.') continue;
-        char sub[1100];
+        char sub[1400];
         snprintf(sub, sizeof(sub), "%s/%s", dir, e->d_name);
-        char subrel[1100];
+        char subrel[1400];
         if (rel[0]) snprintf(subrel, sizeof(subrel), "%s/%s", rel, e->d_name); else snprintf(subrel, sizeof(subrel), "%s", e->d_name);
         if (fsutil_dir_exists(sub)) { check_tree(c, root, subrel); continue; }
         if (!has_suffix(e->d_name, ".ash")) continue;
@@ -199,6 +199,27 @@ static void check_tree(Check *c, const char *root, const char *rel) {
     closedir(d);
 }
 
+static void lint_report(int problem, int line, const char *msg, void *ctx) {
+    (void)line;
+    Check *c = ctx;
+    if (problem) { ui_err("%s: %s", MANIFEST_FILE, msg); c->problems++; }
+    else { ui_warn("%s: %s", MANIFEST_FILE, msg); c->warnings++; }
+}
+
+// unknown keys and sections, a memory-safety value the compiler would misread, duplicates
+static void lint_manifest(const char *project_dir, Check *c) { manifest_lint(project_dir, lint_report, c); }
+
+// a dependency name becomes a directory, its source is fetched with git: both must be what install accepts
+static void check_dependencies(Check *c, const char *section, EntryList *list) {
+    for (int i = 0; i < list->count; i++) {
+        const Entry *e = &list->items[i];
+        if (!fsutil_safe_name(e->name))
+            check_fail(c, "%s: [%s] '%s' is not a usable name (letters, digits, '-', '_' and '.' only, not starting with '.')", MANIFEST_FILE, section, e->name);
+        else if (!git_fetch_spec_ok(e->value))
+            check_fail(c, "%s: [%s] %s: '%s' is not a source apm can fetch (github:<user>/<repo>[@ref])", MANIFEST_FILE, section, e->name, e->value);
+    }
+}
+
 int cmd_check(const char *project_dir, int argc, char **argv) {
     (void)argc; (void)argv;
     Check c = { 0 };
@@ -211,6 +232,17 @@ int cmd_check(const char *project_dir, int argc, char **argv) {
     if (!m.version[0]) check_fail(&c, "%s: missing version", MANIFEST_FILE);
     if (!m.description[0]) check_fail(&c, "%s: missing description", MANIFEST_FILE);
     if (!m.license[0]) check_fail(&c, "%s: missing license (apm license <id>)", MANIFEST_FILE);
+    if (m.main[0]) {
+        // main is a qualified type name: pkg.Class is src/main/ash/pkg/Class.ash
+        char rel[2 * MANIFEST_NAME_LEN + 32];
+        int n = snprintf(rel, sizeof(rel), "src/main/ash/");
+        for (const char *q = m.main; *q && n < (int)sizeof(rel) - 5; q++) rel[n++] = *q == '.' ? '/' : *q;
+        snprintf(rel + n, sizeof(rel) - (size_t)n, ".ash");
+        if (!file_exists(project_dir, rel)) check_fail(&c, "%s: main '%s' is not a file here (expected %s)", MANIFEST_FILE, m.main, rel);
+    }
+    lint_manifest(project_dir, &c);
+    check_dependencies(&c, "dependencies", &m.deps);
+    check_dependencies(&c, "dev-dependencies", &m.dev_deps);
     if (!file_exists(project_dir, "README.md")) check_fail(&c, "missing README.md");
     if (!file_exists(project_dir, "LICENSE")) check_fail(&c, "missing LICENSE (apm license <id>)");
 
@@ -219,8 +251,12 @@ int cmd_check(const char *project_dir, int argc, char **argv) {
     if (!fsutil_dir_exists(root)) check_fail(&c, "missing source root src/main/ash");
     else check_tree(&c, root, "");
 
-    if (c.problems) { ui_err("%d problem%s", c.problems, c.problems == 1 ? "" : "s"); return 1; }
-    ui_ok("%s follows the module conventions", m.name);
+    if (c.problems) {
+        ui_err("%d problem%s%s", c.problems, c.problems == 1 ? "" : "s", c.warnings ? " (and warnings above)" : "");
+        return 1;
+    }
+    if (c.warnings) ui_ok("%s follows the module conventions (%d warning%s)", m.name, c.warnings, c.warnings == 1 ? "" : "s");
+    else ui_ok("%s follows the module conventions", m.name);
     return 0;
 }
 
@@ -254,11 +290,19 @@ int cmd_add(const char *project_dir, int argc, char **argv) {
         return 1;
     }
     const char *source = argv[0];
+    if (!git_fetch_spec_ok(source)) {
+        ui_err("'%s' is not a valid source: expected github:<user>/<repo> or github:<user>/<repo>@<ref> (letters, digits, '-', '_' and '.' only)", source);
+        return 1;
+    }
     const char *explicit_name = NULL;
     int dev = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--as") == 0 && i + 1 < argc) explicit_name = argv[++i];
         else if (strcmp(argv[i], "--dev") == 0) dev = 1;
+        else {
+            ui_err("unknown or incomplete option '%s'\nusage: apm add github:<user>/<repo>[@ref] [--as <name>] [--dev]", argv[i]);
+            return 1;
+        }
     }
 
     char name[MANIFEST_NAME_LEN];
@@ -267,30 +311,46 @@ int cmd_add(const char *project_dir, int argc, char **argv) {
     } else {
         git_fetch_infer_name(source, name, sizeof(name));
     }
+    if (!fsutil_safe_name(name)) {
+        ui_err("'%s' is not a usable dependency name (letters, digits, '-', '_' and '.' only, not starting with '.'); pick one with --as", name);
+        return 1;
+    }
 
     Manifest m;
-    if (!manifest_load(project_dir, &m)) {
+    int had_manifest = manifest_load(project_dir, &m);
+    if (!had_manifest) {
         char project_name[MANIFEST_NAME_LEN];
         infer_project_name(project_name, sizeof(project_name));
         manifest_init_default(&m, project_name);
         ui_info("no %s here, creating one", MANIFEST_FILE);
     }
     EntryList *target = dev ? &m.dev_deps : &m.deps;
+
+    char ash_modules[1024], dest[1200];
+    snprintf(ash_modules, sizeof(ash_modules), "%s/@ash-modules", project_dir);
+    snprintf(dest, sizeof(dest), "%s/%s", ash_modules, name);
+    fsutil_mkdir_p(ash_modules);
+
+    // the same name from another source: what is installed came from the old one
+    Entry *old = entry_find(target, name);
+    if (old && strcmp(old->value, source) != 0 && fsutil_dir_exists(dest)) {
+        ui_info("%s was %s, replacing it with %s", name, old->value, source);
+        if (!fsutil_rm_rf(dest)) { ui_err("could not remove %s", dest); return 1; }
+    }
+
+    // installed first, recorded after: a spec that cannot be fetched must not end up in ash.pkg
+    Dependency dep;
+    snprintf(dep.name, sizeof(dep.name), "%s", name);
+    snprintf(dep.value, sizeof(dep.value), "%s", source);
+    if (!install_dependency(project_dir, &dep)) {
+        ui_err("failed to install '%s' (%s is unchanged)", name, MANIFEST_FILE);
+        return 1;
+    }
     if (!entry_set(target, name, source)) {
         ui_err("dependency table full (max %d)", MANIFEST_MAX_ENTRIES);
         return 1;
     }
     if (!manifest_save(project_dir, &m)) return 1;
-
-    char ash_modules[1024];
-    snprintf(ash_modules, sizeof(ash_modules), "%s/@ash-modules", project_dir);
-    fsutil_mkdir_p(ash_modules);
-
-    Dependency *dep = entry_find(target, name);
-    if (!install_dependency(project_dir, dep)) {
-        ui_err("failed to install '%s'", name);
-        return 1;
-    }
     ui_ok("added %s (%s)", name, source);
     return 0;
 }
