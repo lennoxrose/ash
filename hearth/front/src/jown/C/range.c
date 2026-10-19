@@ -97,12 +97,12 @@ static void ls_uses(Node *n, Node *parent, int later) {
     if (!n) return;
     if (n->kind == N_LAMBDA || n->kind == N_METHODREF || n->kind == N_CLASS || n->kind == N_INTERFACE || n->kind == N_ENUM ||
         n->kind == N_RECORD || n->kind == N_METHOD || n->kind == N_CTOR || (n->kind == N_NEW && n->b)) later = 1;
-    if (n->kind == N_ASSIGN && n->a && n->a->kind == N_NAME && n->a->sym && tracked_list(n->a->sym)) {
+    if (n->kind == N_ASSIGN && n->a && n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym && tracked_list(n->a->sym)) {
         if (later || strcmp(n->name, "=") || !fresh_arraylist(n->b)) ((JLocal *)n->a->sym)->rl_list = 0;
         ls_uses(n->b, n, later);
         return;
     }
-    if (n->kind == N_NAME && n->sym && tracked_list(n->sym) && (later || !ls_member_of(parent, n))) ((JLocal *)n->sym)->rl_list = 0;
+    if (n->kind == N_NAME && n->rk == R_LOCAL && n->sym && tracked_list(n->sym) && (later || !ls_member_of(parent, n))) ((JLocal *)n->sym)->rl_list = 0;
     ls_uses(n->a, n, later); ls_uses(n->b, n, later); ls_uses(n->c, n, later);
     JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
     for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) ls_uses(ls[k]->items[i], n, later);
