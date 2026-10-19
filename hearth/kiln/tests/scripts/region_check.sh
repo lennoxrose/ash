@@ -34,6 +34,7 @@ check() { # name expected_region_loops
 check RegionLoops 12
 check RegionEscapes 0
 check RegionForEach 16
+check RegionForEachLocal 8
 check RegionForEachEscapes 0
 check RegionCalls 12
 check RegionCallEscapes 0

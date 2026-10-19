@@ -93,17 +93,6 @@ public class RegionForEachEscapes {
         return total;
     }
 
-    static long innerList() {
-        long total = 0;
-        for (String w : words) {
-            List<String> l = new ArrayList<>();
-            for (int i = 0; i < 3; i++) l.add(w + i);
-            for (String x : l) total += x.length();
-            total += l.size();
-        }
-        return total;
-    }
-
     static String lambdaKeeps() {
         String[] out = new String[1];
         for (String w : words) {
@@ -155,7 +144,6 @@ public class RegionForEachEscapes {
         tagsOfElement(items);
         System.out.println(items[1].tags[0]);
         System.out.println(userIterable());
-        System.out.println(innerList());
         System.out.println(lambdaKeeps());
         System.out.println(tryKeeps());
         System.out.println(nestedKeeps());

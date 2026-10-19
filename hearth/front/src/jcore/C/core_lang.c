@@ -593,6 +593,23 @@ const JCoreEntry jcore_lang[] = {
     "        super(message, cause);\n"
     "    }\n"
     "}\n" },
+  { "ash/util/ConcurrentModificationException",
+    "package ash.util;\n"
+    "\n"
+    "/// Thrown when a list is grown or shrunk while a for-each loop is walking it.\n"
+    "public class ConcurrentModificationException extends RuntimeException {\n"
+    "    public ConcurrentModificationException() { }\n"
+    "\n"
+    "    /// Creates a new ConcurrentModificationException.\n"
+    "    public ConcurrentModificationException(String message) {\n"
+    "        super(message);\n"
+    "    }\n"
+    "\n"
+    "    /// Creates a new ConcurrentModificationException.\n"
+    "    public ConcurrentModificationException(String message, Throwable cause) {\n"
+    "        super(message, cause);\n"
+    "    }\n"
+    "}\n" },
   { "ash/util/Iterator",
     "package ash.util;\n"
     "\n"

@@ -227,15 +227,16 @@ static int expr_ok2(Rg *g, Node *e) {
     }
 }
 
-/* for-each over an array or an ArrayList: the loop reads the data pointer and the count once, before the first
- * iteration, and nothing else of the iteration lives on the heap. Any other Iterable calls project code. */
+/* for-each over an array (data pointer and count read once, arrays never change size) or an ArrayList (read by
+ * index each time): nothing else of the iteration lives on the heap. Any other Iterable calls project code. */
 static int native_iter_t(JType *t) { return array_t(t) || list_t(t); }
 
 static int foreach_ok(Rg *g, Node *s) {
     JType *it = s->b ? s->b->type : NULL;
     if (!s->sym || !native_iter_t(it)) return 0;
-    /* a list that the body itself grows would leave the loop with a stale data pointer */
-    if (list_t(it) && name_in(g, s->b)) return 0;
+    /* A list is walked by index (lowering: lower_foreach), reading its current data pointer and size each time,
+     * so one declared in the body may be iterated, and even grown by the loop (which then ends with a
+     * ConcurrentModificationException): nothing stale is kept. */
     return expr_ok(g, s->b) && stmt_ok(g, s->c);
 }
 

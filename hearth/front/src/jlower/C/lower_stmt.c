@@ -423,6 +423,11 @@ static int native_iterable(JType *t) {
     return t->kind == TY_ARRAY || is_array_list(t);
 }
 
+static char *ex_new_cme(void) {
+    JMethod *k = find_ctor(jt_well_known("ash.util.ConcurrentModificationException"), 0);
+    return k ? fn_name(k, "new") : (char *)"__missing_ctor";
+}
+
 static void lower_foreach(JBuf *b, Node *n, int ind) {
     char *it = lx(n->b);
     char *name = sname(n->name);
@@ -430,8 +435,20 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
     ctx.drop_mark = L.drop_n;
     ctx.up = L.loop;
     flush_pre(b, ind);
-    if (native_iterable(n->b->type)) {
+    if (n->b->type->kind == TY_ARRAY) {
         emit_line(b, ind, "each %s in %s {", name, it);
+    } else if (native_iterable(n->b->type)) {
+        /* Java's ArrayList iterator: the loop ends when the cursor reaches the size, and a size that changed
+         * since the loop began is a ConcurrentModificationException when the next element is asked for. The
+         * list is read by index on every iteration, so neither backend can walk a stale data pointer. */
+        char *lv = new_temp(), *nv = new_temp(), *iv = new_temp();
+        emit_line(b, ind, "local %s = %s;", lv, it);
+        emit_line(b, ind, "local %s = len(%s);", nv, lv);
+        emit_line(b, ind, "local %s = 0;", iv);
+        emit_line(b, ind, "during not (%s == len(%s)) {", iv, lv);
+        emit_line(b, ind + 1, "given not (len(%s) == %s) { raise %s(); }", lv, nv, ex_new_cme());
+        emit_line(b, ind + 1, "local %s = %s[%s];", name, lv, iv);
+        emit_line(b, ind + 1, "%s += 1;", iv);
     } else {
         char *iv = new_temp();
         emit_line(b, ind, "local %s = __iterof(%s);", iv, it);
