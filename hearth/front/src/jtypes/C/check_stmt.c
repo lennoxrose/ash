@@ -259,11 +259,15 @@ JType *check_switch(Ctx *cx, Node *n, JType *expected) {
                     for (int k = 0; k < type_seen.count; k++) {
                         if (ty_is_subclass(pt->cls, (JClass *)type_seen.items[k])) cerr(lb, "this case is dominated by an earlier case");
                     }
-                    j_list_push(&type_seen, pt->cls);
+                    if (!lb->b) j_list_push(&type_seen, pt->cls);      /* a guarded case may not match: it covers nothing and dominates nothing */
                 }
                 JLocal *l = jt_declare_local(cx, lb, lb->name, ty_with_null(pt, 0), 0, 0);
                 l->has_init = 1;
                 lb->sym = l;
+                if (lb->b) {                                           /* `case T x when cond`: cond sees x */
+                    if (c->l1.count > 1) cerr(lb, "a guarded pattern cannot share a case with other labels");
+                    check_cond(cx, lb->b);
+                }
             } else if (lb->kind == N_LIT_NULL) {
                 lb->type = ty_null();
             } else if (enum_cls && lb->kind == N_NAME) {

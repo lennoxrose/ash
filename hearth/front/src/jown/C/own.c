@@ -589,6 +589,7 @@ static void stmt(Walk *w, Node *n) {
             push_target(w, &t, 1);
             uint32_t out = mnemo_save_dead(m);
             uint32_t fall = mnemo_save_dead(m);
+            uint32_t gfail = mnemo_save_dead(m);       /* states of a `when` guard that failed: the next cases start from them too */
             int has_default = 0;
             for (int i = 0; i < n->l1.count; i++) {
                 Node *c = n->l1.items[i];
@@ -597,9 +598,24 @@ static void stmt(Walk *w, Node *n) {
                 rg_assume_case(&w->rg, n->a, c);       /* ... or the selector matched one of this case's labels */
                 mnemo_join(m, fall);                   /* colon-form cases fall through */
                 mnemo_release(m, fall);
+                mnemo_join(m, gfail);
                 for (int j = 0; j < c->l1.count; j++) {   /* a type pattern binds a fresh variable */
                     Node *lb = c->l1.items[j];
                     if (lb->kind == N_TYPEPATTERN && lb->sym) mnemo_reinit(m, id_of(lb->sym)), note_reinit(w, lb->sym);
+                }
+                for (int j = 0; j < c->l1.count; j++) {   /* a guard runs after the pattern matched; when it fails the next case is tried */
+                    Node *lb = c->l1.items[j];
+                    if (lb->kind != N_TYPEPATTERN || !lb->b) continue;
+                    int pfx = w->prefix;
+                    w->prefix = 0;
+                    expr(w, lb->b);
+                    w->prefix = pfx;
+                    uint32_t after = mnemo_save(m);
+                    rg_assume(&w->rg, lb->b, 0);
+                    mnemo_join_into(m, gfail);
+                    mnemo_restore(m, after);
+                    mnemo_release(m, after);
+                    rg_assume(&w->rg, lb->b, 1);
                 }
                 if (c->b) {
                     if (c->b->kind == N_BLOCK || c->b->kind == N_THROW) stmt(w, c->b); else expr(w, c->b);
@@ -613,10 +629,12 @@ static void stmt(Walk *w, Node *n) {
             mnemo_restore(m, out);
             mnemo_join(m, fall);
             mnemo_join(m, t.brk);
+            mnemo_join(m, gfail);
             if (!has_default) mnemo_join(m, entry);
             mnemo_release(m, entry);
             mnemo_release(m, out);
             mnemo_release(m, fall);
+            mnemo_release(m, gfail);
             pop_target(w, &t);
             return;
         }

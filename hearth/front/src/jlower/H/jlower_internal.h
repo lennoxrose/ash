@@ -69,6 +69,7 @@ void emit_assign_stmt(JBuf *b, Node *e, int ind);
 
 /* lower_prelude.c */
 void emit_prelude(JBuf *b);
+char *lower_and_guard(char *a, Node *guard);          /* `a and guard`, with the guard's hoisted statements run only when a holds */
 void emit_prelude_fmt(JBuf *b);                    /* String.format runtime (lower_prelude_fmt.c) */
 void emit_prelude_long(JBuf *b);                   /* exact 64-bit long runtime (lower_prelude_long.c) */
 char *prune_module(const char *module); /* dead-code elimination from start() (lower_prune.c) */

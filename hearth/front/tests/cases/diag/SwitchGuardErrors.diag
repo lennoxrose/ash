@@ -1,0 +1,31 @@
+error: condition must be of type bool, found int
+  --> tests/cases/diag/SwitchGuardErrors.ash:10:33
+   |
+ 10|             case Integer i when i + 1 -> "not a bool";
+   |                                 ^
+error: cannot find symbol 'q'
+  --> tests/cases/diag/SwitchGuardErrors.ash:12:33
+   |
+ 12|             case Integer j when q > 2 -> "unknown name";
+   |                                 ^
+error: a guarded pattern cannot share a case with other labels
+  --> tests/cases/diag/SwitchGuardErrors.ash:13:32
+   |
+ 13|             case null, Integer k when true -> "shared";
+   |                                ^
+error: switch expression does not cover all possible input values; add the missing cases or a 'default'
+  --> tests/cases/diag/SwitchGuardErrors.ash:9:16
+   |
+  9|         return switch (o) {
+   |                ^
+error: switch expression does not cover all possible input values; add the missing cases or a 'default'
+  --> tests/cases/diag/SwitchGuardErrors.ash:18:16
+   |
+ 18|         return switch (o) {
+   |                ^
+error: switch expression does not cover all possible input values; add the missing cases or a 'default'
+  --> tests/cases/diag/SwitchGuardErrors.ash:25:16
+   |
+ 25|         return switch (s) {
+   |                ^
+6 error(s)

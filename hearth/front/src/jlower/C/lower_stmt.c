@@ -144,8 +144,8 @@ static char *label_cond(Node *lb, const char *sel, JType *seltype) {
     if (lb->kind == N_TYPEPATTERN) {
         if (lb->sym) alias_set(lb->sym, sel);
         JType *t = lb->type;
-        if (t->kind == TY_CLASS) return j_fmt("__inst(%s, %s)", sel, quote_str(t->cls->qname));
-        return "yes";
+        char *test = t->kind == TY_CLASS ? j_fmt("__inst(%s, %s)", sel, quote_str(t->cls->qname)) : (char *)"yes";
+        return lb->b ? lower_and_guard(test, lb->b) : test;
     }
     if (lb->kind == N_LIT_NULL) return j_fmt("(%s == none)", sel);
     if (lb->rk == R_ENUM_CONST && lb->sym) {

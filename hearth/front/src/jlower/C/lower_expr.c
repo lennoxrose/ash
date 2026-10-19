@@ -686,11 +686,19 @@ static void lx_seq(Node **ns, int cnt, char **out) {
     }
 }
 
+static char *short_circuit_text(char *a, Node *eb, int is_and);
+
 static char *short_circuit(Node *e) {
     int is_and = e->name[0] == '&';
-    char *a = lx(e->a);
+    return short_circuit_text(lx(e->a), e->b, is_and);
+}
+
+/* `a && guard` where `a` is already lowered text: a switch case's type test and its `when` guard */
+char *lower_and_guard(char *a, Node *guard) { return short_circuit_text(a, guard, 1); }
+
+static char *short_circuit_text(char *a, Node *eb, int is_and) {
     size_t mark = L.pre.len;
-    char *b = lx(e->b);
+    char *b = lx(eb);
     if (L.pre.len == mark) return j_fmt("(%s %s %s)", a, is_and ? "and" : "or", b);
     char *rhs_pre = pre_cut(mark);
     char *t = new_temp();

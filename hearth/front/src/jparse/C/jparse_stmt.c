@@ -179,10 +179,17 @@ static Node *case_label(Parser *p) {
     if (p_is(p, JT_IDENT)) {
         Node *ty = p_type_opt(p);
         if (ty && p_is(p, JT_IDENT) &&
-            (p_peek_at(p, 1)->kind == JT_ARROW || p_peek_at(p, 1)->kind == JT_COLON)) {
+            (p_peek_at(p, 1)->kind == JT_ARROW || p_peek_at(p, 1)->kind == JT_COLON ||
+             (p_peek_at(p, 1)->kind == JT_IDENT && !strcmp(p_peek_at(p, 1)->text, "when")))) {
             Node *tp = p_node(p, N_TYPEPATTERN);
             tp->a = ty;
             tp->name = p_ident(p, NULL);
+            if (p_is(p, JT_IDENT) && !strcmp(p_peek(p)->text, "when")) { /* `case Integer i when i > 3 ->` */
+                p_next(p);
+                p->no_lambda++;
+                tp->b = p_assign_expr(p);                 /* the guard; its `->` is the arm's, not a lambda's */
+                p->no_lambda--;
+            }
             return tp;
         }
     }

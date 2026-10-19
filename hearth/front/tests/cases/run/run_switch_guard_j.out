@@ -1,0 +1,15 @@
+int 5
+big int 500
+negative -3
+empty string
+long x-string xyzzy
+string abc
+other
+0 12 -1 9
+plain 7
+guard called for 700
+not an int
+guard calls: 2
+n=18
+none n=3
+none n=0
