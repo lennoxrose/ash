@@ -1,26 +1,26 @@
-error: array index is always out of bounds here: the index is 4 and the array length is 4
-  --> tests/cases/safety/RangeStringErrors.ash:8:28
+error: array index is always out of bounds here: the index is 4 and the array length is 4; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/safety/RangeStringErrors.ash:8:33
    |
   8|     int ringEnd() { return ring[SIZE]; }
-   |                            ^
-error: array index is always out of bounds here: the index is 8 and the array length is 8
-  --> tests/cases/safety/RangeStringErrors.ash:9:29
+   |                                 ^
+error: array index is always out of bounds here: the index is 8 and the array length is 8; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/safety/RangeStringErrors.ash:9:35
    |
   9|     int cellsEnd() { return cells[8]; }
-   |                             ^
-error: string index is always out of bounds here: the index is 3 and the string length is 3
-  --> tests/cases/safety/RangeStringErrors.ash:13:16
+   |                                   ^
+error: string index is always out of bounds here: the index is 3 and the string length is 3; valid indexes are 0 to length() - 1, so fix the index or check length() first
+  --> tests/cases/safety/RangeStringErrors.ash:13:25
    |
  13|         return s.charAt(3);
-   |                ^
-error: string index is always out of bounds here: the index is 5 and the string length is 5
-  --> tests/cases/safety/RangeStringErrors.ash:19:16
+   |                         ^
+error: string index is always out of bounds here: the index is 5 and the string length is 5; valid indexes are 0 to length() - 1, so fix the index or check length() first
+  --> tests/cases/safety/RangeStringErrors.ash:19:25
    |
  19|         return s.charAt(5);
-   |                ^
-error: array index is always out of bounds here: the index is 5 to 6 and the array length is 2
-  --> tests/cases/safety/RangeStringErrors.ash:25:31
+   |                         ^
+error: array index is always out of bounds here: the index is 5 to 6 and the array length is 2; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/safety/RangeStringErrors.ash:25:33
    |
  25|             case 5, 6: return a[x];
-   |                               ^
+   |                                 ^
 5 error(s)

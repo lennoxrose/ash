@@ -37,7 +37,7 @@ public class RunForeachModify2 {
             for (int x : xs) { seen++; push(xs, x); }
             System.out.println("viaMethod: no exception");
         } catch (ConcurrentModificationException e) {
-            System.out.println("viaMethod: CME after " + seen);
+            System.out.println("viaMethod: CME after " + seen + ": " + e.getMessage());
         }
     }
 

@@ -423,9 +423,11 @@ static int native_iterable(JType *t) {
     return t->kind == TY_ARRAY || is_array_list(t);
 }
 
+/* `new ConcurrentModificationException("...")` with a message that says what to do (Java's has none) */
 static char *ex_new_cme(void) {
-    JMethod *k = find_ctor(jt_well_known("ash.util.ConcurrentModificationException"), 0);
-    return k ? fn_name(k, "new") : (char *)"__missing_ctor";
+    JMethod *k = find_ctor(jt_well_known("ash.util.ConcurrentModificationException"), 1);
+    if (!k) return (char *)"__missing_ctor()";
+    return j_fmt("%s(%s)", fn_name(k, "new"), quote_str("the list changed size while a for-each was walking it; loop over a copy, or collect the changes and apply them after the loop"));
 }
 
 static void lower_foreach(JBuf *b, Node *n, int ind) {
@@ -448,7 +450,7 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
         emit_line(b, ind, "local %s = len(%s);", nv, lv);
         emit_line(b, ind, "local %s = 0;", iv);
         emit_line(b, ind, "during not (%s == len(%s)) {", iv, lv);
-        emit_line(b, ind + 1, "given not (len(%s) == %s) { raise %s(); }", lv, nv, ex_new_cme());
+        emit_line(b, ind + 1, "given not (len(%s) == %s) { raise %s; }", lv, nv, ex_new_cme());
         emit_line(b, ind + 1, "local %s = %s[%s];", name, lv, iv);
         emit_line(b, ind + 1, "%s += 1;", iv);
     } else {

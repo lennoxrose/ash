@@ -352,7 +352,7 @@ char *jlower_program(JClass *entry) {
         "ash.lang.Object", "ash.lang.String", "ash.lang.Enum", "ash.lang.Record", "ash.lang.Throwable", "ash.lang.Exception",
         "ash.lang.RuntimeException", "ash.lang.ArithmeticException", "ash.lang.IndexOutOfBoundsException",
         "ash.lang.KeyNotFoundException", "ash.lang.NullPointerException", "ash.lang.ClassCastException",
-        "ash.lang.ParseException", "ash.lang.IllegalArgumentException", "ash.lang.System", NULL
+        "ash.lang.ParseException", "ash.lang.IllegalArgumentException", "ash.lang.System", "ash.util.ConcurrentModificationException", NULL
     };
     for (int i = 0; core[i]; i++) jt_complete(jt_well_known(core[i]));
     jt_check_all();

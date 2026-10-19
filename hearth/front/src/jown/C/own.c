@@ -100,8 +100,8 @@ static void use(Walk *w, Node *n) {
         for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) dup = 1;
         if (!dup) {
             j_list_push(&w->reported, n);
-            if (first_iter) cerr(n, "variable '%s' is used before it is assigned: the first pass through the loop reaches this use before any assignment", n->name);
-            else cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use", n->name);
+            if (first_iter) cerr(n, "variable '%s' is used before it is assigned: the first pass through the loop reaches this use before any assignment; give it a value before the loop (or where it is declared)", n->name);
+            else cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first", n->name);
         }
         mark_assigned(w, l);                          /* one report per variable and path */
         return;
@@ -222,7 +222,7 @@ static void expr(Walk *w, Node *n) {
         case N_NEW: call_args(w, n, n->sym, NULL, &n->l1); return;
         case N_UNARY:
             if (n->name[0] == '&') {
-                cerr(n, "a borrow ('%s') can only be passed as a call argument", n->name);
+                cerr(n, "a borrow ('&%s') can only be passed as a call argument; it cannot be stored, returned or assigned, so pass '%s' by move or clone it", n->a && n->a->name ? n->a->name : "x", n->a && n->a->name ? n->a->name : "x");
                 return;
             }
             children(w, n);
