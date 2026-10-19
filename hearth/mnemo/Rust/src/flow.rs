@@ -27,10 +27,17 @@ fn widen(old: Iv, new: Iv) -> Iv {
     (if new.0 < old.0 { i64::MIN } else { old.0 }, if new.1 > old.1 { i64::MAX } else { old.1 })
 }
 
+/// Widening for lengths: a lower bound that moved is 0 (a length is never negative), not minus infinity.
+fn widen_len(old: Iv, new: Iv) -> Iv {
+    (if new.0 < old.0 { 0 } else { old.0 }, if new.1 > old.1 { i64::MAX } else { old.1 })
+}
+
 fn join_maps(a: &mut BTreeMap<u64, Iv>, b: &BTreeMap<u64, Iv>, f: fn(Iv, Iv) -> Iv) {
     a.retain(|k, _| b.contains_key(k));
     for (k, v) in a.iter_mut() {
-        *v = f(*v, b[k]);
+        if let Some(&bv) = b.get(k) {
+            *v = f(*v, bv);
+        }
     }
 }
 
@@ -64,7 +71,7 @@ impl State {
         }
         self.moved.extend(other.moved.iter().copied());
         join_maps(&mut self.ranges, &other.ranges, widen);
-        join_maps(&mut self.lens, &other.lens, widen);
+        join_maps(&mut self.lens, &other.lens, widen_len);
     }
 }
 
@@ -87,7 +94,8 @@ impl Walk {
                 self.snaps.len() - 1
             }
         };
-        (i + 1) as u32
+        // a handle is slot + 1 in a u32; past that nothing can be told apart, so hand out 0 (never valid)
+        u32::try_from(i).ok().and_then(|i| i.checked_add(1)).unwrap_or(0)
     }
 
     fn get(&self, h: u32) -> Option<&State> {
@@ -279,7 +287,7 @@ pub extern "C" fn mnemo_len_get(w: *mut Walk, id: u64, lo: *mut i64, hi: *mut i6
     match w.cur.lens.get(&id) {
         // SAFETY: the caller passes valid out pointers (flow.h).
         Some(&(a, b)) => unsafe {
-            *lo = a;
+            *lo = a.max(0);
             *hi = b;
             1
         },
@@ -345,7 +353,9 @@ fn clamp(v: i128) -> i64 {
 
 fn corners(a: Iv, b: Iv, f: impl Fn(i128, i128) -> i128) -> (i128, i128) {
     let c = [f(a.0 as i128, b.0 as i128), f(a.0 as i128, b.1 as i128), f(a.1 as i128, b.0 as i128), f(a.1 as i128, b.1 as i128)];
-    (*c.iter().min().unwrap(), *c.iter().max().unwrap())
+    let lo = c[0].min(c[1]).min(c[2]).min(c[3]);
+    let hi = c[0].max(c[1]).max(c[2]).max(c[3]);
+    (lo, hi)
 }
 
 /// Interval arithmetic for `op` in `+ - * / % &`. Returns 1 with the result in `*olo..*ohi`;
@@ -355,6 +365,9 @@ fn corners(a: Iv, b: Iv, f: impl Fn(i128, i128) -> i128) -> (i128, i128) {
 pub extern "C" fn mnemo_iv_op(op: u8, alo: i64, ahi: i64, blo: i64, bhi: i64, olo: *mut i64, ohi: *mut i64) -> i32 {
     if olo.is_null() || ohi.is_null() {
         return 0;
+    }
+    if alo > ahi || blo > bhi {
+        return 0; // not an interval: nothing can be said (and the division below needs a non-empty divisor)
     }
     let (a, b) = ((alo, ahi), (blo, bhi));
     let (lo, hi): (i128, i128) = match op {
@@ -375,7 +388,10 @@ pub extern "C" fn mnemo_iv_op(op: u8, alo: i64, ahi: i64, blo: i64, bhi: i64, ol
                     let r = corners(a, part, |x, y| x / y);
                     res = Some(res.map_or(r, |p| (p.0.min(r.0), p.1.max(r.1))));
                 }
-                res.unwrap()
+                match res {
+                    Some(r) => r,
+                    None => return 0,
+                }
             } else {
                 let m = (b.0 as i128).abs().max((b.1 as i128).abs()) - 1;
                 if a.0 >= 0 {
@@ -475,6 +491,82 @@ mod tests {
         mnemo_join(w, entry);
         let (mut lo, mut hi) = (0, 0);
         assert_eq!(mnemo_rng_get(w, 1, &mut lo, &mut hi), 0);
+        mnemo_walk_free(w);
+    }
+
+    #[test]
+    fn interval_arithmetic_is_total_and_sound() {
+        // every operator over every pair of small intervals (including inverted ones, which a caller must never
+        // pass but which must not panic): the result covers every concrete outcome, nothing aborts
+        let r: Vec<i64> = (-6..=6).collect();
+        for &o in b"+-*/%&" {
+            for &alo in &r {
+                for &ahi in &r {
+                    for &blo in &r {
+                        for &bhi in &r {
+                            let (rc, (lo, hi)) = op(o, (alo, ahi), (blo, bhi));
+                            if alo > ahi || blo > bhi {
+                                assert_eq!(rc, 0, "inverted interval must be refused");
+                                continue;
+                            }
+                            if rc == 3 {
+                                assert!(o == b'/' || o == b'%');
+                                assert_eq!((blo, bhi), (0, 0));
+                                continue;
+                            }
+                            if rc != 1 {
+                                continue;
+                            }
+                            for x in alo..=ahi {
+                                for y in blo..=bhi {
+                                    if y == 0 && (o == b'/' || o == b'%') {
+                                        continue;
+                                    }
+                                    let v = match o {
+                                        b'+' => x + y,
+                                        b'-' => x - y,
+                                        b'*' => x * y,
+                                        b'/' => x / y,
+                                        b'%' => x % y,
+                                        _ => x & y,
+                                    };
+                                    assert!(lo <= v && v <= hi, "{} {} {} = {} not in {}..{}", x, o as char, y, v, lo, hi);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn extremes_do_not_overflow() {
+        let m = i64::MIN;
+        let x = i64::MAX;
+        for &o in b"+-*/%&" {
+            for &a in &[(m, m), (m, x), (x, x), (-1, 1), (0, 0)] {
+                for &b in &[(m, m), (m, x), (x, x), (-1, 1), (0, 0), (-1, -1)] {
+                    let _ = op(o, a, b); // must return, whatever the answer
+                }
+            }
+        }
+        assert_eq!(op(b'/', (m, m), (-1, -1)).0, 2); // 2^63 does not fit
+    }
+
+    #[test]
+    fn lengths_never_go_below_zero() {
+        let w = mnemo_walk_new();
+        mnemo_len_set(w, 1, 5, 5);
+        let head = mnemo_save(w);
+        mnemo_len_set(w, 1, 2, 2);
+        let end = mnemo_save(w);
+        mnemo_restore(w, head);
+        mnemo_join_widen(w, end);
+        let (mut lo, mut hi) = (0, 0);
+        assert_eq!(mnemo_len_get(w, 1, &mut lo, &mut hi), 1);
+        assert!(lo >= 0, "a length cannot be negative, got {}", lo);
+        assert_eq!(hi, 5);
         mnemo_walk_free(w);
     }
 }

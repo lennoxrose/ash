@@ -1,0 +1,7 @@
+break: x = 5
+continue: y = 30, seen = 2
+nested: inner0;outer0;body1;inner1;outer1;
+scope: t0;f0;f1;after;outer;
+catch: n = 132
+switch: count = 3045
+do: z = 302, i = 3

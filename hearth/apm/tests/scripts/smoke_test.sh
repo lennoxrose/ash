@@ -7,6 +7,7 @@
 # filesystem and the real `git`, do what it says.
 set -euo pipefail
 cd "$(dirname "$0")/../.." # -> apm/
+APM_DIR="$PWD"
 
 make -s
 
@@ -153,6 +154,36 @@ sed -i '/^\[dependencies\]$/,$d' ash.pkg
 sed -i 's/^main: .*/main: nope.Missing/' ash.pkg
 if out=$("$BIN" check 2>&1); then fail "a main that does not exist must fail the check"; fi
 grep -q "main 'nope.Missing' is not a file" <<<"$out" || fail "check: missing main not reported ($out)")
+
+# fsutil_rm_rf (the clean-up of a module without src/main/ash) removes a tree whose paths are longer than any
+# fixed buffer: it used to cut such a path short and fail to empty the directory
+(mkdir deep_rm && cd deep_rm
+cat > t.c <<'C'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include "H/fsutil.h"
+int main(void) {
+    char path[4000] = "tree";
+    mkdir(path, 0755);
+    char comp[201];
+    memset(comp, 'a', 200);
+    comp[200] = 0;
+    for (int i = 0; i < 9; i++) {                    /* 9 levels of 200 characters: 1800 deep */
+        strcat(path, "/");
+        strcat(path, comp);
+        if (mkdir(path, 0755) != 0) { perror("mkdir"); return 2; }
+    }
+    FILE *f = fopen("tree/top.txt", "w"); if (f) fclose(f);
+    f = fopen(strcat(path, "/leaf.txt"), "w"); if (f) fclose(f);
+    if (!fsutil_rm_rf("tree")) return 3;
+    struct stat st;
+    return stat("tree", &st) == 0 ? 4 : 0;
+}
+C
+gcc -std=c11 -Wall -Wextra -I "$APM_DIR/src" -o t t.c "$APM_DIR/src/C/fsutil.c" 2>/dev/null || fail "could not build the rm_rf test"
+./t || fail "fsutil_rm_rf left part of a deeply nested tree behind (exit $?)")
 
 if "$BIN" bogus-command > /dev/null 2>&1; then fail "unknown command should exit non-zero"; fi
 

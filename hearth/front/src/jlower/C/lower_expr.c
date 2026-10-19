@@ -525,6 +525,18 @@ static int plain_ident(const char *t) {
     return 1;
 }
 
+static char *cast_prim(JType *to, JType *from, char *v);
+/* `x op= y` and `x++` store (T)(x op y) (JLS 15.26.2): a byte / short / char wraps, an int or long drops the fraction of a
+ * float / double result, an int takes the low 32 bits of a long one. `value` is the lowered `x op y`. */
+static char *compound_value(JType *lt, JType *rt, const char *op, char *value) {
+    JType *ul = ty_unbox(lt);
+    if (!ty_is_prim(ul) || ul->kind == TY_BOOL) return value;
+    JType *num = (!strcmp(op, "<<") || !strcmp(op, ">>") || !strcmp(op, ">>>")) ? ty_binary_numeric(lt, lt) : ty_binary_numeric(lt, rt);
+    if (!num || num->kind == ul->kind) return value;
+    char *c = cast_prim(ul, num, value);
+    return c ? c : value;
+}
+
 /* Lowers `target = value` operands in Java order: target base/index first, then the value. */
 static void assign_parts(Node *e, char **lhs, char **rhs) {
     Node *t = e->a;
@@ -572,7 +584,7 @@ void emit_assign_stmt(JBuf *b, Node *e, int ind) {
             char op[4];
             strncpy(op, e->name, 3);
             op[strlen(e->name) - 1] = 0;
-            rhs = binop(op, e->a->type, e->b->type, lhs, rhs, e);
+            rhs = compound_value(e->a->type, e->b->type, op, binop(op, e->a->type, e->b->type, lhs, rhs, e));
         }
         flush_pre(b, ind);
         if (e->a->kind == N_NAME && e->a->rk == R_LOCAL && e->a->sym && ((JLocal *)e->a->sym)->drop && jl_drop_ok(((JLocal *)e->a->sym)->type)) {
@@ -707,6 +719,8 @@ static char *incdec_text(Node *e, const char *cur, int inc) {
     JType *t = ty_unbox(e->a->type);
     if (jl_wrap_int && t->kind == TY_LONG) return j_fmt("%s(%s, 1)", inc ? "__ladd" : "__lsub", cur);
     if (jl_wrap_int && t->kind == TY_INT && !(e->flags & 0x200)) return j_fmt("__w(%s %c 1)", cur, inc ? '+' : '-');
+    if (t->kind == TY_BYTE || t->kind == TY_SHORT || t->kind == TY_CHAR)       /* b++ at 127 is -128 */
+        return j_fmt("__wn(%s %c 1, %d, %d)", cur, inc ? '+' : '-', t->kind == TY_BYTE ? 8 : 16, t->kind != TY_CHAR);
     return j_fmt("%s %c 1", cur, inc ? '+' : '-');
 }
 
@@ -719,7 +733,7 @@ static char *assign_value(Node *e) {
             char op[4];
             strncpy(op, e->name, 3);
             op[strlen(e->name) - 1] = 0;
-            rhs = binop(op, e->a->type, e->b->type, lhs, rhs, e);
+            rhs = compound_value(e->a->type, e->b->type, op, binop(op, e->a->type, e->b->type, lhs, rhs, e));
         }
         emit_line(&L.pre, 0, "%s = %s;", lhs, rhs);
         return lhs;
@@ -806,9 +820,8 @@ static char *lower_array(Node *n) {
     return j_fmt("__newarr(%s, %s)", dims, default_value(t));
 }
 
-static char *cast_text(Node *n) {
-    JType *to = n->type, *from = n->b->type;
-    char *v = lx(n->b);
+/* the primitive-to-primitive cast of the already lowered value `v` (NULL when `to` / `from` are not both primitive) */
+static char *cast_prim(JType *to, JType *from, char *v) {
     JType *uf = ty_unbox(from), *ut = ty_unbox(to);
     if (ty_is_prim(ut) && ty_is_prim(uf)) {
         if (jl_wrap_int) {
@@ -832,6 +845,14 @@ static char *cast_text(Node *n) {
         if (ut->kind == TY_CHAR && uf->kind != TY_CHAR) return j_fmt("__wn(%s, 16, 0)", v);
         return v;
     }
+    return NULL;
+}
+
+static char *cast_text(Node *n) {
+    JType *to = n->type, *from = n->b->type;
+    char *v = lx(n->b);
+    char *pc = cast_prim(to, from, v);
+    if (pc) return pc;
     if (to->kind == TY_CLASS && !ty_is_object(to) && !(to->cls->kind == N_INTERFACE && jt_find_sam(to->cls))) {
         return j_fmt("__cast(%s, %s)", v, quote_str(to->cls->qname));
     }

@@ -11,6 +11,7 @@ typedef struct LoopCtx {
     int wrapper;        /* a switch lowered as `during yes {...; stop;}`: break is `stop`, continue leaves via cont_flag */
     char *cont_flag;    /* set before stop when `continue` crosses the wrapper */
     int cont_used;
+    int fin_mark;       /* L.fin_n when the loop began: break/continue run the finally bodies above it */
     int drop_mark;      /* L.drop_n when the loop began: break/continue free the droppables above it */
     struct LoopCtx *up;
 } LoopCtx;

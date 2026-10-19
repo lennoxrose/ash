@@ -3,6 +3,8 @@ finally guard1 2
 6 -1
 body loop0
 fin loop0
+fin loop1
+fin loop2
 caught t1
 2 -2
 zero0!one3dflt9

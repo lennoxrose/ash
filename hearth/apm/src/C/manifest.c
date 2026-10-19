@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L // getline under -std=c11
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -104,14 +105,24 @@ static int read_lines(const char *path, char ***out) {
     FILE *f = fopen(path, "r");
     if (!f) return -1;
     char **v = NULL;
-    int n = 0, cap = 0;
+    int n = 0;
+    size_t cap = 0;
     char *line = NULL;
     size_t sz = 0;
     ssize_t got;
     while ((got = getline(&line, &sz, f)) >= 0) {
         while (got > 0 && (line[got - 1] == '\n' || line[got - 1] == '\r')) line[--got] = '\0';
-        if (n == cap) { cap = cap ? cap * 2 : 64; v = realloc(v, (size_t)cap * sizeof(char *)); }
-        v[n++] = strdup(line);
+        if (n == INT_MAX - 1) break;                      // more lines than a manifest can have: the rest is ignored
+        if ((size_t)n == cap) {
+            size_t ncap = cap ? cap * 2 : 64;
+            char **nv = realloc(v, ncap * sizeof(char *));
+            if (!nv) break;                               // out of memory: work with the lines read so far
+            v = nv;
+            cap = ncap;
+        }
+        char *copy = strdup(line);
+        if (!copy) break;
+        v[n++] = copy;
     }
     free(line);
     fclose(f);

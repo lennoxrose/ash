@@ -116,6 +116,17 @@ static void each_line(JBuf *b, int ind, const char *text) {
     }
 }
 
+/* Runs (inlines) the finally bodies of the try statements being left, innermost first, those from index `from` up:
+ * `return` leaves them all, `break` / `continue` the ones opened inside the loop (or switch) they jump out of. */
+static void run_fins(JBuf *b, int from, int ind) {
+    int saved = L.fin_n;
+    for (int i = saved - 1; i >= from; i--) {
+        L.fin_n = i;
+        lbody(b, L.fin[i], ind);
+    }
+    L.fin_n = saved;
+}
+
 static LoopCtx *real_loop(void) {
     LoopCtx *l = L.loop;
     while (l && l->is_switch) l = l->up;
@@ -267,6 +278,7 @@ static void lower_switch_general(JBuf *b, Node *n, char *sel, int ind) {
     emit_line(b, ind, "local %s = no;", go);
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.is_switch = 1;
     ctx.wrapper = 1;
     ctx.cont_flag = new_temp();
@@ -304,6 +316,7 @@ static void lower_switch_stmt(JBuf *b, Node *n, int ind) {
     }
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.is_switch = 1;
     ctx.up = L.loop;
     L.loop = &ctx;
@@ -435,6 +448,7 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
     char *name = sname(n->name);
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.up = L.loop;
     flush_pre(b, ind);
     if (n->b->type->kind == TY_ARRAY || (native_iterable(n->b->type) && foreach_body_keeps_sizes(n->c))) {
@@ -508,6 +522,7 @@ static void lower_for(JBuf *b, Node *n, int ind) {
     flush_pre(b, ind + 1);
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.up = L.loop;
     ctx.update = update_text(&n->l2);
     if (pre) {
@@ -573,7 +588,7 @@ void ls(JBuf *b, Node *s, int ind) {
             char *c = loop_cond(s->a, &pre);
             LoopCtx ctx = {0};
             ctx.drop_mark = L.drop_n;
-    ctx.drop_mark = L.drop_n;
+            ctx.fin_mark = L.fin_n;
             ctx.up = L.loop;
             if (pre) {
                 emit_line(b, ind, "during yes {");
@@ -598,7 +613,7 @@ void ls(JBuf *b, Node *s, int ind) {
             char *c = loop_cond(s->a, &pre);
             LoopCtx ctx = {0};
             ctx.drop_mark = L.drop_n;
-    ctx.drop_mark = L.drop_n;
+            ctx.fin_mark = L.fin_n;
             ctx.up = L.loop;
             emit_line(b, ind, "local %s = yes;", first);
             if (pre) {
@@ -632,12 +647,7 @@ void ls(JBuf *b, Node *s, int ind) {
                  * function leaves: compute the value first, then finally, then free */
                 char *rv = new_temp();
                 emit_line(b, ind, "local %s = %s;", rv, v);
-                int saved = L.fin_n;
-                for (int i = saved - 1; i >= 0; i--) {
-                    L.fin_n = i;
-                    lbody(b, L.fin[i], ind);
-                }
-                L.fin_n = saved;
+                run_fins(b, 0, ind);
                 /* `return x` hands x to the caller */
                 if (drops) emit_drops_except(b, 0, ind, s->a && s->a->kind == N_NAME && s->a->rk == R_LOCAL ? s->a->sym : NULL);
                 v = rv;
@@ -650,6 +660,7 @@ void ls(JBuf *b, Node *s, int ind) {
                 lerr(s, "break inside a switch must be the last statement of its case");
                 break;
             }
+            if (L.loop) run_fins(b, L.loop->fin_mark, ind);                   /* the finally of a try inside the loop runs first */
             if (L.loop && !L.fin_n) emit_drops(b, L.loop->drop_mark, ind);   /* not under a finally: it may still read them */
             emit_line(b, ind, "stop;");
             break;
@@ -658,11 +669,13 @@ void ls(JBuf *b, Node *s, int ind) {
             if (L.loop && L.loop->is_switch && L.loop->wrapper && real_loop()) {
                 /* leave the one-shot switch loop first, then continue the real loop */
                 L.loop->cont_used = 1;
+                run_fins(b, L.loop->fin_mark, ind);
                 emit_line(b, ind, "%s = yes;", L.loop->cont_flag);
                 emit_line(b, ind, "stop;");
                 break;
             }
             LoopCtx *l = real_loop();
+            if (l) run_fins(b, l->fin_mark, ind);
             if (l && !L.fin_n) emit_drops(b, l->drop_mark, ind);
             if (l && l->update) each_line(b, ind, l->update), (void)0;
             emit_line(b, ind, "next;");

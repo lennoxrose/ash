@@ -97,12 +97,17 @@ int fsutil_rm_rf(const char *path) {
     DIR *d = opendir(path);
     if (!d) return 0;
     int ok = 1;
+    size_t plen = strlen(path);
     struct dirent *e;
     while ((e = readdir(d)) != NULL) {
         if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
-        char sub[1100];
-        snprintf(sub, sizeof(sub), "%s/%s", path, e->d_name);
+        // sized to fit: a path cut short would name some other entry
+        size_t need = plen + 1 + strlen(e->d_name) + 1;
+        char *sub = malloc(need);
+        if (!sub) { ok = 0; continue; }
+        snprintf(sub, need, "%s/%s", path, e->d_name);
         if (!fsutil_rm_rf(sub)) ok = 0;
+        free(sub);
     }
     closedir(d);
     return rmdir(path) == 0 && ok;

@@ -14,6 +14,13 @@
 
 typedef struct { int64_t lo, hi; } Iv;
 
+/* a + b that stops at the ends of int64 instead of wrapping (the ends stand for infinity anyway) */
+static int64_t sat_add(int64_t a, int64_t b) {
+    int64_t r;
+    if (!__builtin_add_overflow(a, b, &r)) return r;
+    return b > 0 ? POS_INF : NEG_INF;
+}
+
 static uint64_t id_of(JLocal *l) { return (uint64_t)(uintptr_t)l; }
 
 /* ---------------------------------------------------------------- types */
@@ -187,7 +194,7 @@ static int str_len(RgCtx *r, Node *e, Iv *out) {
         if (!e->a->type || !ty_is_string(e->a->type) || !e->b->type || !ty_is_string(e->b->type)) return 0;
         if (!str_len(r, e->a, &a) || !str_len(r, e->b, &b)) return 0;
         if (a.hi > INT32_MAX || b.hi > INT32_MAX) return 0;
-        *out = (Iv){a.lo + b.lo, a.hi + b.hi};
+        *out = (Iv){sat_add(a.lo, b.lo), sat_add(a.hi, b.hi)};
         return 1;
     }
     return 0;
@@ -569,8 +576,8 @@ void rg_call_effect(RgCtx *r, Node *n) {
     int64_t lo, hi;
     if (!mnemo_len_get(r->m, id, &lo, &hi)) return;
     if (!strcmp(lc, "add")) {
-        lo = lo == POS_INF ? lo : lo + 1;
-        hi = hi >= INT32_MAX ? POS_INF : hi + 1;
+        lo = sat_add(lo, 1);
+        hi = hi >= INT32_MAX ? POS_INF : sat_add(hi, 1);
     } else {                                        /* the call had at least one element to take, or it failed */
         lo = lo > 1 ? lo - 1 : 0;
         hi = hi == POS_INF ? hi : (hi > 1 ? hi - 1 : 0);
@@ -616,7 +623,7 @@ void rg_assign(RgCtx *r, Node *n) {
         if (!strcmp(op, "=")) { set_str_len_from(r, l, n->b); return; }
         Iv a, b;
         if (!strcmp(op, "+=") && str_len(r, n->a, &a) && n->b->type && ty_is_string(n->b->type) && str_len(r, n->b, &b) && a.hi <= INT32_MAX && b.hi <= INT32_MAX)
-            mnemo_len_set(r->m, id_of(l), a.lo + b.lo, a.hi + b.hi);
+            mnemo_len_set(r->m, id_of(l), sat_add(a.lo, b.lo), sat_add(a.hi, b.hi));
         else rg_forget(r, l);
         return;
     }
@@ -647,7 +654,7 @@ void rg_incdec(RgCtx *r, Node *n) {
     int64_t lo, hi;
     Iv a = mnemo_rng_get(r->m, id_of(l), &lo, &hi) ? (Iv){lo, hi} : type_range(l->type->kind);
     int d = n->name[0] == '+' ? 1 : -1;
-    Iv o = {a.lo == NEG_INF ? NEG_INF : a.lo + d, a.hi == POS_INF ? POS_INF : a.hi + d};
+    Iv o = {a.lo == NEG_INF ? NEG_INF : sat_add(a.lo, d), a.hi == POS_INF ? POS_INF : sat_add(a.hi, d)};
     if (l->type->kind == TY_INT && !jl_wrap_int) {
         if (a.lo == a.hi && (o.lo > INT32_MAX || o.hi < INT32_MIN)) overflow(r, n, "this update", o);
         o.lo = o.lo < INT32_MIN ? INT32_MIN : o.lo;
@@ -674,16 +681,16 @@ static void assume_cmp(RgCtx *r, JLocal *x, const char *op, Iv v, int truth) {
         else strcpy(o, "==");
     }
     int64_t lo = NEG_INF, hi = POS_INF;
-    if (!strcmp(o, "<"))  { if (v.hi == NEG_INF) return; hi = v.hi == POS_INF ? POS_INF : v.hi - 1; }
+    if (!strcmp(o, "<"))  { if (v.hi == NEG_INF) return; hi = v.hi == POS_INF ? POS_INF : sat_add(v.hi, -1); }
     else if (!strcmp(o, "<=")) hi = v.hi;
-    else if (!strcmp(o, ">"))  { lo = v.lo == NEG_INF ? NEG_INF : v.lo + 1; }
+    else if (!strcmp(o, ">"))  { lo = v.lo == NEG_INF ? NEG_INF : sat_add(v.lo, 1); }
     else if (!strcmp(o, ">=")) lo = v.lo;
     else if (!strcmp(o, "==")) { lo = v.lo; hi = v.hi; }
     else {                                              /* != c: only an end of the known range can be cut off */
         int64_t a, b;
         if (v.lo != v.hi || !mnemo_rng_get(r->m, id_of(x), &a, &b)) return;
-        if (a == v.lo && a != b) lo = a + 1;
-        else if (b == v.lo && a != b) hi = b - 1;
+        if (a == v.lo && a != b) lo = sat_add(a, 1);
+        else if (b == v.lo && a != b) hi = sat_add(b, -1);
         else if (a == b && a == v.lo) { mnemo_rng_refine(r->m, id_of(x), 1, 0); return; }   /* x is exactly c: x != c is impossible */
         else return;
     }
@@ -701,35 +708,59 @@ static const char *flip(const char *op) {
     return op;
 }
 
-void rg_assume(RgCtx *r, Node *c, int truth) {
+/* Does `e` write local `l` (assignment, ++ / --, a `&mut` borrow)? */
+static int writes_local(Node *e, JLocal *l) {
+    if (!e) return 0;
+    Node *t = NULL;
+    if (e->kind == N_ASSIGN) t = e->a;
+    else if ((e->kind == N_UNARY || e->kind == N_POSTFIX) && e->name && ((e->name[0] == '+' && e->name[1] == '+') || (e->name[0] == '-' && e->name[1] == '-'))) t = e->a;
+    else if (e->kind == N_UNARY && e->name && e->name[0] == '&' && e->name[1] == 'm') t = e->a;
+    if (t && t->kind == N_NAME && t->rk == R_LOCAL && t->sym == l) return 1;
+    if (writes_local(e->a, l) || writes_local(e->b, l) || writes_local(e->c, l)) return 1;
+    JList *ls[] = {&e->l1, &e->l2, &e->l3, &e->l4, &e->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) if (writes_local(ls[k]->items[i], l)) return 1;
+    return 0;
+}
+
+/* Does `top` write a local that `leaf` reads? Then the state the walk reached after `top` no longer describes the
+ * moment `leaf` was evaluated (`x < 5 && x++ > 0`), and a fact taken from `leaf` would be stale. */
+static int stale(Node *leaf, Node *top) {
+    if (!leaf) return 0;
+    if (leaf->kind == N_NAME && leaf->rk == R_LOCAL && leaf->sym && writes_local(top, leaf->sym)) return 1;
+    if (stale(leaf->a, top) || stale(leaf->b, top) || stale(leaf->c, top)) return 1;
+    for (int i = 0; i < leaf->l1.count; i++) if (stale(leaf->l1.items[i], top)) return 1;
+    return 0;
+}
+
+static void assume(RgCtx *r, Node *c, int truth, Node *top) {
     switch (c->kind) {
         case N_LIT_BOOL:
             if ((strcmp(c->name, "true") == 0) != truth) mnemo_kill(r->m);
             return;
         case N_UNARY:
-            if (!strcmp(c->name, "!")) rg_assume(r, c->a, !truth);
+            if (!strcmp(c->name, "!")) assume(r, c->a, !truth, top);
             return;
         case N_BINARY: {
             const char *op = c->name;
             int and = !strcmp(op, "&&"), or = !strcmp(op, "||");
             if (and || or) {
                 if (and == truth) {                      /* a && b true, or a || b false: both parts hold */
-                    rg_assume(r, c->a, truth);
-                    rg_assume(r, c->b, truth);
+                    assume(r, c->a, truth, top);
+                    assume(r, c->b, truth, top);
                 } else {                                 /* one of the two parts decides */
                     uint32_t s0 = mnemo_save(r->m);
-                    rg_assume(r, c->a, truth);
+                    assume(r, c->a, truth, top);
                     uint32_t s1 = mnemo_save(r->m);
                     mnemo_restore(r->m, s0);
-                    rg_assume(r, c->a, !truth);
-                    rg_assume(r, c->b, truth);
+                    assume(r, c->a, !truth, top);
+                    assume(r, c->b, truth, top);
                     mnemo_join(r->m, s1);
                     mnemo_release(r->m, s0);
                     mnemo_release(r->m, s1);
                 }
                 return;
             }
-            if (!is_cmp(op) || !pure(c->a) || !pure(c->b)) return;
+            if (!is_cmp(op) || !pure(c->a) || !pure(c->b) || stale(c, top)) return;
             if (c->a->kind == N_NAME && c->a->rk == R_LOCAL && tracked(c->a->sym) && int_kind(c->b->type))
                 assume_cmp(r, c->a->sym, op, eval(r, c->b), truth);
             else if (c->b->kind == N_NAME && c->b->rk == R_LOCAL && tracked(c->b->sym) && int_kind(c->a->type))
@@ -739,6 +770,8 @@ void rg_assume(RgCtx *r, Node *c, int truth) {
         default: return;
     }
 }
+
+void rg_assume(RgCtx *r, Node *c, int truth) { assume(r, c, truth, c); }
 
 /* ---------------------------------------------------------------- recursion without a way out */
 

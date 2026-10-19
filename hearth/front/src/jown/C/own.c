@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "jcommon/H/jcommon.h"
@@ -48,6 +49,7 @@ typedef struct Target {
     struct Target *up;
     int is_switch;     /* `break` ends a switch; `continue` belongs to the nearest loop */
     uint32_t brk, cont; /* mnemo snapshots accumulating the states that leave through break / continue */
+    int nfin;          /* finally blocks open when the target began: a jump out of it runs the ones above */
 } Target;
 
 typedef struct {
@@ -55,6 +57,7 @@ typedef struct {
     int in_lambda;     /* inside a lambda body: it runs later, so what is assigned by then is unknown */
     Target *targets;
     JList reported;    /* Node* already diagnosed, so the second loop pass stays quiet */
+    JList fins;        /* finally blocks of the try statements being walked, innermost last */
     RgCtx rg;          /* value-range facts (range.c); shares the MnemoWalk */
     int prefix;        /* in the first pass of an outermost loop, on the straight-line part of its first iteration */
     int catch_depth;   /* inside a try block that has a catch */
@@ -206,9 +209,10 @@ static void expr(Walk *w, Node *n) {
             return;
         case N_ASSIGN:
             if (!strcmp(n->name, "=")) {
+                int to_local = n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym;
+                if (!to_local) expr(w, n->a);               /* Java evaluates the array and the index before the right side */
                 store(w, n->b);
-                if (n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym) { mnemo_reinit(m, id_of(n->a->sym)); mark_assigned(w, n->a->sym); }
-                else expr(w, n->a);
+                if (to_local) { mnemo_reinit(m, id_of(n->a->sym)); mark_assigned(w, n->a->sym); }
             } else {
                 expr(w, n->a);
                 expr(w, n->b);
@@ -309,15 +313,36 @@ static Target *find_target(Walk *w, int for_continue) {
     return NULL;
 }
 
+/* `break` / `continue` run the finally blocks of the try statements they leave before the jump lands, so the
+ * state that reaches the target is the one after them (a `finally { x = 5; }` changes what is known of x). */
 static void jump(Walk *w, int is_continue) {
     Target *t = find_target(w, is_continue);
-    if (t) mnemo_join_into(w->m, is_continue ? t->cont : t->brk);
+    if (t) {
+        int open = w->fins.count, n = open - t->nfin;
+        if (n > 0) {
+            Node **mine = malloc((size_t)n * sizeof *mine);      /* the walks below push and pop on the same list */
+            if (mine) {
+                for (int i = 0; i < n; i++) mine[i] = w->fins.items[t->nfin + i];
+                for (int i = n - 1; i >= 0 && !mnemo_is_dead(w->m); i--) {
+                    w->fins.count = t->nfin + i;               /* a jump inside the finally leaves only the ones below it */
+                    stmt(w, mine[i]);
+                }
+                w->fins.count = open;
+                for (int i = 0; i < n; i++) w->fins.items[t->nfin + i] = mine[i];
+                free(mine);
+            } else {
+                mnemo_havoc(w->m);                              /* out of memory: give up the ranges, they may be stale */
+            }
+        }
+        mnemo_join_into(w->m, is_continue ? t->cont : t->brk);
+    }
     mnemo_kill(w->m);
 }
 
 static void push_target(Walk *w, Target *t, int is_switch) {
     t->up = w->targets;
     t->is_switch = is_switch;
+    t->nfin = w->fins.count;
     t->brk = mnemo_save_dead(w->m);
     t->cont = mnemo_save_dead(w->m);
     w->targets = t;
@@ -479,6 +504,7 @@ static void stmt(Walk *w, Node *n) {
         case N_TRY: {
             uint32_t entry = mnemo_save(m);
             if (n->l1.count) { w->rg.mute++; w->catch_depth++; }   /* a catch may be the point: the program can provoke the exception */
+            if (n->c) j_list_push(&w->fins, n->c);
             stmt(w, n->b);
             if (n->l1.count) { w->rg.mute--; w->catch_depth--; }
             uint32_t out = mnemo_save(m);
@@ -491,6 +517,7 @@ static void stmt(Walk *w, Node *n) {
                 stmt(w, n->l1.items[i]);
                 mnemo_join_into(m, out);
             }
+            if (n->c) w->fins.count--;                 /* the catches were still inside the try for a jump */
             mnemo_restore(m, out);
             if (n->c) {                                /* a finally also runs after an exception from anywhere in the try / catches */
                 rg_forget_assigned(&w->rg, n->b);
