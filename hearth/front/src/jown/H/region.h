@@ -13,4 +13,8 @@ int region_loop_ok(Node *loop);
 /* sets JOWN_REGION_LOOP on every loop of the method body that qualifies */
 void region_mark_loops(Node *body);
 
+/* a for-each body that provably cannot change the size of any list (no call but the harmless ones, no project code):
+ * the ConcurrentModificationException check can be left out of the lowering */
+int foreach_body_keeps_sizes(Node *body);
+
 #endif

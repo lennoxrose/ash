@@ -414,3 +414,57 @@ static void mark(Node *n) {
 }
 
 void region_mark_loops(Node *body) { mark(body); }
+
+/* ------------------------------------------------------------------ for-each over a list: can the body resize it?
+ *
+ * Lowering a for-each over an ArrayList with Java's ConcurrentModificationException check costs about 50% more
+ * per iteration than the plain index loop, so lower_foreach only emits the check when the body could change a
+ * list's size. That is decided here by reading the body: it cannot if it makes no call except the few below, and
+ * runs no code of the project (a callee, a constructor, a lambda, `toString` through a string concatenation, a user
+ * Iterable). The allowed calls are String methods, Math, print / println of values, and get / size / isEmpty / set
+ * on a list (none of which changes a size). Anything else counts as "may resize". */
+
+static int lk_call(Node *e) {
+    JMethod *m = e->sym;
+    if (!m || e->flags == 1 || !m->cls || !m->cls->qname) return 0;
+    for (int i = 0; i < e->l1.count; i++) {
+        JType *t = ((Node *)e->l1.items[i])->type;
+        if (!is_value(t) && !prim_or_box(t)) return 0;
+    }
+    const char *q = m->cls->qname, *nm = m->name;
+    if (m->cls == jt_string()) {
+        static const char *const ok[] = {"length", "charAt", "equals", "isEmpty", "indexOf", "substring", "startsWith", "endsWith", "contains", "compareTo", "toUpperCase", "toLowerCase", "trim", NULL};
+        for (int i = 0; ok[i]; i++) if (!strcmp(nm, ok[i])) return e->a && is_str(e->a->type);
+        return 0;
+    }
+    if (!strcmp(q, "ash.lang.Math")) return (m->flags & M_STATIC) != 0;
+    if (!strcmp(q, "ash.lang.PrintStream")) return !strcmp(nm, "println") || !strcmp(nm, "print");
+    if (list_class(m->cls) && e->a && list_t(e->a->type))
+        return !strcmp(nm, "get") || !strcmp(nm, "size") || !strcmp(nm, "isEmpty") || !strcmp(nm, "set");
+    return 0;
+}
+
+static int lk_ok(Node *n) {
+    if (!n) return 1;
+    switch (n->kind) {
+        case N_CALL: if (!lk_call(n)) return 0; break;
+        case N_NEW: if (!fresh_arraylist(n)) return 0; break;
+        case N_CTORCALL: case N_LAMBDA: case N_METHODREF: return 0;
+        case N_BINARY:
+            if (!strcmp(n->name, "+") && !(prim_or_box(n->a->type) && prim_or_box(n->b->type)) && (!is_value(n->a->type) || !is_value(n->b->type))) return 0;
+            break;
+        case N_ASSIGN:
+            if (!strcmp(n->name, "+=") && is_str(n->a->type) && !is_value(n->b->type) && !prim_or_box(n->b->type)) return 0;
+            break;
+        case N_FOREACH:
+            if (!n->b || !n->b->type || !native_iter_t(n->b->type)) return 0;
+            break;
+        default: break;
+    }
+    if (!lk_ok(n->a) || !lk_ok(n->b) || !lk_ok(n->c)) return 0;
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) if (!lk_ok(ls[k]->items[i])) return 0;
+    return 1;
+}
+
+int foreach_body_keeps_sizes(Node *body) { return lk_ok(body); }

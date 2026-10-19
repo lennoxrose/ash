@@ -59,6 +59,7 @@ typedef struct {
     int prefix;        /* in the first pass of an outermost loop, on the straight-line part of its first iteration */
     int catch_depth;   /* inside a try block that has a catch */
     int loop_depth;    /* loops being walked */
+    int passes;        /* loop passes walked in this method, against LOOP_PASS_BUDGET */
 } Walk;
 
 static uint64_t id_of(JLocal *l) { return (uint64_t)(uintptr_t)l; }
@@ -328,6 +329,12 @@ static void pop_target(Walk *w, Target *t) {
     mnemo_release(w->m, t->cont);
 }
 
+/* Nested loops are walked again for every pass of the loop around them, so a nest of d loops costs about 2^d
+ * walks. Real code stays far below this many passes in a method; past it (a pathological nest) the loops that are
+ * only searching for the outer fixpoint stop after one pass and give up their ranges, which keeps the cost linear
+ * and only costs precision (fewer range errors are certain), never soundness. */
+#define LOOP_PASS_BUDGET 2000
+
 /* A loop is walked until its head state stops changing, then once more with the diagnostics on. The head
  * is the entry state joined with every back edge: moved variables only grow, and a value range that
  * grows is widened to infinity, so this takes a few passes. A condition narrows the ranges for the body
@@ -341,10 +348,15 @@ static void loop(Walk *w, Node *n) {
     uint32_t leave = mnemo_save_dead(m);              /* states that leave through the condition */
     int final = 0;
     int outermost = w->loop_depth == 0;
+    /* inside a pass of an enclosing loop that is itself only searching for its fixpoint nothing is reported, so
+     * this loop need not walk once more with the diagnostics on: stopping as soon as its head is stable already
+     * gives the exit state, and a nest of d loops costs 2^d walks instead of 3^d */
+    int searching = w->rg.mute > 0;
     w->loop_depth++;
     for (int pass = 0; pass < 10; pass++) {
         if (!final) w->rg.mute++;
         w->prefix = pass == 0 && outermost;
+        w->passes++;
         mnemo_restore(m, head);
         if (n->kind == N_DO) {
             stmt(w, n->b);
@@ -384,10 +396,22 @@ static void loop(Walk *w, Node *n) {
         mnemo_restore(m, head);
         mnemo_join_widen(m, end);                     /* back edge */
         mnemo_release(m, end);
+        if (searching && w->passes > LOOP_PASS_BUDGET) {
+            /* The moved set of the head is a fixpoint after one pass (a variable moves or is re-initialised on a
+             * path whatever the head holds), so only the ranges are unknown: forget them, and let this head stand
+             * for every state that leaves the loop. */
+            mnemo_havoc(m);
+            mnemo_join_into(m, leave);
+            mnemo_join_into(m, t.brk);
+            mnemo_release(m, head);
+            head = mnemo_save(m);
+            break;
+        }
         int settled = mnemo_equal(m, head);
         if (!settled && pass >= 8) { mnemo_havoc(m); settled = 1; }
         mnemo_release(m, head);
         head = mnemo_save(m);
+        if (settled && searching) break;
         if (settled && pass >= 1) final = 1;
     }
     w->loop_depth--;

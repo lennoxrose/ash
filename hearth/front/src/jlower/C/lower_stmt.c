@@ -435,7 +435,9 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
     ctx.drop_mark = L.drop_n;
     ctx.up = L.loop;
     flush_pre(b, ind);
-    if (n->b->type->kind == TY_ARRAY) {
+    if (n->b->type->kind == TY_ARRAY || (native_iterable(n->b->type) && foreach_body_keeps_sizes(n->c))) {
+        /* an array cannot change size; neither can a list that a body without project code and without list
+         * mutators walks, so the check below is left out and the loop is the plain, fastest one */
         emit_line(b, ind, "each %s in %s {", name, it);
     } else if (native_iterable(n->b->type)) {
         /* Java's ArrayList iterator: the loop ends when the cursor reaches the size, and a size that changed
