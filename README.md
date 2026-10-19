@@ -39,6 +39,7 @@ make                                    # builds bin/ashvm, bin/kiln and the res
 bin/ashvm run Main.ash                  # run a program on the VM
 bin/ashvm run --wrap-int Main.ash       # Java's 32-bit int overflow (slower arithmetic loops)
 bin/ashvm check Main.ash                # parse and type-check only
+bin/ashvm fmt --write Main.ash          # fix indentation and trailing white space (`--check` lists files that would change)
 bin/ashvm explain E0101                 # what a memory-safety error code means (also `kiln --explain`)
 bin/ashvm check --json Main.ash         # the same, diagnostics as JSON on stdout (editors; kiln has --json too)
 bin/ashvm                               # interactive REPL

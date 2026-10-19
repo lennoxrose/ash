@@ -73,6 +73,10 @@ jobs:
         working-directory: ash
         run: bash hearth/front/tests/scripts/diag_check.sh
 
+      - name: ashvm fmt (indentation, whole repository and standard library)
+        working-directory: ash
+        run: bash hearth/front/tests/scripts/fmt_check.sh
+
       - name: error codes, documented and explained
         working-directory: ash
         run: bash hearth/front/tests/scripts/explain_check.sh
