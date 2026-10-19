@@ -92,4 +92,12 @@ void heap_emit_checkpoint(CodeBuf *code);
 // untouched, since rewinding never needs to give committed pages back.
 void heap_emit_reset(CodeBuf *code);
 
+// The reset of a loop region (jown proved nothing allocated in the loop body outlives its iteration; see
+// front/src/jown/C/region.c): checkpoint value in RDI; clobbers RAX, RBX, RCX, RDX, RSI. It also empties the
+// free lists, because a block freed inside the region now lies beyond the heap pointer and must never be handed
+// out again (blocks freed before the region are given up too: a leak, never an overlap). With the environment
+// variable KILN_REGION_POISON set when compiling, the reclaimed bytes are first overwritten with 0xDD, so that
+// any use of a value that should have been dead shows up in the tests.
+void heap_emit_region_reset(CodeBuf *code);
+
 #endif

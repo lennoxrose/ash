@@ -125,6 +125,8 @@ int codegen_try_builtin_call(const char *name, int len) {
     if (len == 12 && strncmp(name, "mem_free_map", 12) == 0) { codegen_builtin_mem_free_map(); return 1; }
     if (len == 12 && strncmp(name, "mem_free_obj", 12) == 0) { codegen_builtin_mem_free_obj(); return 1; }
     if (len == 12 && strncmp(name, "mem_free_arr", 12) == 0) { codegen_builtin_mem_free_arr(); return 1; }
+    if (len == 16 && strncmp(name, "mem_region_enter", 16) == 0) { codegen_builtin_mem_region_enter(); return 1; }
+    if (len == 16 && strncmp(name, "mem_region_leave", 16) == 0) { codegen_builtin_mem_region_leave(); return 1; }
     if (len == 11 && strncmp(name, "mem_newarr1", 11) == 0) { codegen_builtin_mem_newarr1(); return 1; }
     if (len == 11 && strncmp(name, "mem_release", 11) == 0) { codegen_builtin_mem_release(); return 1; }
     if (len == 7 && strncmp(name, "mem_cat", 7) == 0) { codegen_builtin_mem_cat(); return 1; }
@@ -274,7 +276,7 @@ int codegen_builtin_arity(const char *name, int len) {
         {"type", 1}, {"chr", 1}, {"ord", 1}, {"pop", 1}, {"insert", 3}, {"slice", 3}, {"sort", 1},
         {"rename_file", 2}, {"delete_file", 1}, {"make_dir", 1}, {"list_dir", 1},
         {"contains", 2}, {"starts_with", 2}, {"ends_with", 2}, {"repeat", 2}, {"exit", 1}, {"argv", 0},
-        {"sys_fork", 0}, {"sys_wait", 1}, {"sys_exec", 2}, {"mem_free", 1}, {"mem_cat", 3}, {"mem_release", 1}, {"mem_free_arr", 1}, {"mem_free_obj", 1}, {"mem_free_map", 1}, {"mem_free_elems", 1}, {"mem_newarr1", 2},
+        {"sys_fork", 0}, {"sys_wait", 1}, {"sys_exec", 2}, {"mem_free", 1}, {"mem_cat", 3}, {"mem_release", 1}, {"mem_free_arr", 1}, {"mem_free_obj", 1}, {"mem_free_map", 1}, {"mem_free_elems", 1}, {"mem_newarr1", 2}, {"mem_region_enter", 0}, {"mem_region_leave", 1},
     };
     for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
         if ((int)strlen(table[i].name) == len && strncmp(table[i].name, name, (size_t)len) == 0) return table[i].arity;

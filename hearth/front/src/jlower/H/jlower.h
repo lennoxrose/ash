@@ -23,6 +23,7 @@ extern int jl_wrap_int;
 #define JL_DROP_OBJECTS 4
 #define JL_DROP_MAPS 16      /* HashMap / HashSet locals and fields (ashvm only: its map entries are chains it knows how to free) */
 #define JL_DROP_ELEMS 32     /* free the fresh Strings inside a String[] / List<String> that only it references (ashvm only) */
+#define JL_REGION 64         /* kiln static builds: loops jown marked get a heap region per iteration (mem_region_enter / mem_region_leave) */
 #define JL_NATIVE_NEWARR 8   /* kiln builds `new T[n]` with the mem_newarr1 builtin (exact capacity) instead of the push loop */
 extern int jl_drops;
 

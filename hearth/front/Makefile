@@ -24,6 +24,7 @@ FRONT_SRC = \
     src/jtypes/C/check_class.c \
     src/jown/C/own.c \
     src/jown/C/range.c \
+    src/jown/C/region.c \
     src/jlower/C/lower_expr.c \
     src/jlower/C/lower_stmt.c \
     src/jlower/C/lower_class.c \

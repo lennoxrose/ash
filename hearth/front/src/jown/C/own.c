@@ -6,6 +6,7 @@
 #include "jown/H/own.h"
 #include "mnemo/H/flow/flow.h"
 #include "jown/H/range.h"
+#include "jown/H/region.h"
 #include "jtypes/H/check.h"
 #include "jtypes/H/jtypes.h"
 
@@ -1023,6 +1024,7 @@ static void check_method(JMethod *m, int flow) {
     w.m = mnemo_walk_new();
     w.rg.m = w.m;
     rg_prescan(m->decl->b);
+    region_mark_loops(m->decl->b);
     stmt(&w, m->decl->b);
     mnemo_walk_free(w.m);
 }

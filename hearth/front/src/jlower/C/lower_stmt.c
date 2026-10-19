@@ -1,8 +1,10 @@
 #include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "jlower/H/jlower_internal.h"
+#include "jown/H/region.h"
 #include "jown/H/own.h"
 
 /* Statement lowering: control flow, switch (as if-chains), try/catch/finally via
@@ -68,6 +70,22 @@ void lblock_body(JBuf *b, Node *block, int ind) {
 }
 
 static void lbody(JBuf *b, Node *s, int ind) { lblock_body(b, s, ind); }
+
+/* A loop jown marked (region.c) rewinds the heap at the end of every iteration; `continue`, `break` and
+ * `return` skip the rewind, which only leaves the memory allocated. */
+static char *region_enter(JBuf *b, Node *loop, int ind) {
+    if (!(jl_drops & JL_REGION) || !(loop->flags & JOWN_REGION_LOOP) || !L.cls || !L.cls->mem_on) return NULL;
+    char *cp = new_temp();
+    if (getenv("ASH_REGION_TRACE")) fprintf(stderr, "region loop: %s:%d\n", loop->path ? loop->path : "?", loop->line);
+    emit_line(b, ind, "local %s = mem_region_enter();", cp);
+    return cp;
+}
+
+static void region_leave(JBuf *b, Node *body, char *cp, int ind) {
+    if (!cp) return;
+    if (body->kind == N_BLOCK && body->l1.count && ends_path(body->l1.items[body->l1.count - 1])) return;
+    emit_line(b, ind, "mem_region_leave(%s);", cp);
+}
 
 /* A loop condition is re-evaluated every iteration. When lowering it produced hoisted statements
  * (assignment/++ inside the condition, instanceof bindings), they are returned in *pre and the
@@ -478,7 +496,9 @@ static void lower_for(JBuf *b, Node *n, int ind) {
         emit_line(b, ind + 1, "during %s {", cond);
     }
     L.loop = &ctx;
+    char *rg = region_enter(b, n, ind + 2);
     lbody(b, n->b, ind + 2);
+    region_leave(b, n->b, rg, ind + 2);
     L.loop = ctx.up;
     each_line(b, ind + 2, ctx.update);
     emit_line(b, ind + 1, "}");
@@ -541,7 +561,9 @@ void ls(JBuf *b, Node *s, int ind) {
                 emit_line(b, ind, "during %s {", c);
             }
             L.loop = &ctx;
+            char *rg = region_enter(b, s, ind + 1);
             lbody(b, s->b, ind + 1);
+            region_leave(b, s->b, rg, ind + 1);
             L.loop = ctx.up;
             emit_line(b, ind, "}");
             break;
@@ -568,7 +590,9 @@ void ls(JBuf *b, Node *s, int ind) {
             }
             emit_line(b, ind + 1, "%s = no;", first);
             L.loop = &ctx;
+            char *rg = region_enter(b, s, ind + 1);
             lbody(b, s->b, ind + 1);
+            region_leave(b, s->b, rg, ind + 1);
             L.loop = ctx.up;
             emit_line(b, ind, "}");
             break;

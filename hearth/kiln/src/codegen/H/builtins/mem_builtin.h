@@ -27,6 +27,12 @@ void codegen_builtin_mem_free_elems(void);
 // mem_newarr1(n, d): `new T[n]` for one dimension, filled with d, with exactly n elements of capacity.
 void codegen_builtin_mem_newarr1(void);
 
+// mem_region_enter(): the heap pointer, as a number. mem_region_leave(cp): rewinds the heap to it (and empties
+// the free lists). Emitted around the body of a loop that jown proved to keep nothing it allocates past the
+// iteration (`kiln` static builds only); see heap_emit_region_reset.
+void codegen_builtin_mem_region_enter(void);
+void codegen_builtin_mem_region_leave(void);
+
 // mem_cat(a, b, flags): a + b for two Strings, then frees the operands that were temporaries
 // (flags bit 0 = a, bit 1 = b), so `"x" + str(i)` does not leave the str(i) text behind. Result: the String.
 void codegen_builtin_mem_cat(void);

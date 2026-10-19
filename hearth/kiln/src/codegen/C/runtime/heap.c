@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "codegen/H/runtime/heap.h"
 #include "codegen/H/emit/layout.h"
 #include "codegen/H/platform/win_call.h"
@@ -358,4 +359,28 @@ void heap_emit_checkpoint(CodeBuf *code) {
 void heap_emit_reset(CodeBuf *code) {
     emit_mov_reg_imm64(code, REG_RSI, kiln_heap_ptr_addr());
     emit_store_mem_disp32(code, REG_RSI, 0, REG_RDI);
+}
+
+void heap_emit_region_reset(CodeBuf *code) {
+    if (getenv("KILN_REGION_POISON")) {
+        emit_mov_reg_imm64(code, REG_RSI, kiln_heap_ptr_addr());
+        emit_load_mem_disp32(code, REG_RAX, REG_RSI, 0);              // end of the region
+        emit_mov_reg_imm64(code, REG_RCX, 0xDDDDDDDDDDDDDDDDull);
+        emit_mov_reg_reg(code, REG_RDX, REG_RDI);
+        int top = code->count;
+        emit_mov_reg_reg(code, REG_RBX, REG_RDX);
+        emit_add_reg_imm8(code, REG_RBX, 8);
+        emit_cmp_reg_reg(code, REG_RBX, REG_RAX);
+        int done = emit_jcc_rel32(code, COND_A);                      // fewer than 8 bytes left
+        emit_store_mem_disp32(code, REG_RDX, 0, REG_RCX);
+        emit_mov_reg_reg(code, REG_RDX, REG_RBX);
+        emit_jmp_back(code, top);
+        emit_patch_jump(code, done);
+    }
+    if (free_lists_on) {
+        emit_mov_reg_imm64(code, REG_RSI, kiln_freelist_addr());
+        emit_mov_reg_imm64(code, REG_RBX, 0);
+        for (int k = 0; k < 33; k++) emit_store_mem_disp32(code, REG_RSI, k * 8, REG_RBX);
+    }
+    heap_emit_reset(code);
 }
