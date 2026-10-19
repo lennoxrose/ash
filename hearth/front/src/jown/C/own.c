@@ -207,7 +207,7 @@ static void expr(Walk *w, Node *n) {
         case N_ARRAYINIT:
             for (int i = 0; i < n->l1.count; i++) store(w, n->l1.items[i]);
             return;
-        case N_CALL: call_args(w, n, n->sym, n->a, &n->l1); rg_check_call(&w->rg, n); return;
+        case N_CALL: call_args(w, n, n->sym, n->a, &n->l1); rg_check_call(&w->rg, n); rg_call_effect(&w->rg, n); return;
         case N_NEW: call_args(w, n, n->sym, NULL, &n->l1); return;
         case N_UNARY:
             if (n->name[0] == '&') {
@@ -415,7 +415,11 @@ static void stmt(Walk *w, Node *n) {
                 mnemo_join_into(m, out);
             }
             mnemo_restore(m, out);
-            if (n->c) stmt(w, n->c);
+            if (n->c) {                                /* a finally also runs after an exception from anywhere in the try / catches */
+                rg_forget_assigned(&w->rg, n->b);
+                for (int i = 0; i < n->l1.count; i++) rg_forget_assigned(&w->rg, n->l1.items[i]);
+                stmt(w, n->c);
+            }
             mnemo_release(m, entry);
             mnemo_release(m, out);
             mnemo_release(m, into_catch);
@@ -970,6 +974,7 @@ static void check_method(JMethod *m, int flow) {
     Walk w = {0};
     w.m = mnemo_walk_new();
     w.rg.m = w.m;
+    rg_prescan(m->decl->b);
     stmt(&w, m->decl->b);
     mnemo_walk_free(w.m);
 }

@@ -42,6 +42,77 @@ static int string_call(Node *e, const char *name) {
     return m && e->a && m->cls == jt_string() && !strcmp(m->name, name) && e->flags != 1;
 }
 
+/* ---------------------------------------------------------------- List sizes */
+
+static int list_qname(JClass *c) {
+    return c && c->qname && (!strcmp(c->qname, "ash.util.List") || !strcmp(c->qname, "ash.util.ArrayList"));
+}
+
+static int fresh_arraylist(Node *e) {
+    JMethod *m = e && e->kind == N_NEW ? e->sym : NULL;
+    return m && !e->b && e->l1.count == 0 && m->cls && m->cls->qname && !strcmp(m->cls->qname, "ash.util.ArrayList");
+}
+
+static int tracked_list(JLocal *l) { return l && l->rl_list == 1; }
+
+/* `l.name(..)` on a tracked list local: the method name, else NULL */
+static const char *list_call(Node *e) {
+    JMethod *m = e->kind == N_CALL ? e->sym : NULL;
+    if (!m || !e->a || e->flags == 1 || !list_qname(m->cls)) return NULL;
+    if (e->a->kind != N_NAME || e->a->rk != R_LOCAL || !tracked_list(e->a->sym)) return NULL;
+    return m->name;
+}
+
+/* the methods a tracked list may be used with, and their number of arguments */
+static int list_method_ok(const char *name, int nargs) {
+    return (!strcmp(name, "size") && nargs == 0) || (!strcmp(name, "isEmpty") && nargs == 0) ||
+           (!strcmp(name, "get") && nargs == 1) || (!strcmp(name, "set") && nargs == 2) ||
+           (!strcmp(name, "contains") && nargs == 1) || (!strcmp(name, "add") && (nargs == 1 || nargs == 2)) ||
+           (!strcmp(name, "remove") && nargs == 1) || (!strcmp(name, "removeLast") && nargs == 0);
+}
+
+static int list_mutator(const char *name) {
+    return !strcmp(name, "add") || !strcmp(name, "remove") || !strcmp(name, "removeLast");
+}
+
+/* ---- prescan: which list locals can be followed ---- */
+
+static int ls_member_of(Node *p, Node *n) {
+    return p && p->kind == N_CALL && p->a == n && p->sym && list_qname(((JMethod *)p->sym)->cls) && p->flags != 1 &&
+           list_method_ok(((JMethod *)p->sym)->name, p->l1.count);
+}
+
+static void ls_candidates(Node *n) {
+    if (!n) return;
+    if (n->kind == N_LOCAL && n->sym) {
+        JLocal *l = n->sym;
+        l->rl_list = l->type && !l->type->nullable && l->type->kind == TY_CLASS && list_qname(l->type->cls) && fresh_arraylist(n->b) ? 1 : 0;
+    }
+    ls_candidates(n->a); ls_candidates(n->b); ls_candidates(n->c);
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) ls_candidates(ls[k]->items[i]);
+}
+
+static void ls_uses(Node *n, Node *parent, int later) {
+    if (!n) return;
+    if (n->kind == N_LAMBDA || n->kind == N_METHODREF || n->kind == N_CLASS || n->kind == N_INTERFACE || n->kind == N_ENUM ||
+        n->kind == N_RECORD || n->kind == N_METHOD || n->kind == N_CTOR || (n->kind == N_NEW && n->b)) later = 1;
+    if (n->kind == N_ASSIGN && n->a && n->a->kind == N_NAME && n->a->sym && tracked_list(n->a->sym)) {
+        if (later || strcmp(n->name, "=") || !fresh_arraylist(n->b)) ((JLocal *)n->a->sym)->rl_list = 0;
+        ls_uses(n->b, n, later);
+        return;
+    }
+    if (n->kind == N_NAME && n->sym && tracked_list(n->sym) && (later || !ls_member_of(parent, n))) ((JLocal *)n->sym)->rl_list = 0;
+    ls_uses(n->a, n, later); ls_uses(n->b, n, later); ls_uses(n->c, n, later);
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) ls_uses(ls[k]->items[i], n, later);
+}
+
+void rg_prescan(Node *body) {
+    ls_candidates(body);
+    ls_uses(body, NULL, 0);
+}
+
 /* ---------------------------------------------------------------- evaluation */
 
 /* An expression that writes a variable or calls code cannot be evaluated against one snapshot. */
@@ -50,6 +121,7 @@ static int pure(Node *e) {
     switch (e->kind) {
         case N_CALL: if (string_call(e, "length") && e->l1.count == 0) break;
                      if (string_call(e, "charAt") && e->l1.count == 1) break;
+                     { const char *lc = list_call(e); if (lc && !strcmp(lc, "size") && e->l1.count == 0) break; }
                      return 0;
         case N_ASSIGN: case N_NEW: case N_LAMBDA: case N_POSTFIX: case N_SWITCH: return 0;
         case N_UNARY: if (e->name[0] == '+' && e->name[1] == '+') return 0;
@@ -282,6 +354,11 @@ static Iv eval(RgCtx *r, Node *e) {
         case N_CALL: {
             Iv len;
             if (string_call(e, "length") && str_len(r, e->a, &len)) return len;
+            if (list_call(e)) {                           /* size(): the only list call `pure` lets through */
+                int64_t lo, hi;
+                if (mnemo_len_get(r->m, id_of(e->a->sym), &lo, &hi)) return (Iv){lo, hi};
+                return (Iv){0, INT32_MAX};
+            }
             return string_call(e, "length") ? (Iv){0, INT32_MAX} : top;
         }
         case N_FIELDACC:
@@ -374,6 +451,22 @@ void rg_check_index(RgCtx *r, Node *n) {
 
 /* s.charAt(i) where i is always negative or always past the known length of s */
 void rg_check_call(RgCtx *r, Node *n) {
+    const char *lc = list_call(n);
+    if (lc && (!strcmp(lc, "get") || !strcmp(lc, "set") || !strcmp(lc, "remove")) && n->l1.count >= 1) {
+        Node *idx = n->l1.items[0];
+        if (!pure(idx) || !int_kind(idx->type)) return;
+        Iv i = eval(r, idx), len;
+        int64_t lo, hi;
+        char b[64], l[64];
+        show(b, sizeof b, i);
+        if (i.hi < 0) { REPORT(r, n, "list index is always negative here (%s)", b); return; }
+        if (!mnemo_len_get(r->m, id_of(n->a->sym), &lo, &hi)) return;
+        len = (Iv){lo, hi};
+        if (i.lo < len.hi) return;
+        show(l, sizeof l, len);
+        REPORT(r, n, "list index is always out of bounds here: the index is %s and the list size is %s", b, l);
+        return;
+    }
     if (!string_call(n, "charAt") || n->l1.count != 1) return;
     Node *idx = n->l1.items[0];
     if (!pure(n->a) || !pure(idx) || !int_kind(idx->type)) return;
@@ -460,6 +553,23 @@ static void set_value(RgCtx *r, JLocal *l, Iv v) {
     else mnemo_rng_set(r->m, id_of(l), v.lo, v.hi);
 }
 
+/* after `l.add(..)` / `l.remove(i)` / `l.removeLast()` on a tracked list: the size changes by one */
+void rg_call_effect(RgCtx *r, Node *n) {
+    const char *lc = list_call(n);
+    if (!lc || !list_mutator(lc)) return;
+    uint64_t id = id_of(n->a->sym);
+    int64_t lo, hi;
+    if (!mnemo_len_get(r->m, id, &lo, &hi)) return;
+    if (!strcmp(lc, "add")) {
+        lo = lo == POS_INF ? lo : lo + 1;
+        hi = hi >= INT32_MAX ? POS_INF : hi + 1;
+    } else {                                        /* the call had at least one element to take, or it failed */
+        lo = lo > 1 ? lo - 1 : 0;
+        hi = hi == POS_INF ? hi : (hi > 1 ? hi - 1 : 0);
+    }
+    mnemo_len_set(r->m, id, lo, hi);
+}
+
 void rg_forget(RgCtx *r, JLocal *l) {
     if (!l) return;
     mnemo_rng_clear(r->m, id_of(l));
@@ -475,7 +585,8 @@ static void set_str_len_from(RgCtx *r, JLocal *l, Node *init) {
 void rg_declare(RgCtx *r, Node *n) {
     JLocal *l = n->sym;
     if (!l) return;
-    if (tracked_string(l) && n->b) { rg_forget(r, l); set_str_len_from(r, l, n->b); }
+    if (tracked_list(l) && n->b) mnemo_len_set(r->m, id_of(l), 0, 0);       /* rg_prescan: a fresh ArrayList */
+    else if (tracked_string(l) && n->b) { rg_forget(r, l); set_str_len_from(r, l, n->b); }
     else if (tracked(l) && n->b) set_value(r, l, eval(r, n->b));
     else if (tracked_array(l) && n->b) set_len_from(r, l, n->b);
     else rg_forget(r, l);
@@ -485,6 +596,10 @@ void rg_assign(RgCtx *r, Node *n) {
     if (n->a->kind != N_NAME || n->a->rk != R_LOCAL || !n->a->sym) return;
     JLocal *l = n->a->sym;
     const char *op = n->name;
+    if (tracked_list(l)) {
+        if (!strcmp(op, "=")) mnemo_len_set(r->m, id_of(l), 0, 0); else rg_forget(r, l);
+        return;
+    }
     if (tracked_array(l)) {
         if (!strcmp(op, "=")) set_len_from(r, l, n->b); else rg_forget(r, l);
         return;
@@ -663,6 +778,7 @@ void rg_forget_assigned(RgCtx *r, Node *n) {
     else if ((n->kind == N_UNARY || n->kind == N_POSTFIX) && (!strcmp(n->name, "++") || !strcmp(n->name, "--"))) t = n->a;
     else if (n->kind == N_UNARY && n->name[0] == '&' && n->name[1] == 'm') t = n->a;
     if (t && t->kind == N_NAME && t->rk == R_LOCAL) rg_forget(r, t->sym);
+    if (n->kind == N_CALL) { const char *lc = list_call(n); if (lc && list_mutator(lc)) rg_forget(r, n->a->sym); }
     rg_forget_assigned(r, n->a);
     rg_forget_assigned(r, n->b);
     rg_forget_assigned(r, n->c);
