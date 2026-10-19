@@ -1,3 +1,7 @@
+## 2026-10-19 (GitHub community files, performance gate)
+- **`.github/`**: `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md`, `CODEOWNERS`, a pull request template and bug / feature / performance-regression issue forms. The contribution rule is written down: a change must never make Ash slower, and the PR template requires the benchmark output.
+- **`tools/bench_compare.sh <baseline-ashvm> <new-ashvm>`** runs every `hearth/ashvm/benchmarks` program alternately on both binaries (best of 7) and exits non-zero if any is more than 2% slower or if the new binary fails. No code changed.
+
 ## 2026-10-19 (beta-v0.1.0: first beta release)
 - **First packaged release.** One tarball per platform, `ash-<os>-<arch>.tar.gz` (today `ash-linux-x86_64.tar.gz`), unpacking into `~/.ash` as `bin/ashvm`, `bin/kiln`, `bin/apm` and a `VERSION` file, plus `SHA256SUMS`. Cut with `make release VERSION=<tag>` / `tools/release.sh` (see `docs/RELEASING.md`).
 - **What is in it.** `ashvm` (bytecode VM, REPL, `run`, `check`), `kiln` (native Linux ELF compiler; `--target=windows` writes a PE, not tested on a real Windows machine for this release), `apm` (`new`, `check`, `init`, `add`, `install`, `list`, `license`, `run`), all on the one shared front end, with the ownership / memory-safety pass (`memory-safety` defaults to `on`, mnemo is linked in statically; no Rust toolchain is needed to run any of it).
