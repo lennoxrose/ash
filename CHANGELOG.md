@@ -1,3 +1,11 @@
+## 2026-10-21 (beta-v0.1.2: language server, formatter, labeled jumps, interpolation, lockfile)
+- **Tooling.** `ashvm lsp` (diagnostics, hover, go to definition), `ashvm fmt` (whitespace formatter with a token-equality safety net), `ashvm explain` with stable error codes `E0101` to `E0401`, `--json` diagnostics, "did you mean" help lines.
+- **Language.** Labeled `break` / `continue` (`outer: for (...) { ... break outer; }`), string interpolation `"x = ${x}"`, `String.format` / `formatted` / `printf`, `System.out.print`, `when` guards on `switch` type patterns, stack traces for uncaught exceptions on `ashvm` and `kiln`.
+- **`apm`.** `ash.lock` pins commits, `apm install --locked`, `apm update`, `apm remove`, transitive dependencies. Hub packages (`owner/repo[@version]`) go through the same lockfile; the `.apm-source` file is gone (`apm list` reads the commit from `ash.lock`).
+- **Fixes.** Functions with more than 256 constants read the wrong ones (`ashvm`); loops inside a lambda inside a loop and `continue` out of a block with locals; `finally` on `break` / `continue`; loop nesting limit per function body; use-after-move errors point at the move and suggest a fix.
+- **Performance.** No regression against the beta-v0.1.1 code; start-up of every `ashvm` program is cheaper (see the entries below).
+- The release tarball layout is unchanged (`bin/ashvm`, `bin/kiln`, `bin/apm`, `VERSION`).
+
 ## 2026-10-21 (merge: apm hub installs on top of ash.lock)
 - **`apm` resolves hub packages through `ash.lock`.** `owner/repo[@version]` dependencies are now one more source of the lockfile resolver (next to `github:user/repo[@ref]`): the hub's commit is recorded in `ash.lock` and `apm install` / `apm install --locked` / `apm update` / `apm remove` treat both kinds alike. A locked hub package is fetched at its recorded commit without asking the hub. The `.apm-source` file is gone; `apm list` reads the commit from `ash.lock`.
 
