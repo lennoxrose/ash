@@ -1,5 +1,6 @@
 #include <string.h>
 #include "H/hub/spec.h"
+#include "H/git_fetch.h"
 
 static int all_of(const char *s, size_t n, const char *extra) {
     if (n == 0) return 0;
@@ -28,6 +29,11 @@ int hubspec_parse(const char *text, HubSpec *out) {
     if (!part(slash + 1, repo_len, out->repo, sizeof(out->repo), "_.-")) return 0;
     if (strcmp(out->owner, ".") == 0 || strcmp(out->owner, "..") == 0 || strcmp(out->repo, ".") == 0 || strcmp(out->repo, "..") == 0) return 0;
     return !at || part(at + 1, strlen(at + 1), out->version, sizeof(out->version), "._+-");
+}
+
+int depspec_ok(const char *text) {
+    HubSpec h;
+    return git_fetch_spec_ok(text) || hubspec_parse(text, &h);
 }
 
 int name_is_safe(const char *name) {

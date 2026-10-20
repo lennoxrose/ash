@@ -1,0 +1,62 @@
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/MoveNotes.ash:17:28
+   |
+ 17|         System.out.println(a[0]);                 // moved into a call whose target keeps it
+   |                            ^
+   = note: 'a' was moved here, into the call to 'store'
+  --> tests/cases/diag/MoveNotes.ash:16:15
+   |
+ 16|         store(a);
+   |               ^
+   = help: 'store' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/MoveNotes.ash:23:28
+   |
+ 23|         System.out.println(a[0]);                 // Box.keep keeps it, but the target is fixed here
+   |                            ^
+   = note: 'a' was moved here, into the call to 'keep'
+  --> tests/cases/diag/MoveNotes.ash:22:16
+   |
+ 22|         b.keep(a);
+   |                ^
+   = help: 'keep' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/MoveNotes.ash:29:28
+   |
+ 29|         System.out.println(a[0]);                 // the target is not fixed: a loan would do
+   |                            ^
+   = note: 'a' was moved here, into the call to 'take'
+  --> tests/cases/diag/MoveNotes.ash:28:16
+   |
+ 28|         s.take(a);
+   |                ^
+   = help: lend it instead of moving it: take(&a)
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/MoveNotes.ash:35:28
+   |
+ 35|         System.out.println(a[0] + b[0]);          // moved by the assignment
+   |                            ^
+   = note: 'a' was moved here, by storing it
+  --> tests/cases/diag/MoveNotes.ash:34:19
+   |
+ 34|         int[] b = a;
+   |                   ^
+   = help: use 'a' before this point, or use the variable or field it was stored in
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/MoveNotes.ash:41:32
+   |
+ 41|             System.out.println(a[0]);             // moved in the previous iteration
+   |                                ^
+   = note: 'a' was moved here, into the call to 'store' (in an earlier iteration of the loop)
+  --> tests/cases/diag/MoveNotes.ash:42:19
+   |
+ 42|             store(a);
+   |                   ^
+   = help: 'store' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/MoveNotes.ash:42:19
+   |
+ 42|             store(a);
+   |                   ^
+   = help: this call moves 'a' on every pass of the loop; declare 'a' inside the loop, or give it a new value before the next pass
+6 error(s)

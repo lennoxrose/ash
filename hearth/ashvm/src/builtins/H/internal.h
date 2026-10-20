@@ -11,5 +11,6 @@ VMValue vm_call_builtin_file(int id, VMValue *args, int argc);
 VMValue vm_call_builtin_matrix(int id, VMValue *args, int argc);
 VMValue vm_call_builtin_proc(int id, VMValue *args, int argc);
 VMValue vm_call_builtin_mem(int id, VMValue *args, int argc);
+VMValue vm_call_builtin_trace(int id, VMValue *args, int argc);
 
 #endif

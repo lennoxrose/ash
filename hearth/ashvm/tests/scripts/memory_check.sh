@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Memory stays bounded: a loop that builds three million short-lived strings and then 300 thousand arrays must finish in a
+# Memory stays bounded: a loop that builds three million short-lived strings and then 300 thousand arrays and 100 thousand 8x16 grids must finish in a
 # few MB with memory-safety on, and the same loop with it off keeps everything (hundreds of MB), which shows
 # the check is measuring the freeing and not just a small program.
 set -uo pipefail
@@ -29,6 +29,11 @@ public class Churn {
             int[] ys = {i, i + 1, i + 2};
             xs[3] = i;
             total += xs[3] + xs.length + ys[2];
+        }
+        for (int i = 0; i < 100000; i++) {
+            int[][] grid = new int[8][16];
+            grid[3][4] = i;
+            total += grid[3][4] + grid.length + grid[0].length;
         }
         System.out.println(total);
     }

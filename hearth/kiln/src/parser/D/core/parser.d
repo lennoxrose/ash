@@ -10,9 +10,9 @@ src/parser/O/core/parser.o: src/parser/C/core/parser.c \
  src/codegen/H/runtime/heap.h src/codegen/H/emit/bytes.h \
  src/codegen/H/strings/string_alloc.h src/codegen/H/collections/arrays.h \
  src/codegen/H/collections/maps.h src/codegen/H/runtime/errors.h \
- src/codegen/H/runtime/print_int.h src/diagnostics/H/diagnostics.h \
- src/elf/H/elf_writer.h src/codegen/H/emit/runtime_layout.h \
- src/app/H/target.h
+ src/codegen/H/runtime/print_int.h src/codegen/H/runtime/trace.h \
+ src/diagnostics/H/diagnostics.h src/elf/H/elf_writer.h \
+ src/codegen/H/emit/runtime_layout.h src/app/H/target.h
 src/parser/H/core/parser.h:
 ../front/src/ir/H/ir_lex.h:
 src/codegen/H/emit/emit.h:
@@ -32,6 +32,7 @@ src/codegen/H/collections/arrays.h:
 src/codegen/H/collections/maps.h:
 src/codegen/H/runtime/errors.h:
 src/codegen/H/runtime/print_int.h:
+src/codegen/H/runtime/trace.h:
 src/diagnostics/H/diagnostics.h:
 src/elf/H/elf_writer.h:
 src/codegen/H/emit/runtime_layout.h:

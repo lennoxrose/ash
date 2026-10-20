@@ -15,7 +15,9 @@ static void print_usage(void) {
     printf("  apm new <name>        scaffold a module: ash.pkg + src/main/ash/<package>/<Class>.ash\n");
     printf("  apm init              create ash.pkg here\n");
     printf("  apm add <owner>/<repo>[@version] [--as <name>] [--dev]   add a package from the hub (github:<user>/<repo>[@ref] for any repo)\n");
-    printf("  apm install           fetch [dependencies] and [dev-dependencies] into ./@ash-modules/\n");
+    printf("  apm remove <name>     take a dependency out of ash.pkg and @ash-modules (and what only it needed)\n");
+    printf("  apm install [--locked]   fetch the dependencies, at the commits ash.lock records (--locked: change nothing)\n");
+    printf("  apm update [<name>]   look dependencies up again and move ash.lock to the commits found\n");
     printf("  apm list              metadata, dependencies (and whether installed), libraries, scripts\n");
     printf("  apm check             verify the module follows the Ash module conventions\n");
     printf("  apm run <script>      run a [scripts] entry of ash.pkg (apm build / apm test = run build / run test)\n");
@@ -44,6 +46,8 @@ int main(int argc, char **argv) {
     if (strcmp(command, "init") == 0) return cmd_init(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "add") == 0) return cmd_add(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "install") == 0) return cmd_install(project_dir, rest_argc, rest_argv);
+    if (strcmp(command, "update") == 0) return cmd_update(project_dir, rest_argc, rest_argv);
+    if (strcmp(command, "remove") == 0) return cmd_remove(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "list") == 0) return cmd_list(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "license") == 0) return cmd_license(project_dir, rest_argc, rest_argv);
     if (strcmp(command, "auth") == 0) return cmd_auth(rest_argc, rest_argv);

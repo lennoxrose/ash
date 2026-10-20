@@ -9,9 +9,12 @@
 #include "pe/H/pe_writer.h"
 #include "pe/H/pe_dll_writer.h"
 #include "diagnostics/H/diagnostics.h"
+#include "jcommon/H/jcommon.h"
 #include "jdriver/H/jdriver.h"
+#include "jexplain/H/jexplain.h"
 #include "jlower/H/jlower.h"
 #include "codegen/H/runtime/heap.h"
+#include "codegen/H/runtime/trace.h"
 #include "app/H/target.h"
 
 #ifndef ASH_VERSION
@@ -19,7 +22,7 @@
 #endif
 
 static void usage(const char *prog) {
-    fprintf(stderr, "usage: %s <file.ash> -o <output> [--target=linux|windows] [--link=static|shared] [--wrap-int]\n", prog);
+    fprintf(stderr, "usage: %s <file.ash> -o <output> [--target=linux|windows] [--link=static|shared] [--wrap-int] [--json]\n", prog);
     fprintf(stderr, "       %s --emit-runtime -o <libkilnrt.so|libkilnrt.dll> [--target=linux|windows]\n", prog);
     exit(1);
 }
@@ -42,6 +45,7 @@ static KilnLinkMode parse_link(const char *arg, const char *prog) {
 
 int main(int argc, char *argv[]) {
     if (argc == 2 && strcmp(argv[1], "--version") == 0) { printf("kiln %s\n", ASH_VERSION); return 0; }
+    if (argc >= 2 && argc <= 3 && strcmp(argv[1], "--explain") == 0) return jexplain_print(argc == 3 ? argv[2] : NULL); // an error code such as E0101
     // --emit-runtime -o <path> [--target=...]: writes libkilnrt.so/.dll
     // (Plan B) and exits, no .ash input at all -- an entirely separate
     // mode from compiling a program.
@@ -60,7 +64,7 @@ int main(int argc, char *argv[]) {
             : elf_write_shared_runtime(argv[3]);
     }
 
-    if (argc < 4 || argc > 7) usage(argv[0]);
+    if (argc < 4 || argc > 8) usage(argv[0]);
     if (strcmp(argv[2], "-o") != 0) usage(argv[0]);
 
     const char *input_path = argv[1];
@@ -69,6 +73,7 @@ int main(int argc, char *argv[]) {
     int wrap_int = 0;
     for (int i = 4; i < argc; i++) {
         if (strcmp(argv[i], "--wrap-int") == 0) wrap_int = 1;
+        else if (strcmp(argv[i], "--json") == 0) j_diag_json(); // diagnostics as one JSON document on stdout
         else if (strncmp(argv[i], "--target=", 9) == 0) kiln_set_target(parse_target(argv[i], argv[0]));
         else if (strncmp(argv[i], "--link=", 7) == 0) kiln_set_link_mode(parse_link(argv[i], argv[0]));
         else usage(argv[0]);
@@ -90,16 +95,17 @@ int main(int argc, char *argv[]) {
     }
 
     // Only the static builds (Linux and Windows) can give memory back (heap.h); --link=shared IR carries no frees.
-    if (kiln_get_link_mode() == KILN_LINK_STATIC) jl_drops = JL_DROP_STRINGS | JL_DROP_ARRAYS | JL_DROP_OBJECTS | JL_DROP_MAPS | JL_DROP_ELEMS | JL_NATIVE_NEWARR;
+    if (kiln_get_link_mode() == KILN_LINK_STATIC) jl_drops = JL_DROP_STRINGS | JL_DROP_ARRAYS | JL_DROP_OBJECTS | JL_DROP_MAPS | JL_DROP_ELEMS | JL_NATIVE_NEWARR | (getenv("KILN_NO_REGIONS") ? 0 : JL_REGION);
     char *ir = jdriver_compile_file(input_path, wrap_int);
     if (!ir) return 1;
     if (strstr(ir, "mem_free(") || strstr(ir, "mem_cat(") || strstr(ir, "mem_free_arr(") || strstr(ir, "mem_free_obj(") || strstr(ir, "mem_free_map(") || strstr(ir, "mem_free_elems(") || strstr(ir, "mem_newarr1(")) {
-        heap_enable_free_lists(strstr(ir, "mem_free_arr(") != NULL || strstr(ir, "mem_free_obj(") != NULL || strstr(ir, "mem_free_map(") != NULL || strstr(ir, "mem_newarr1(") != NULL);
+        heap_enable_free_lists(strstr(ir, "mem_free_arr(") != NULL || strstr(ir, "mem_free_obj(") != NULL || strstr(ir, "mem_free_map(") != NULL || strstr(ir, "mem_newarr1(") != NULL, strstr(ir, "mem_region_enter(") != NULL);
     }
     diagnostics_set_source(ir, "<internal ir>");
 
     CodeBuf machine_code;
     compile_program(ir, &machine_code);
+    trace_finish(&machine_code);
 
     int status;
     if (kiln_get_target() == KILN_TARGET_WINDOWS) {

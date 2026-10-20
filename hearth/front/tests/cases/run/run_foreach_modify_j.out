@@ -1,0 +1,9 @@
+grow: CME after 1, size 4
+removeFirst: CME after 1 2, size 4
+removeSecondToLast: 1 2 3, size 3
+removeLast: CME after 3
+setIsFine: 46 40
+leaveAfterChange: 5 108
+nestedReads: 36
+growFromInner: CME, ys 2, xs 3
+main: true

@@ -59,3 +59,9 @@ uint64_t kiln_freelist_addr(void) {
     if (kiln_get_target() == KILN_TARGET_WINDOWS) return KILN_PE_FREELIST_ADDR;
     return KILN_FREELIST_ADDR;   // only meaningful for the static layouts; heap_enable_free_lists() guards every use
 }
+
+uint64_t kiln_trace_addr(void) {
+    if (kiln_get_link_mode() == KILN_LINK_SHARED) return 0;   // the raise routine lives in libkilnrt: no trace there
+    if (kiln_get_target() == KILN_TARGET_WINDOWS) return KILN_PE_TRACE_ADDR;
+    return KILN_TRACE_ADDR;
+}

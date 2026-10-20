@@ -10,6 +10,17 @@
 // which stays a hard crash since ashvm resolves names at compile time) funnels
 // through here. If an attempt block is active, longjmp back to its handler
 // instead of crashing the whole program.
+void vm_capture_trace(void) {
+    int n = 0;
+    for (int i = frame_count - 1; i >= 0 && n < FRAMES_MAX; i--) {
+        trace_chunk[n] = frames[i].chunk;
+        trace_ip[n] = frames[i].ip;
+        n++;
+    }
+    trace_count = n;
+    trace_gen++;
+}
+
 void vm_runtime_error(const char *fmt, ...) {
     has_raised_value = 0; // this error carries a formatted C string, not a raised VMValue
     va_list args;
@@ -20,6 +31,7 @@ void vm_runtime_error(const char *fmt, ...) {
     while (n > 0 && error_message[n - 1] == '\n') error_message[--n] = '\0';
 
     if (try_depth > 0) {
+        if (try_depth == 1) vm_capture_trace();
         longjmp(try_handlers[try_depth - 1].jmp, 1);
     } else {
         diagnostics_report("error", error_message, current_pos, current_poslen);
@@ -38,6 +50,7 @@ void vm_raise_value(VMValue msg) {
     has_raised_value = 1;
 
     if (try_depth > 0) {
+        if (try_depth == 1) vm_capture_trace();
         longjmp(try_handlers[try_depth - 1].jmp, 1);
     } else {
         diagnostics_report("error", text, current_pos, current_poslen);

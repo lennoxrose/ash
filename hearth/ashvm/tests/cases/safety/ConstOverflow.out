@@ -1,19 +1,19 @@
-error: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
+error[E0210]: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
   --> tests/cases/safety/ConstOverflow.ash:4:17
    |
   4|         int a = Integer.MAX_VALUE + 1;
    |                 ^
-error: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
+error[E0210]: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
   --> tests/cases/safety/ConstOverflow.ash:6:17
    |
   6|         int b = n * n;
    |                 ^
-error: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
+error[E0210]: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
   --> tests/cases/safety/ConstOverflow.ash:7:17
    |
   7|         int c = BIG + BIG;
    |                 ^
-error: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
+error[E0210]: arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long
   --> tests/cases/safety/ConstOverflow.ash:8:17
    |
   8|         int d = Integer.MIN_VALUE - 1;

@@ -1,0 +1,26 @@
+error[E0202]: array index is always out of bounds here: the index is 7 and the array length is 3; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/safety/RangeErrors.ash:5:18
+   |
+  5|         return a[i];
+   |                  ^
+error[E0202]: array index is always out of bounds here: the index is 10 to 19 and the array length is 4; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/safety/RangeErrors.ash:11:46
+   |
+ 11|         for (int i = 10; i < 20; i++) s += a[i];
+   |                                              ^
+error[E0207]: arithmetic overflow: this expression is always outside the range of int here (4000000000); use long, or --wrap-int for wrap-around
+  --> tests/cases/safety/RangeErrors.ash:17:16
+   |
+ 17|         return x + x;
+   |                ^
+error[E0208]: division by zero: the divisor is always 0 here; check the divisor before dividing, or use a different one
+  --> tests/cases/safety/RangeErrors.ash:22:21
+   |
+ 22|         return 10 / d;
+   |                     ^
+error[E0401]: infinite recursion: 'forever' calls itself on every path before any condition, so it can never return; add a base case (an `if` that returns before this call)
+  --> tests/cases/safety/RangeErrors.ash:26:16
+   |
+ 26|         return forever(n + 1);
+   |                ^
+5 error(s)

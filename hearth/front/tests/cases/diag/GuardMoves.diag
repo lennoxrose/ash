@@ -1,0 +1,12 @@
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+  --> tests/cases/diag/GuardMoves.ash:14:36
+   |
+ 14|                 System.out.println(a[0]);       // the guard may have run and failed: a is moved
+   |                                    ^
+   = note: 'a' was moved here, into the call to 'hold'
+  --> tests/cases/diag/GuardMoves.ash:10:38
+   |
+ 10|             case Integer i when hold(a):        // moves a, whether or not the guard holds
+   |                                      ^
+   = help: 'hold' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+1 error(s)

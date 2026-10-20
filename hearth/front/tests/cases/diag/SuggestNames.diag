@@ -1,0 +1,89 @@
+error: cannot find symbol 'cuont'
+  --> tests/cases/diag/SuggestNames.ash:14:9
+   |
+ 14|         cuont++;                                  // a local, one letter transposed
+   |         ^
+   = help: did you mean the name 'count'?
+error: cannot find type 'Strng'
+  --> tests/cases/diag/SuggestNames.ash:15:9
+   |
+ 15|         Strng s = "a";                            // a type
+   |         ^
+   = help: did you mean the type 'String'?
+error: cannot find type 'ArrayLst'
+  --> tests/cases/diag/SuggestNames.ash:16:31
+   |
+ 16|         List<String> xs = new ArrayLst<>();       // an imported type
+   |                               ^
+   = help: did you mean the type 'ArrayList'?
+error: cannot find method 'ad' in List<String>
+  --> tests/cases/diag/SuggestNames.ash:17:9
+   |
+ 17|         xs.ad("x");                               // a method of the receiver's type
+   |         ^
+   = help: did you mean the method 'add'?
+error: cannot find method 'sze' in List<String>
+  --> tests/cases/diag/SuggestNames.ash:18:9
+   |
+ 18|         xs.sze();
+   |         ^
+   = help: did you mean the method 'size'?
+error: cannot find field 'size' in List<String>
+  --> tests/cases/diag/SuggestNames.ash:19:9
+   |
+ 19|         xs.size;                                  // a method used as a field
+   |         ^
+   = help: 'size' is a method; call it as size()
+error: cannot find method 'helpr'
+  --> tests/cases/diag/SuggestNames.ash:20:9
+   |
+ 20|         helpr(3);                                 // an unqualified call
+   |         ^
+   = help: did you mean the method 'helper'?
+error: cannot find method 'sqroot' in Math
+  --> tests/cases/diag/SuggestNames.ash:21:9
+   |
+ 21|         Math.sqroot(4.0);                         // a static method
+   |         ^
+   = help: did you mean the method 'sqrt'?
+error: cannot find field 'countr' in Main
+  --> tests/cases/diag/SuggestNames.ash:23:9
+   |
+ 23|         m.countr = 3;                             // a field
+   |         ^
+   = help: did you mean the field 'counter'?
+error: cannot find method 'bumb' in Main
+  --> tests/cases/diag/SuggestNames.ash:24:9
+   |
+ 24|         m.bumb();
+   |         ^
+   = help: did you mean the method 'bump'?
+error: cannot find symbol 'totl'
+  --> tests/cases/diag/SuggestNames.ash:25:17
+   |
+ 25|         int q = totl;                             // a static field
+   |                 ^
+   = help: did you mean the name 'total'?
+error: cannot find symbol 'Count'
+  --> tests/cases/diag/SuggestNames.ash:26:17
+   |
+ 26|         int z = Count;                            // only the case differs
+   |                 ^
+   = help: did you mean the name 'count'?
+error: cannot find method 'printn' in PrintStream
+  --> tests/cases/diag/SuggestNames.ash:27:9
+   |
+ 27|         System.out.printn("x");
+   |         ^
+   = help: did you mean the method 'println'?
+error: cannot find symbol 'completelyUnrelated'
+  --> tests/cases/diag/SuggestNames.ash:28:19
+   |
+ 28|         int far = completelyUnrelated;            // nothing close: no guess
+   |                   ^
+error: cannot call method 'length' on type int
+  --> tests/cases/diag/SuggestNames.ash:29:9
+   |
+ 29|         far.length();
+   |         ^
+15 error(s)

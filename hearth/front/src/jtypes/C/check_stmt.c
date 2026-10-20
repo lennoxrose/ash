@@ -9,32 +9,93 @@
 
 /* ---------------------------------------------------------------- reachability */
 
-static int has_break(Node *n, int depth) {
+/* does the code under `n` break out of `loop`? An unlabeled `break` at depth 0 leaves the statement being asked about;
+ * a labeled one leaves the loop it names (`loop`, NULL when the question is about a switch), however deep it sits. */
+static int has_break(Node *n, int depth, Node *loop) {
     if (!n) return 0;
     switch (n->kind) {
-        case N_BREAK: return depth == 0;
+        case N_BREAK: return n->name ? (loop && n->sym == loop) : depth == 0;
         case N_BLOCK: case N_SEQ:
-            for (int i = 0; i < n->l1.count; i++) if (has_break(n->l1.items[i], depth)) return 1;
+            for (int i = 0; i < n->l1.count; i++) if (has_break(n->l1.items[i], depth, loop)) return 1;
             return 0;
-        case N_IF: return has_break(n->b, depth) || has_break(n->c, depth);
-        case N_WHILE: case N_DO: case N_FOR: return has_break(n->b, depth + 1);
-        case N_FOREACH: return has_break(n->c, depth + 1);
+        case N_IF: return has_break(n->b, depth, loop) || has_break(n->c, depth, loop);
+        case N_WHILE: case N_DO: case N_FOR: return has_break(n->b, depth + 1, loop);
+        case N_FOREACH: return has_break(n->c, depth + 1, loop);
         case N_SWITCH:
             for (int i = 0; i < n->l1.count; i++) {
                 Node *c = n->l1.items[i];
-                if (has_break(c->b, depth + 1)) return 1;
-                for (int j = 0; j < c->l2.count; j++) if (has_break(c->l2.items[j], depth + 1)) return 1;
+                if (has_break(c->b, depth + 1, loop)) return 1;
+                for (int j = 0; j < c->l2.count; j++) if (has_break(c->l2.items[j], depth + 1, loop)) return 1;
             }
             return 0;
         case N_TRY:
-            if (has_break(n->b, depth) || has_break(n->c, depth)) return 1;
-            for (int i = 0; i < n->l1.count; i++) if (has_break(((Node *)n->l1.items[i])->b, depth)) return 1;
+            if (has_break(n->b, depth, loop) || has_break(n->c, depth, loop)) return 1;
+            for (int i = 0; i < n->l1.count; i++) if (has_break(((Node *)n->l1.items[i])->b, depth, loop)) return 1;
             return 0;
         default: return 0;
     }
 }
 
-static int always_true(Node *c) { return !c || (c->kind == N_LIT_BOOL && !strcmp(c->name, "true")); }
+/* A constant expression of type bool (JLS 15.29): literals, `!`, `&&`, `||`, `==` / `!=` on bools and the six
+ * comparisons of int constants, and final variables initialised with such an expression. Returns 1 and sets *out
+ * when it is one. Only these are used for reachability, so a loop whose condition is one of them is infinite
+ * (or never entered) exactly as javac decides. */
+/* only simple names and Type.NAME may stand for a constant variable (`obj.N` is not a constant expression) */
+static int const_shape(Node *e) {
+    if (!e) return 0;
+    switch (e->kind) {
+        case N_LIT_INT: case N_NAME: return 1;
+        case N_FIELDACC: return e->rk == R_STATIC_FIELD && e->a && e->a->rk == R_CLASS;
+        case N_UNARY: return (!strcmp(e->name, "-") || !strcmp(e->name, "+")) && const_shape(e->a);
+        case N_BINARY: return e->name[1] == 0 && strchr("+-*/%", e->name[0]) && const_shape(e->a) && const_shape(e->b);
+        default: return 0;
+    }
+}
+
+static int const_bool(Node *e, int *out, int depth) {
+    if (!e || depth > 16) return 0;
+    if (e->kind == N_LIT_BOOL) { *out = !strcmp(e->name, "true"); return 1; }
+    if ((e->kind == N_NAME || (e->kind == N_FIELDACC && e->rk == R_STATIC_FIELD && e->a && e->a->rk == R_CLASS)) && e->sym &&
+        e->type && e->type->kind == TY_BOOL && !e->type->nullable) {
+        Node *init = NULL;
+        if (e->rk == R_STATIC_FIELD || e->rk == R_FIELD || e->rk == R_THIS_FIELD) {
+            JField *f = e->sym;
+            if ((f->flags & M_FINAL) && f->decl) init = f->decl->b;
+        } else if (e->rk == R_LOCAL) {
+            JLocal *l = e->sym;
+            if ((l->flags & M_FINAL) && l->decl && l->decl->kind == N_LOCAL) init = l->decl->b;
+        }
+        return init && const_bool(init, out, depth + 1);
+    }
+    if (e->kind == N_UNARY && !strcmp(e->name, "!")) {
+        int v;
+        if (!const_bool(e->a, &v, depth + 1)) return 0;
+        *out = !v;
+        return 1;
+    }
+    if (e->kind == N_BINARY) {
+        const char *op = e->name;
+        int a, b;
+        if (!strcmp(op, "&&") || !strcmp(op, "||") || (e->a->type && e->a->type->kind == TY_BOOL && (!strcmp(op, "==") || !strcmp(op, "!=")))) {
+            if (!const_bool(e->a, &a, depth + 1) || !const_bool(e->b, &b, depth + 1)) return 0;
+            *out = op[0] == '&' ? (a && b) : op[0] == '|' ? (a || b) : op[0] == '=' ? (a == b) : (a != b);
+            return 1;
+        }
+        long long x, y;
+        if (e->a->type && e->b->type && e->a->type->kind == TY_INT && e->b->type->kind == TY_INT &&
+            (!strcmp(op, "<") || !strcmp(op, "<=") || !strcmp(op, ">") || !strcmp(op, ">=") || !strcmp(op, "==") || !strcmp(op, "!=")) &&
+            const_shape(e->a) && const_shape(e->b) && jt_const_int(e->a, &x) && jt_const_int(e->b, &y)) {
+            *out = !strcmp(op, "<") ? x < y : !strcmp(op, "<=") ? x <= y : !strcmp(op, ">") ? x > y : !strcmp(op, ">=") ? x >= y : !strcmp(op, "==") ? x == y : x != y;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int always_true(Node *c) {
+    int v;
+    return !c || (const_bool(c, &v, 0) && v);
+}
 
 int can_complete(Node *n) {
     if (!n) return 1;
@@ -45,9 +106,9 @@ int can_complete(Node *n) {
             return 1;
         case N_IF:
             return !n->c || can_complete(n->b) || can_complete(n->c);
-        case N_WHILE: return !always_true(n->a) || has_break(n->b, 0);
-        case N_DO: return (!always_true(n->a) && can_complete(n->b)) || has_break(n->b, 0) || (!always_true(n->a));
-        case N_FOR: return !always_true(n->a) || has_break(n->b, 0);
+        case N_WHILE: return !always_true(n->a) || has_break(n->b, 0, n);
+        case N_DO: return (!always_true(n->a) && can_complete(n->b)) || has_break(n->b, 0, n) || (!always_true(n->a));
+        case N_FOR: return !always_true(n->a) || has_break(n->b, 0, n);
         case N_SWITCH: {
             int has_default = 0;
             for (int i = 0; i < n->l1.count; i++) if (((Node *)n->l1.items[i])->flags & 1) has_default = 1;
@@ -56,9 +117,9 @@ int can_complete(Node *n) {
                 Node *c = n->l1.items[i];
                 if (c->str) {
                     if (c->b->kind == N_BLOCK ? can_complete(c->b) : c->b->kind != N_THROW) return 1;
-                    if (has_break(c->b, 0)) return 1;
+                    if (has_break(c->b, 0, NULL)) return 1;
                 } else {
-                    for (int j = 0; j < c->l2.count; j++) if (has_break(c->l2.items[j], 0)) return 1;
+                    for (int j = 0; j < c->l2.count; j++) if (has_break(c->l2.items[j], 0, NULL)) return 1;
                     if (i == n->l1.count - 1) {
                         for (int j = 0; j < c->l2.count; j++) if (!can_complete(c->l2.items[j])) return 0;
                         return 1;
@@ -200,11 +261,15 @@ JType *check_switch(Ctx *cx, Node *n, JType *expected) {
                     for (int k = 0; k < type_seen.count; k++) {
                         if (ty_is_subclass(pt->cls, (JClass *)type_seen.items[k])) cerr(lb, "this case is dominated by an earlier case");
                     }
-                    j_list_push(&type_seen, pt->cls);
+                    if (!lb->b) j_list_push(&type_seen, pt->cls);      /* a guarded case may not match: it covers nothing and dominates nothing */
                 }
                 JLocal *l = jt_declare_local(cx, lb, lb->name, ty_with_null(pt, 0), 0, 0);
                 l->has_init = 1;
                 lb->sym = l;
+                if (lb->b) {                                           /* `case T x when cond`: cond sees x */
+                    if (c->l1.count > 1) cerr(lb, "a guarded pattern cannot share a case with other labels");
+                    check_cond(cx, lb->b);
+                }
             } else if (lb->kind == N_LIT_NULL) {
                 lb->type = ty_null();
             } else if (enum_cls && lb->kind == N_NAME) {
@@ -341,6 +406,7 @@ static void check_try(Ctx *cx, Node *n) {
         if (vt) {
             JLocal *l = jt_declare_local(cx, c, c->name, vt, 0, 0);
             l->has_init = 1;
+            c->sym = l;
         }
         check_block_body(cx, c->b);
         pop_scope(cx, mark);
@@ -388,6 +454,35 @@ static JType *iter_elem(Ctx *cx, Node *it, JType *t) {
     return ty_error();
 }
 
+/* `outer: for (...)`: the label is visible to `break outer;` / `continue outer;` in the loop's body (and its
+ * update and condition do not need it), not across a lambda, and may not be reused while it is in scope */
+static void label_push(Ctx *cx, Node *loop) {
+    for (int i = 0; i < cx->nlabels; i++) {            /* like javac, also the labels outside a lambda */
+        if (!strcmp(cx->labels[i]->str, loop->str)) {
+            cerr(loop, "label '%s' is already in use by an enclosing loop; pick another name", loop->str);
+            break;
+        }
+    }
+    if (cx->nlabels == cx->cap_labels) {
+        cx->cap_labels = cx->cap_labels ? cx->cap_labels * 2 : 8;
+        cx->labels = realloc(cx->labels, (size_t)cx->cap_labels * sizeof *cx->labels);
+        if (!cx->labels) { cx->nlabels = cx->cap_labels = 0; cerr(loop, "out of memory"); return; }
+    }
+    cx->labels[cx->nlabels++] = loop;
+}
+
+static void label_pop(Ctx *cx, Node *loop) {
+    if (cx->nlabels > 0 && cx->labels[cx->nlabels - 1] == loop) cx->nlabels--;
+}
+
+static void check_jump(Ctx *cx, Node *n) {
+    for (int i = cx->nlabels - 1; i >= cx->label_floor; i--) {
+        if (!strcmp(cx->labels[i]->str, n->name)) { n->sym = cx->labels[i]; return; }
+    }
+    const char *kw = n->kind == N_BREAK ? "break" : "continue";
+    cerr(n, "'%s %s': no enclosing loop is labeled '%s' (a label names a loop of the same method or lambda, and the jump must be inside it)", kw, n->name, n->name);
+}
+
 void check_stmt(Ctx *cx, Node *n) {
     switch (n->kind) {
         case N_BLOCK: check_block_body(cx, n); break;
@@ -426,7 +521,9 @@ void check_stmt(Ctx *cx, Node *n) {
             int mark;
             push_scope(cx, &mark);
             cx->loop_depth++;
+            if (n->str) label_push(cx, n);
             check_stmt(cx, n->b);
+            if (n->str) label_pop(cx, n);
             cx->loop_depth--;
             pop_scope(cx, mark);
             narrow_undo(&undo);
@@ -436,7 +533,9 @@ void check_stmt(Ctx *cx, Node *n) {
             int mark;
             push_scope(cx, &mark);
             cx->loop_depth++;
+            if (n->str) label_push(cx, n);
             check_stmt(cx, n->b);
+            if (n->str) label_pop(cx, n);
             cx->loop_depth--;
             pop_scope(cx, mark);
             check_cond(cx, n->a);
@@ -453,7 +552,9 @@ void check_stmt(Ctx *cx, Node *n) {
                 if (!is_stmt_expr_node(u) && u->type->kind != TY_ERROR) cerr(u, "not a statement");
             }
             cx->loop_depth++;
+            if (n->str) label_push(cx, n);
             check_stmt(cx, n->b);
+            if (n->str) label_pop(cx, n);
             cx->loop_depth--;
             pop_scope(cx, mark);
             break;
@@ -474,17 +575,21 @@ void check_stmt(Ctx *cx, Node *n) {
             n->sym = l;
             n->type = vt;
             cx->loop_depth++;
+            if (n->str) label_push(cx, n);
             check_stmt(cx, n->c);
+            if (n->str) label_pop(cx, n);
             cx->loop_depth--;
             pop_scope(cx, mark);
             break;
         }
         case N_RETURN: check_return(cx, n); break;
         case N_BREAK:
-            if (!cx->loop_depth && !cx->switch_depth) cerr(n, "'break' outside of a loop or switch");
+            if (n->name) check_jump(cx, n);
+            else if (!cx->loop_depth && !cx->switch_depth) cerr(n, "'break' outside of a loop or switch");
             break;
         case N_CONTINUE:
-            if (!cx->loop_depth) cerr(n, "'continue' outside of a loop");
+            if (n->name) check_jump(cx, n);
+            else if (!cx->loop_depth) cerr(n, "'continue' outside of a loop");
             break;
         case N_THROW: {
             JType *t = check_expr(cx, n->a, NULL);

@@ -1,0 +1,11 @@
+before the failure 1
+Exception in thread "main" ash.lang.ArithmeticException: / by zero
+    at t.Account.ratio(run_stacktrace1_j.ash:23)
+    at t.Stack1.viaLambda(run_stacktrace1_j.ash:33)
+    at t.Stack1.run(run_stacktrace1_j.ash:29)
+    at t.Stack1.viaLambda(run_stacktrace1_j.ash:33)
+    at t.Stack1.deep(run_stacktrace1_j.ash:38)
+    at t.Stack1.deep(run_stacktrace1_j.ash:41)
+    at t.Stack1.deep(run_stacktrace1_j.ash:41)
+    at t.Stack1.deep(run_stacktrace1_j.ash:41)
+    at t.Stack1.main(run_stacktrace1_j.ash:50)

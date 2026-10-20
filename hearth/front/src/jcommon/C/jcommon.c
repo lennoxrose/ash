@@ -119,25 +119,161 @@ static int use_color(void) {
     return isatty(STDERR_FILENO) && !getenv("NO_COLOR");
 }
 
+/* ---- extra lines of the next diagnostic: help text and secondary locations ---- */
+
+#define MAX_EXTRA 6
+typedef struct {
+    int is_note;       /* 1: a note that points at a second place in the source; 0: a plain help line */
+    const char *path;
+    int line, col;
+    char *msg;
+} Extra;
+static Extra extras[MAX_EXTRA];
+static int extra_count;
+static const char *pending_code;
+
+static void add_extra(int is_note, const char *path, int line, int col, const char *fmt, va_list ap) {
+    if (extra_count >= MAX_EXTRA) return;
+    va_list ap2;
+    va_copy(ap2, ap);
+    int n = vsnprintf(NULL, 0, fmt, ap);
+    char *m = j_alloc((size_t)n + 1);
+    vsnprintf(m, (size_t)n + 1, fmt, ap2);
+    va_end(ap2);
+    extras[extra_count++] = (Extra){is_note, path, line, col, m};
+}
+
+void j_diag_help(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    add_extra(0, NULL, 0, 0, fmt, ap);
+    va_end(ap);
+}
+
+void j_diag_note(const char *path, int line, int col, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    add_extra(1, path, line, col, fmt, ap);
+    va_end(ap);
+}
+
+void j_diag_code(const char *code) { pending_code = code; }
+
+/* ---- JSON mode (`ashvm check --json`, `kiln --json`): one document at exit instead of text on stderr ---- */
+
+static int json_mode;
+static JBuf json_items;
+static int json_count;
+static int json_registered;
+
+static void json_str(JBuf *b, const char *s) {
+    j_buf_addc(b, '"');
+    for (; s && *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c == '"' || c == '\\') { j_buf_addc(b, '\\'); j_buf_addc(b, (char)c); }
+        else if (c == '\n') j_buf_add(b, "\\n");
+        else if (c == '\r') j_buf_add(b, "\\r");
+        else if (c == '\t') j_buf_add(b, "\\t");
+        else if (c < 0x20) j_buf_addf(b, "\\u%04x", c);
+        else j_buf_addc(b, (char)c);
+    }
+    j_buf_addc(b, '"');
+}
+
+static void json_flush(void) {
+    printf("{\"diagnostics\":[%s],\"errors\":%d}\n", json_items.data ? json_items.data : "", json_count);
+    fflush(stdout);
+}
+
+void j_diag_json(void) {
+    json_mode = 1;
+    if (!json_registered) { json_registered = 1; atexit(json_flush); }
+}
+
+int j_diag_is_json(void) { return json_mode; }
+
+static void json_report(const char *path, int line, int col, const char *fmt, va_list ap) {
+    JBuf *b = &json_items;
+    if (json_count++) j_buf_addc(b, ',');
+    j_buf_add(b, "{\"severity\":\"error\",\"code\":");
+    if (pending_code) json_str(b, pending_code); else j_buf_add(b, "null");
+    j_buf_add(b, ",\"message\":");
+    va_list ap2;
+    va_copy(ap2, ap);
+    int n = vsnprintf(NULL, 0, fmt, ap);
+    char *m = j_alloc((size_t)n + 1);
+    vsnprintf(m, (size_t)n + 1, fmt, ap2);
+    va_end(ap2);
+    json_str(b, m);
+    j_buf_add(b, ",\"file\":");
+    json_str(b, path ? path : "");
+    j_buf_addf(b, ",\"line\":%d,\"column\":%d,\"help\":[", line, col);
+    int first = 1;
+    for (int i = 0; i < extra_count; i++) {
+        if (extras[i].is_note) continue;
+        if (!first) j_buf_addc(b, ',');
+        first = 0;
+        json_str(b, extras[i].msg);
+    }
+    j_buf_add(b, "],\"notes\":[");
+    first = 1;
+    for (int i = 0; i < extra_count; i++) {
+        if (!extras[i].is_note) continue;
+        if (!first) j_buf_addc(b, ',');
+        first = 0;
+        j_buf_add(b, "{\"message\":");
+        json_str(b, extras[i].msg);
+        j_buf_add(b, ",\"file\":");
+        json_str(b, extras[i].path ? extras[i].path : "");
+        j_buf_addf(b, ",\"line\":%d,\"column\":%d}", extras[i].line, extras[i].col);
+    }
+    j_buf_add(b, "]}");
+}
+
+/* the source line `line` of `path` and a caret under `col`, in the frame every diagnostic uses */
+static void snippet(const char *path, int line, int col, const char *gray, const char *red, const char *reset) {
+    const char *text = path ? find_source(path) : NULL;
+    if (!text || line <= 0) return;
+    const char *p = text;
+    for (int l = 1; l < line && *p; p++) {
+        if (*p == '\n') l++;
+    }
+    const char *end = p;
+    while (*end && *end != '\n') end++;
+    fprintf(stderr, "%s   |%s\n%s%3d|%s %.*s\n%s   |%s ", gray, reset, gray, line, reset, (int)(end - p), p, gray, reset);
+    for (int i = 1; i < col; i++) fputc(' ', stderr);
+    fprintf(stderr, "%s^%s\n", red, reset);
+}
+
 static void report(const char *path, int line, int col, const char *fmt, va_list ap) {
+    if (json_mode) {
+        json_report(path, line, col, fmt, ap);
+        extra_count = 0;
+        pending_code = NULL;
+        return;
+    }
     int color = use_color();
     const char *bold = color ? COL_BOLD : "", *red = color ? COL_RED : "", *cyan = color ? COL_CYAN : "";
     const char *gray = color ? COL_GRAY : "", *reset = color ? COL_RESET : "";
-    fprintf(stderr, "%s%serror%s%s: ", bold, red, reset, bold);
+    if (pending_code) fprintf(stderr, "%s%serror[%s]%s%s: ", bold, red, pending_code, reset, bold);
+    else fprintf(stderr, "%s%serror%s%s: ", bold, red, reset, bold);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "%s\n%s  --> %s:%d:%d%s\n", reset, cyan, path ? path : "<unknown>", line, col, reset);
-    const char *text = path ? find_source(path) : NULL;
-    if (text && line > 0) {
-        const char *p = text;
-        for (int l = 1; l < line && *p; p++) {
-            if (*p == '\n') l++;
+    snippet(path, line, col, gray, red, reset);
+    for (int i = 0; i < extra_count; i++) {
+        Extra *x = &extras[i];
+        if (!x->is_note) {
+            fprintf(stderr, "%s   = %shelp%s: %s\n", gray, bold, reset, x->msg);
+            continue;
         }
-        const char *end = p;
-        while (*end && *end != '\n') end++;
-        fprintf(stderr, "%s   |%s\n%s%3d|%s %.*s\n%s   |%s ", gray, reset, gray, line, reset, (int)(end - p), p, gray, reset);
-        for (int i = 1; i < col; i++) fputc(' ', stderr);
-        fprintf(stderr, "%s^%s\n", red, reset);
+        fprintf(stderr, "%s   = %snote%s: %s\n", gray, bold, reset, x->msg);
+        if (x->path && x->line > 0) {
+            fprintf(stderr, "%s  --> %s:%d:%d%s\n", cyan, x->path, x->line, x->col, reset);
+            snippet(x->path, x->line, x->col, gray, cyan, reset);
+        }
     }
+    extra_count = 0;
+    pending_code = NULL;
 }
 
 void j_error(const char *path, int line, int col, const char *fmt, ...) {
@@ -158,6 +294,7 @@ void j_error_soft(const char *path, int line, int col, const char *fmt, ...) {
 
 void j_abort_if_errors(void) {
     if (errors) {
+        if (json_mode) exit(1);
         int color = use_color();
         fprintf(stderr, "%s%d error%s%s\n", color ? COL_BOLD COL_RED : "", errors, errors == 1 ? "" : "s", color ? COL_RESET : "");
         exit(1);

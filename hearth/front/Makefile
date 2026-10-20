@@ -22,15 +22,23 @@ FRONT_SRC = \
     src/jtypes/C/check_expr.c \
     src/jtypes/C/check_stmt.c \
     src/jtypes/C/check_class.c \
+    src/jtypes/C/suggest.c \
     src/jown/C/own.c \
+    src/jown/C/range.c \
+    src/jown/C/region.c \
     src/jlower/C/lower_expr.c \
     src/jlower/C/lower_stmt.c \
     src/jlower/C/lower_class.c \
     src/jlower/C/lower_prelude.c \
     src/jlower/C/lower_prelude_long.c \
+    src/jlower/C/lower_prelude_fmt.c \
     src/jlower/C/lower_prune.c \
     src/jdriver/C/jdriver.c \
-    src/jrepl/C/jrepl.c
+    src/jfmt/C/jfmt.c \
+    src/jexplain/C/jexplain.c \
+    src/jexplain/C/explain_data.c \
+    src/jrepl/C/jrepl.c \
+    src/jlsp/C/jlsp.c
 
 obj_of = $(patsubst %.c,%.o,$(subst /C/,/O/,$(1)))
 dep_of = $(patsubst %.c,%.d,$(subst /C/,/D/,$(1)))

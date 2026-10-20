@@ -42,5 +42,6 @@ void chunk_init(Chunk *c);
 int chunk_write(Chunk *c, uint8_t byte);
 int chunk_write_pos(Chunk *c, uint8_t byte, const char *pos, int len);
 int chunk_add_constant(Chunk *c, VMValue value);
+extern void (*chunk_constant_overflow)(void); // called instead of wrapping when a function has more than 256 constants
 
 #endif

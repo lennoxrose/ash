@@ -1,8 +1,10 @@
 #include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "jlower/H/jlower_internal.h"
+#include "jown/H/region.h"
 #include "jown/H/own.h"
 
 /* Statement lowering: control flow, switch (as if-chains), try/catch/finally via
@@ -63,11 +65,31 @@ void lblock_body(JBuf *b, Node *block, int ind) {
         if (s->kind == N_LOCAL && s->sym && ((JLocal *)s->sym)->drop && jl_drop_ok(((JLocal *)s->sym)->type) && L.drop_n < 64) L.drops[L.drop_n++] = s->sym;
     }
     int n = block->l1.count;
-    if (!n || !ends_path(block->l1.items[n - 1])) emit_drops(b, mark, ind);
+    /* the body of a region loop: the rewind that follows gives everything back at once, so freeing the body's own
+     * locals one by one first would only fill the free lists the rewind then has to empty */
+    if ((!n || !ends_path(block->l1.items[n - 1])) && !(block->flags & JOWN_REGION_BODY)) emit_drops(b, mark, ind);
     L.drop_n = mark;
 }
 
 static void lbody(JBuf *b, Node *s, int ind) { lblock_body(b, s, ind); }
+
+/* A loop jown marked (region.c) rewinds the heap at the end of every iteration; `continue`, `break` and
+ * `return` skip the rewind, which only leaves the memory allocated. */
+static char *region_enter(JBuf *b, Node *loop, int ind) {
+    if (!(jl_drops & JL_REGION) || !(loop->flags & JOWN_REGION_LOOP) || !L.cls || !L.cls->mem_on) return NULL;
+    char *cp = new_temp();
+    if (getenv("ASH_REGION_TRACE")) fprintf(stderr, "region loop: %s:%d\n", loop->path ? loop->path : "?", loop->line);
+    emit_line(b, ind, "local %s = mem_region_enter();", cp);
+    Node *body = loop->kind == N_FOREACH ? loop->c : loop->b;
+    if (body) body->flags |= JOWN_REGION_BODY;
+    return cp;
+}
+
+static void region_leave(JBuf *b, Node *body, char *cp, int ind) {
+    if (!cp) return;
+    if (body->kind == N_BLOCK && body->l1.count && ends_path(body->l1.items[body->l1.count - 1])) return;
+    emit_line(b, ind, "mem_region_leave(%s);", cp);
+}
 
 /* A loop condition is re-evaluated every iteration. When lowering it produced hoisted statements
  * (assignment/++ inside the condition, instanceof bindings), they are returned in *pre and the
@@ -98,10 +120,101 @@ static void each_line(JBuf *b, int ind, const char *text) {
     }
 }
 
+/* Runs (inlines) the finally bodies of the try statements being left, innermost first, those from index `from` up:
+ * `return` leaves them all, `break` / `continue` the ones opened inside the loop (or switch) they jump out of. */
+static void run_fins(JBuf *b, int from, int ind) {
+    int saved = L.fin_n;
+    for (int i = saved - 1; i >= from; i--) {
+        L.fin_n = i;
+        lbody(b, L.fin[i], ind);
+    }
+    L.fin_n = saved;
+}
+
 static LoopCtx *real_loop(void) {
     LoopCtx *l = L.loop;
     while (l && l->is_switch) l = l->up;
     return l;
+}
+
+/* ---------------------------------------------------------------- labeled jumps */
+
+/* the innermost loop that exists in the IR (a switch lowered to an if-chain does not) */
+static LoopCtx *ir_loop_from(LoopCtx *l) {
+    while (l && l->is_switch && !l->wrapper) l = l->up;
+    return l;
+}
+
+/* called where a loop's LoopCtx is made: the label flags of the loop being lowered belong to it */
+static void ctx_label(LoopCtx *ctx, Node *loop) {
+    ctx->node = loop;
+    if (L.cur_label && L.cur_label_loop == loop) {
+        ctx->lab = L.cur_label;
+        L.cur_label = NULL;
+    }
+}
+
+static void add_prop(LoopCtx *x, LoopCtx *target, int is_cont) {
+    for (LoopProp *p = x->props; p; p = p->next) if (p->target == target && p->is_cont == is_cont) return;
+    LoopProp *p = j_alloc(sizeof *p);
+    p->target = target;
+    p->is_cont = is_cont;
+    p->next = x->props;
+    x->props = p;
+}
+
+/* `break outer;` / `continue outer;`: the finally bodies and droppables of everything between here and the labeled
+ * loop go first (exactly as for a plain jump to that loop), then either the plain jump, when the labeled loop is the
+ * innermost one in the IR, or a flag and a `stop` of the inner loop, which the code after each crossed loop passes on */
+static void lower_labeled_jump(JBuf *b, Node *s, int ind) {
+    int cont = s->kind == N_CONTINUE;
+    LoopCtx *t = NULL;
+    for (LoopCtx *l = L.loop; l && !t; l = l->up) if (l->node && l->node == s->sym) t = l;
+    if (!t || !t->lab) { lerr(s, "cannot lower this labeled jump"); return; }
+    run_fins(b, t->fin_mark, ind);
+    if (!L.fin_n) emit_drops(b, t->drop_mark, ind);
+    /* the loops left (and, for `continue`, the labeled one, whose iteration ends here) that have a region: the rewind
+     * that the jump skips is done now, at the outermost of them, which also gives back everything the inner ones took */
+    const char *rcp = NULL;
+    for (LoopCtx *l = L.loop; l; l = l->up) {
+        if (l->rcp) rcp = l->rcp;
+        if (l == t) break;
+    }
+    if (rcp) emit_line(b, ind, "mem_region_leave(%s);", rcp);
+    LoopCtx *x = ir_loop_from(L.loop);
+    if (x == t) {
+        if (cont) {
+            if (t->update) each_line(b, ind, t->update);
+            emit_line(b, ind, "next;");
+        } else {
+            emit_line(b, ind, "stop;");
+        }
+        return;
+    }
+    char **flag = cont ? &t->lab->cnt : &t->lab->brk;
+    if (!*flag) *flag = new_temp();
+    emit_line(b, ind, "%s = yes;", *flag);
+    emit_line(b, ind, "stop;");
+    if (x) add_prop(x, t, cont);
+}
+
+/* right after the IR loop of `ctx` has been closed: hand the labeled jumps that crossed it to the loop around it */
+static void label_end(JBuf *b, LoopCtx *ctx, int ind) {
+    for (LoopProp *p = ctx->props; p; p = p->next) {
+        LoopCtx *y = ir_loop_from(ctx->up);
+        LoopCtx *t = p->target;
+        char *flag = p->is_cont ? t->lab->cnt : t->lab->brk;
+        emit_line(b, ind, "given %s {", flag);
+        if (y == t && p->is_cont) {
+            emit_line(b, ind + 1, "%s = no;", flag);
+            if (t->update) each_line(b, ind + 1, t->update);
+            emit_line(b, ind + 1, "next;");
+        } else {
+            emit_line(b, ind + 1, "stop;");
+            if (y && y != t) add_prop(y, t, p->is_cont);
+        }
+        emit_line(b, ind, "}");
+    }
 }
 
 /* ---------------------------------------------------------------- switch */
@@ -111,8 +224,8 @@ static char *label_cond(Node *lb, const char *sel, JType *seltype) {
     if (lb->kind == N_TYPEPATTERN) {
         if (lb->sym) alias_set(lb->sym, sel);
         JType *t = lb->type;
-        if (t->kind == TY_CLASS) return j_fmt("__inst(%s, %s)", sel, quote_str(t->cls->qname));
-        return "yes";
+        char *test = t->kind == TY_CLASS ? j_fmt("__inst(%s, %s)", sel, quote_str(t->cls->qname)) : (char *)"yes";
+        return lb->b ? lower_and_guard(test, lb->b) : test;
     }
     if (lb->kind == N_LIT_NULL) return j_fmt("(%s == none)", sel);
     if (lb->rk == R_ENUM_CONST && lb->sym) {
@@ -160,11 +273,11 @@ static void switch_chain(JBuf *b, Node *n, const char *sel, int ind, int expr_mo
             }
         } else {
             int cnt = c->l2.count;
-            if (cnt && ((Node *)c->l2.items[cnt - 1])->kind == N_BREAK) cnt--;
+            if (cnt && ((Node *)c->l2.items[cnt - 1])->kind == N_BREAK && !((Node *)c->l2.items[cnt - 1])->name) cnt--;
             for (int k = 0; k < cnt; k++) ls(b, c->l2.items[k], ind + depth + 1);
             if (cnt == c->l2.count && cnt && i != order.count - 1 && !dflt) {
                 Node *last = c->l2.items[cnt - 1];
-                if (last->kind != N_RETURN && last->kind != N_THROW && last->kind != N_CONTINUE)
+                if (last->kind != N_RETURN && last->kind != N_THROW && last->kind != N_CONTINUE && last->kind != N_BREAK)
                     lerr(c, "switch fallthrough is not supported by the backend; end each case with break, return or throw");
             }
         }
@@ -183,7 +296,7 @@ static void switch_chain(JBuf *b, Node *n, const char *sel, int ind, int expr_mo
             }
         } else {
             int cnt = dflt->l2.count;
-            if (cnt && ((Node *)dflt->l2.items[cnt - 1])->kind == N_BREAK) cnt--;
+            if (cnt && ((Node *)dflt->l2.items[cnt - 1])->kind == N_BREAK && !((Node *)dflt->l2.items[cnt - 1])->name) cnt--;
             for (int k = 0; k < cnt; k++) ls(b, dflt->l2.items[k], ind + depth);
         }
     } else if (expr_mode) {
@@ -196,7 +309,7 @@ static void switch_chain(JBuf *b, Node *n, const char *sel, int ind, int expr_mo
 static int contains_break(Node *n) {
     if (!n) return 0;
     switch (n->kind) {
-        case N_BREAK: return 1;
+        case N_BREAK: return !n->name;                    /* a labeled break leaves for a loop, not this switch */
         case N_BLOCK: case N_SEQ:
             for (int i = 0; i < n->l1.count; i++) if (contains_break(n->l1.items[i])) return 1;
             return 0;
@@ -249,6 +362,7 @@ static void lower_switch_general(JBuf *b, Node *n, char *sel, int ind) {
     emit_line(b, ind, "local %s = no;", go);
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.is_switch = 1;
     ctx.wrapper = 1;
     ctx.cont_flag = new_temp();
@@ -266,6 +380,7 @@ static void lower_switch_general(JBuf *b, Node *n, char *sel, int ind) {
     emit_line(b, ind + 1, "stop;");
     L.loop = ctx.up;
     emit_line(b, ind, "}");
+    label_end(b, &ctx, ind);
     if (ctx.cont_used) {
         emit_line(b, ind, "given %s {", ctx.cont_flag);
         Node cont = {0};
@@ -286,6 +401,7 @@ static void lower_switch_stmt(JBuf *b, Node *n, int ind) {
     }
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.is_switch = 1;
     ctx.up = L.loop;
     L.loop = &ctx;
@@ -405,15 +521,38 @@ static int native_iterable(JType *t) {
     return t->kind == TY_ARRAY || is_array_list(t);
 }
 
+/* `new ConcurrentModificationException("...")` with a message that says what to do (Java's has none) */
+static char *ex_new_cme(void) {
+    JMethod *k = find_ctor(jt_well_known("ash.util.ConcurrentModificationException"), 1);
+    if (!k) return (char *)"__missing_ctor()";
+    return j_fmt("%s(%s)", fn_name(k, "new"), quote_str("the list changed size while a for-each was walking it; loop over a copy, or collect the changes and apply them after the loop"));
+}
+
 static void lower_foreach(JBuf *b, Node *n, int ind) {
     char *it = lx(n->b);
     char *name = sname(n->name);
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.up = L.loop;
+    ctx_label(&ctx, n);
     flush_pre(b, ind);
-    if (native_iterable(n->b->type)) {
+    if (n->b->type->kind == TY_ARRAY || (native_iterable(n->b->type) && foreach_body_keeps_sizes(n->b, n->c))) {
+        /* an array cannot change size; neither can a list that a body without project code and without list
+         * mutators walks, so the check below is left out and the loop is the plain, fastest one */
         emit_line(b, ind, "each %s in %s {", name, it);
+    } else if (native_iterable(n->b->type)) {
+        /* Java's ArrayList iterator: the loop ends when the cursor reaches the size, and a size that changed
+         * since the loop began is a ConcurrentModificationException when the next element is asked for. The
+         * list is read by index on every iteration, so neither backend can walk a stale data pointer. */
+        char *lv = new_temp(), *nv = new_temp(), *iv = new_temp();
+        emit_line(b, ind, "local %s = %s;", lv, it);
+        emit_line(b, ind, "local %s = len(%s);", nv, lv);
+        emit_line(b, ind, "local %s = 0;", iv);
+        emit_line(b, ind, "during not (%s == len(%s)) {", iv, lv);
+        emit_line(b, ind + 1, "given not (len(%s) == %s) { raise %s; }", lv, nv, ex_new_cme());
+        emit_line(b, ind + 1, "local %s = %s[%s];", name, lv, iv);
+        emit_line(b, ind + 1, "%s += 1;", iv);
     } else {
         char *iv = new_temp();
         emit_line(b, ind, "local %s = __iterof(%s);", iv, it);
@@ -421,9 +560,14 @@ static void lower_foreach(JBuf *b, Node *n, int ind) {
         emit_line(b, ind + 1, "local %s = __vc0(%s, \"next/0\");", name, iv);
     }
     L.loop = &ctx;
+    /* the loop variable is bound by `each` before the checkpoint, so it survives the rewind */
+    char *rg = region_enter(b, n, ind + 1);
+    ctx.rcp = rg;
     lbody(b, n->c, ind + 1);
+    region_leave(b, n->c, rg, ind + 1);
     L.loop = ctx.up;
     emit_line(b, ind, "}");
+    label_end(b, &ctx, ind);
 }
 
 static char *update_text(JList *ups) {
@@ -466,7 +610,9 @@ static void lower_for(JBuf *b, Node *n, int ind) {
     flush_pre(b, ind + 1);
     LoopCtx ctx = {0};
     ctx.drop_mark = L.drop_n;
+    ctx.fin_mark = L.fin_n;
     ctx.up = L.loop;
+    ctx_label(&ctx, n);
     ctx.update = update_text(&n->l2);
     if (pre) {
         emit_line(b, ind + 1, "during yes {");
@@ -478,11 +624,15 @@ static void lower_for(JBuf *b, Node *n, int ind) {
         emit_line(b, ind + 1, "during %s {", cond);
     }
     L.loop = &ctx;
+    char *rg = region_enter(b, n, ind + 2);
+    ctx.rcp = rg;
     lbody(b, n->b, ind + 2);
+    region_leave(b, n->b, rg, ind + 2);
     L.loop = ctx.up;
     each_line(b, ind + 2, ctx.update);
     emit_line(b, ind + 1, "}");
     emit_line(b, ind, "}");
+    label_end(b, &ctx, ind);
 }
 
 static void lower_local(JBuf *b, Node *n, int ind) {
@@ -491,7 +641,36 @@ static void lower_local(JBuf *b, Node *n, int ind) {
     emit_line(b, ind, "local %s = %s;", sname(n->name), init);
 }
 
+static void ls_inner(JBuf *b, Node *s, int ind);
+
 void ls(JBuf *b, Node *s, int ind) {
+    if (L.cls && L.cls->in_project && s->line > 0 && (s->line != L.trace_line || L.trace_name) &&
+        s->kind != N_BLOCK && s->kind != N_SEQ && s->kind != N_EMPTY) {
+        L.trace_line = s->line;
+        if (L.trace_name) emit_line(b, ind, "//@%d %s", s->line, L.trace_name);
+        else emit_line(b, ind, "//@%d", s->line);
+        L.trace_name = NULL;
+    }
+    ls_inner(b, s, ind);
+}
+
+static void ls_inner(JBuf *b, Node *s, int ind) {
+    if (s->str && (s->kind == N_WHILE || s->kind == N_DO || s->kind == N_FOR || s->kind == N_FOREACH) && L.cur_label_loop != s) {
+        /* a labeled loop: lowered into a buffer first, because the flags its jumps need are only known afterwards */
+        LabelInfo li = {0};
+        JBuf sub = {0};
+        LabelInfo *saved_li = L.cur_label;
+        Node *saved_node = L.cur_label_loop;
+        L.cur_label = &li;
+        L.cur_label_loop = s;
+        ls_inner(&sub, s, ind);
+        L.cur_label = saved_li;
+        L.cur_label_loop = saved_node;
+        if (li.brk) emit_line(b, ind, "local %s = no;", li.brk);
+        if (li.cnt) emit_line(b, ind, "local %s = no;", li.cnt);
+        if (sub.data) j_buf_add(b, sub.data);
+        return;
+    }
     switch (s->kind) {
         case N_BLOCK:
             emit_line(b, ind, "given yes {");
@@ -529,8 +708,9 @@ void ls(JBuf *b, Node *s, int ind) {
             char *c = loop_cond(s->a, &pre);
             LoopCtx ctx = {0};
             ctx.drop_mark = L.drop_n;
-    ctx.drop_mark = L.drop_n;
+            ctx.fin_mark = L.fin_n;
             ctx.up = L.loop;
+            ctx_label(&ctx, s);
             if (pre) {
                 emit_line(b, ind, "during yes {");
                 each_line(b, ind + 1, pre);
@@ -541,9 +721,13 @@ void ls(JBuf *b, Node *s, int ind) {
                 emit_line(b, ind, "during %s {", c);
             }
             L.loop = &ctx;
+            char *rg = region_enter(b, s, ind + 1);
+            ctx.rcp = rg;
             lbody(b, s->b, ind + 1);
+            region_leave(b, s->b, rg, ind + 1);
             L.loop = ctx.up;
             emit_line(b, ind, "}");
+            label_end(b, &ctx, ind);
             break;
         }
         case N_DO: {
@@ -552,8 +736,9 @@ void ls(JBuf *b, Node *s, int ind) {
             char *c = loop_cond(s->a, &pre);
             LoopCtx ctx = {0};
             ctx.drop_mark = L.drop_n;
-    ctx.drop_mark = L.drop_n;
+            ctx.fin_mark = L.fin_n;
             ctx.up = L.loop;
+            ctx_label(&ctx, s);
             emit_line(b, ind, "local %s = yes;", first);
             if (pre) {
                 emit_line(b, ind, "during yes {");
@@ -568,9 +753,13 @@ void ls(JBuf *b, Node *s, int ind) {
             }
             emit_line(b, ind + 1, "%s = no;", first);
             L.loop = &ctx;
+            char *rg = region_enter(b, s, ind + 1);
+            ctx.rcp = rg;
             lbody(b, s->b, ind + 1);
+            region_leave(b, s->b, rg, ind + 1);
             L.loop = ctx.up;
             emit_line(b, ind, "}");
+            label_end(b, &ctx, ind);
             break;
         }
         case N_FOR: lower_for(b, s, ind); break;
@@ -584,12 +773,7 @@ void ls(JBuf *b, Node *s, int ind) {
                  * function leaves: compute the value first, then finally, then free */
                 char *rv = new_temp();
                 emit_line(b, ind, "local %s = %s;", rv, v);
-                int saved = L.fin_n;
-                for (int i = saved - 1; i >= 0; i--) {
-                    L.fin_n = i;
-                    lbody(b, L.fin[i], ind);
-                }
-                L.fin_n = saved;
+                run_fins(b, 0, ind);
                 /* `return x` hands x to the caller */
                 if (drops) emit_drops_except(b, 0, ind, s->a && s->a->kind == N_NAME && s->a->rk == R_LOCAL ? s->a->sym : NULL);
                 v = rv;
@@ -598,23 +782,28 @@ void ls(JBuf *b, Node *s, int ind) {
             break;
         }
         case N_BREAK: {
+            if (s->name) { lower_labeled_jump(b, s, ind); break; }
             if (L.loop && L.loop->is_switch && !L.loop->wrapper) {
                 lerr(s, "break inside a switch must be the last statement of its case");
                 break;
             }
+            if (L.loop) run_fins(b, L.loop->fin_mark, ind);                   /* the finally of a try inside the loop runs first */
             if (L.loop && !L.fin_n) emit_drops(b, L.loop->drop_mark, ind);   /* not under a finally: it may still read them */
             emit_line(b, ind, "stop;");
             break;
         }
         case N_CONTINUE: {
+            if (s->name) { lower_labeled_jump(b, s, ind); break; }
             if (L.loop && L.loop->is_switch && L.loop->wrapper && real_loop()) {
                 /* leave the one-shot switch loop first, then continue the real loop */
                 L.loop->cont_used = 1;
+                run_fins(b, L.loop->fin_mark, ind);
                 emit_line(b, ind, "%s = yes;", L.loop->cont_flag);
                 emit_line(b, ind, "stop;");
                 break;
             }
             LoopCtx *l = real_loop();
+            if (l) run_fins(b, l->fin_mark, ind);
             if (l && !L.fin_n) emit_drops(b, l->drop_mark, ind);
             if (l && l->update) each_line(b, ind, l->update), (void)0;
             emit_line(b, ind, "next;");

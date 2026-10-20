@@ -1,11 +1,6 @@
-error: System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you
+error[E0105]: System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you
   --> tests/cases/ownership/OwnFreeDenied.ash:7:13
    |
   7|             System.free(s);
    |             ^
-error: System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you
-  --> tests/cases/ownership/OwnFreeDenied.ash:7:13
-   |
-  7|             System.free(s);
-   |             ^
-2 error(s)
+1 error(s)

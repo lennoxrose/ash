@@ -1,0 +1,5 @@
+error: a label can only precede a for, while or do loop
+  --> tests/cases/diag/LabelParse.ash:7:9
+   |
+  7|         {
+   |         ^

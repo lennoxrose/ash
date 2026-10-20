@@ -1,0 +1,7 @@
+cleanup in middle
+caught boom
+Exception in thread "main" t.Boom: wrapped
+    at t.Stack2.wrap(run_stacktrace2_j.ash:34)
+    at t.Stack2.main(run_stacktrace2_j.ash:39)
+Caused by: ash.lang.IllegalStateException: boom
+    at t.Stack2.leaf(run_stacktrace2_j.ash:9)

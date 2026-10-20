@@ -126,6 +126,8 @@ void compile_attempt_stmt(void) {
     attempt_enter();
     block();
     attempt_leave();
+    // the locals of the attempt block are gone once it ends normally, like those of a given / during body
+    truncate_block_locals(saved_local_count);
 
     emit_op(OP_TRY_POP);
     int skip_handle = emit_jump(OP_JUMP);
@@ -147,6 +149,7 @@ void compile_attempt_stmt(void) {
     expect(TOKEN_RPAREN, "expected ')' after handle variable");
 
     block();
+    truncate_block_locals(saved_local_count + 1);   // the handle block's own locals, but not the error variable
     emit_op(OP_POP);
 
     patch_jump(skip_handle);
@@ -171,6 +174,7 @@ void compile_during_stmt(void) {
     loop_push();
     block();
     loop_patch_nexts(); // next lands here, right before the loop-back
+    if (loop_next_leaves_locals() && local_count == saved_local_count) emit2(OP_TRUNC_LOCALS, (uint8_t)saved_local_count);
     truncate_block_locals(saved_local_count);
     emit_loop(loop_start);
     patch_jump(exit_jump);
@@ -237,6 +241,7 @@ void compile_each_stmt(void) {
     loop_push();
     block();
     loop_patch_nexts(); // next lands here, right before the index bump
+    if (loop_next_leaves_locals() && local_count == body_local_count) emit2(OP_TRUNC_LOCALS, (uint8_t)body_local_count);
     truncate_block_locals(body_local_count);
 
     emit_op(OP_ACC_LOCAL);

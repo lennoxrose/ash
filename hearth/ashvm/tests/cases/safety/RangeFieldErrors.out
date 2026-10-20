@@ -1,0 +1,11 @@
+error[E0202]: array index is always out of bounds here: the index is 8 and the array length is 8; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/safety/RangeFieldErrors.ash:7:22
+   |
+  7|         return table[i];
+   |                      ^
+error[E0202]: array index is always out of bounds here: the index is 4 and the array length is 4; valid indexes are 0 to length - 1, so fix the index or the array size, or check the index first
+  --> tests/cases/safety/RangeFieldErrors.ash:12:23
+   |
+ 12|         return PRIMES[k];
+   |                       ^
+2 error(s)

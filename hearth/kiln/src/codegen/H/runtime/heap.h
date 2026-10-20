@@ -20,7 +20,7 @@
 // to 512 bytes through one list per size class (heads in the globals region, kiln_freelist_addr()). The plain
 // routine (heap_emit_alloc) is never touched, so arrays, maps and programs that never free cost exactly what
 // they always did. Strings are the only thing kiln frees (heap_emit_free_string_rax).
-void heap_enable_free_lists(int blocks); // blocks: the program also frees arrays or objects (mem_free_arr / mem_newarr1 / mem_free_obj)
+void heap_enable_free_lists(int blocks, int regions); // blocks: the program also frees arrays or objects (mem_free_arr / mem_newarr1 / mem_free_obj); regions: it has loop regions (mem_region_enter), so every free marks slot 0 of the table
 int heap_free_lists_on(void);
 int heap_free_arrays_on(void);
 // RAX = payload of a heap string; puts its block on the free list. Clobbers RAX, RCX, RDX, RSI.
@@ -91,5 +91,13 @@ void heap_emit_checkpoint(CodeBuf *code);
 // return value, clobbers RSI. Sets heap_ptr back to it -- heap_limit is
 // untouched, since rewinding never needs to give committed pages back.
 void heap_emit_reset(CodeBuf *code);
+
+// The reset of a loop region (jown proved nothing allocated in the loop body outlives its iteration; see
+// front/src/jown/C/region.c): checkpoint value in RDI; clobbers RAX, RBX, RCX, RDX, RSI. It also empties the
+// free lists, because a block freed inside the region now lies beyond the heap pointer and must never be handed
+// out again (blocks freed before the region are given up too: a leak, never an overlap). With the environment
+// variable KILN_REGION_POISON set when compiling, the reclaimed bytes are first overwritten with 0xDD, so that
+// any use of a value that should have been dead shows up in the tests.
+void heap_emit_region_reset(CodeBuf *code);
 
 #endif

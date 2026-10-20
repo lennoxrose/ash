@@ -38,6 +38,8 @@ hearth/mnemo/
 └── tests/                 C programs that call the public ABI: tests/scripts/run_regression.sh
 ```
 
+Besides the moved set, the engine keeps interval facts about integer locals and array lengths. From them the compiler rejects an index that is always out of bounds, an `int` operation that always overflows, a division by a divisor that is always zero and a negative array size, at compile time and only when the failure is certain (`front/src/jown/C/range.c`, ABI in `flow.h`).
+
 The pass decides what is moved, borrowed and freed; see "Memory safety" in the top-level README.
 
 ## Why "Mnemosyne"?

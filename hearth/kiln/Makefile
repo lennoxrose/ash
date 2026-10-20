@@ -51,6 +51,7 @@ KILN_SRC = \
     src/codegen/C/io/file_path.c \
     src/codegen/C/io/fs_builtins.c \
     src/codegen/C/io/input_builtin.c \
+    src/codegen/C/io/print_builtin.c \
     src/codegen/C/io/read_file_builtin.c \
     src/codegen/C/io/write_file_builtins.c \
     src/codegen/C/platform/platform_console.c \
@@ -62,6 +63,7 @@ KILN_SRC = \
     src/codegen/C/runtime/heap.c \
     src/codegen/C/runtime/number_format.c \
     src/codegen/C/runtime/print_int.c \
+    src/codegen/C/runtime/trace.c \
     src/codegen/C/strings/affix_builtins.c \
     src/codegen/C/strings/case_builtins.c \
     src/codegen/C/strings/char_builtins.c \

@@ -66,7 +66,7 @@ static const char *reserved[] = {
     "keys", "values", "has", "map", "filter", "reduce", "split", "join", "substring", "indexOf", "contains",
     "starts_with", "ends_with", "replace", "repeat", "upper", "lower", "trim", "input", "read_file",
     "write_file", "append_file", "file_exists", "rename_file", "delete_file", "make_dir", "list_dir",
-    "sys_fork", "sys_wait", "sys_exec", "mem_free", "mem_free_arr", "mem_free_obj", "mem_free_map", "mem_free_elems", "mem_newarr1", "mem_cat", "mem_release", NULL
+    "print_raw", "trace_n", "trace_fn", "trace_line", "sys_fork", "sys_wait", "sys_exec", "mem_free", "mem_free_arr", "mem_free_obj", "mem_free_map", "mem_free_elems", "mem_newarr1", "mem_cat", "mem_release", "mem_region_enter", "mem_region_leave", NULL
 };
 
 char *sname(const char *n) {
@@ -257,7 +257,16 @@ static char **lower_args_ex(JMethod *m, JList *args, int *out_n, Node *recv_node
             j_buf_addc(&b, '[');
             for (int i = np - 1; i < n; i++) {
                 if (i > np - 1) j_buf_add(&b, ", ");
-                j_buf_add(&b, v[i]);
+                /* String.format / printf: the VM sees a double, float and char as a plain number, so say which it was */
+                const char *fk = NULL;
+                if (m->tmpl && !strncmp(m->tmpl, "__format(", 9) && ((Node *)args->items[i])->type) {
+                    JType *at = ty_unbox(((Node *)args->items[i])->type);
+                    if (at->kind == TY_DOUBLE) fk = "d";
+                    else if (at->kind == TY_FLOAT) fk = "f";
+                    else if (at->kind == TY_CHAR) fk = "c";
+                }
+                if (fk) j_buf_addf(&b, "{\"__fv\": %s, \"__fk\": \"%s\"}", v[i], fk);
+                else j_buf_add(&b, v[i]);
             }
             j_buf_addc(&b, ']');
             v[np - 1] = b.data;
@@ -525,6 +534,18 @@ static int plain_ident(const char *t) {
     return 1;
 }
 
+static char *cast_prim(JType *to, JType *from, char *v);
+/* `x op= y` and `x++` store (T)(x op y) (JLS 15.26.2): a byte / short / char wraps, an int or long drops the fraction of a
+ * float / double result, an int takes the low 32 bits of a long one. `value` is the lowered `x op y`. */
+static char *compound_value(JType *lt, JType *rt, const char *op, char *value) {
+    JType *ul = ty_unbox(lt);
+    if (!ty_is_prim(ul) || ul->kind == TY_BOOL) return value;
+    JType *num = (!strcmp(op, "<<") || !strcmp(op, ">>") || !strcmp(op, ">>>")) ? ty_binary_numeric(lt, lt) : ty_binary_numeric(lt, rt);
+    if (!num || num->kind == ul->kind) return value;
+    char *c = cast_prim(ul, num, value);
+    return c ? c : value;
+}
+
 /* Lowers `target = value` operands in Java order: target base/index first, then the value. */
 static void assign_parts(Node *e, char **lhs, char **rhs) {
     Node *t = e->a;
@@ -572,7 +593,7 @@ void emit_assign_stmt(JBuf *b, Node *e, int ind) {
             char op[4];
             strncpy(op, e->name, 3);
             op[strlen(e->name) - 1] = 0;
-            rhs = binop(op, e->a->type, e->b->type, lhs, rhs, e);
+            rhs = compound_value(e->a->type, e->b->type, op, binop(op, e->a->type, e->b->type, lhs, rhs, e));
         }
         flush_pre(b, ind);
         if (e->a->kind == N_NAME && e->a->rk == R_LOCAL && e->a->sym && ((JLocal *)e->a->sym)->drop && jl_drop_ok(((JLocal *)e->a->sym)->type)) {
@@ -665,11 +686,19 @@ static void lx_seq(Node **ns, int cnt, char **out) {
     }
 }
 
+static char *short_circuit_text(char *a, Node *eb, int is_and);
+
 static char *short_circuit(Node *e) {
     int is_and = e->name[0] == '&';
-    char *a = lx(e->a);
+    return short_circuit_text(lx(e->a), e->b, is_and);
+}
+
+/* `a && guard` where `a` is already lowered text: a switch case's type test and its `when` guard */
+char *lower_and_guard(char *a, Node *guard) { return short_circuit_text(a, guard, 1); }
+
+static char *short_circuit_text(char *a, Node *eb, int is_and) {
     size_t mark = L.pre.len;
-    char *b = lx(e->b);
+    char *b = lx(eb);
     if (L.pre.len == mark) return j_fmt("(%s %s %s)", a, is_and ? "and" : "or", b);
     char *rhs_pre = pre_cut(mark);
     char *t = new_temp();
@@ -707,6 +736,8 @@ static char *incdec_text(Node *e, const char *cur, int inc) {
     JType *t = ty_unbox(e->a->type);
     if (jl_wrap_int && t->kind == TY_LONG) return j_fmt("%s(%s, 1)", inc ? "__ladd" : "__lsub", cur);
     if (jl_wrap_int && t->kind == TY_INT && !(e->flags & 0x200)) return j_fmt("__w(%s %c 1)", cur, inc ? '+' : '-');
+    if (t->kind == TY_BYTE || t->kind == TY_SHORT || t->kind == TY_CHAR)       /* b++ at 127 is -128 */
+        return j_fmt("__wn(%s %c 1, %d, %d)", cur, inc ? '+' : '-', t->kind == TY_BYTE ? 8 : 16, t->kind != TY_CHAR);
     return j_fmt("%s %c 1", cur, inc ? '+' : '-');
 }
 
@@ -719,7 +750,7 @@ static char *assign_value(Node *e) {
             char op[4];
             strncpy(op, e->name, 3);
             op[strlen(e->name) - 1] = 0;
-            rhs = binop(op, e->a->type, e->b->type, lhs, rhs, e);
+            rhs = compound_value(e->a->type, e->b->type, op, binop(op, e->a->type, e->b->type, lhs, rhs, e));
         }
         emit_line(&L.pre, 0, "%s = %s;", lhs, rhs);
         return lhs;
@@ -790,6 +821,11 @@ static char *lower_array(Node *n) {
         /* no temporary dims array to leak: the array itself is what a sole owner frees */
         return j_fmt("%s(%s, %s)", (jl_drops & JL_NATIVE_NEWARR) ? "mem_newarr1" : "__newarr1", lx(n->l1.items[0]), default_value(t));
     }
+    if (n->l1.count == 2 && (jl_drops & JL_DROP_ARRAYS) && L.cls && L.cls->mem_on) {
+        /* no temporary dims array to leak, and every row is a block of its own, made the way kiln can give back
+         * (jown frees the rows with the outer array) */
+        return j_fmt("%s(%s, %s, %s)", (jl_drops & JL_NATIVE_NEWARR) ? "__newarr2n" : "__newarr2", lx(n->l1.items[0]), lx(n->l1.items[1]), default_value(t));
+    }
     JBuf b = {0};
     j_buf_addc(&b, '[');
     for (int i = 0; i < n->l1.count; i++) {
@@ -801,9 +837,8 @@ static char *lower_array(Node *n) {
     return j_fmt("__newarr(%s, %s)", dims, default_value(t));
 }
 
-static char *cast_text(Node *n) {
-    JType *to = n->type, *from = n->b->type;
-    char *v = lx(n->b);
+/* the primitive-to-primitive cast of the already lowered value `v` (NULL when `to` / `from` are not both primitive) */
+static char *cast_prim(JType *to, JType *from, char *v) {
     JType *uf = ty_unbox(from), *ut = ty_unbox(to);
     if (ty_is_prim(ut) && ty_is_prim(uf)) {
         if (jl_wrap_int) {
@@ -827,6 +862,14 @@ static char *cast_text(Node *n) {
         if (ut->kind == TY_CHAR && uf->kind != TY_CHAR) return j_fmt("__wn(%s, 16, 0)", v);
         return v;
     }
+    return NULL;
+}
+
+static char *cast_text(Node *n) {
+    JType *to = n->type, *from = n->b->type;
+    char *v = lx(n->b);
+    char *pc = cast_prim(to, from, v);
+    if (pc) return pc;
     if (to->kind == TY_CLASS && !ty_is_object(to) && !(to->cls->kind == N_INTERFACE && jt_find_sam(to->cls))) {
         return j_fmt("__cast(%s, %s)", v, quote_str(to->cls->qname));
     }

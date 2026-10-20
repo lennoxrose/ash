@@ -1,11 +1,23 @@
-error: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
   --> tests/cases/ownership/OwnMovedKeep.ash:11:28
    |
  11|         System.out.println(a + back);     // error
    |                            ^
-error: use of moved value 'c': it was moved earlier by an assignment or by passing it to a call; lend it with &c, clone it, or assign a new value first
+   = note: 'a' was moved here, into the call to 'same'
+  --> tests/cases/ownership/OwnMovedKeep.ash:10:28
+   |
+ 10|         String back = same(a);            // returns its parameter: a is moved
+   |                            ^
+   = help: 'same' keeps its parameter, so 'a' cannot be lent with &a: use 'a' before the call, or pass a copy
+error[E0101]: use of moved value 'c': it was moved earlier by an assignment or by passing it to a call; lend it with &c, clone it, or assign a new value first
   --> tests/cases/ownership/OwnMovedKeep.ash:15:28
    |
  15|         System.out.println(c);            // error
    |                            ^
+   = note: 'c' was moved here, into the call to 'put'
+  --> tests/cases/ownership/OwnMovedKeep.ash:14:15
+   |
+ 14|         b.put(c);                         // stores its parameter: c is moved
+   |               ^
+   = help: 'put' keeps its parameter, so 'c' cannot be lent with &c: use 'c' before the call, or pass a copy
 2 error(s)

@@ -405,6 +405,16 @@ const JCoreEntry jcore_lang[] = {
     "    @Lower(\"__println(__bs($1))\") public native void println(bool b);\n"
     "    /// Prints the value followed by a newline.\n"
     "    @Lower(\"__println(chr($1))\") public native void println(char c);\n"
+    "    @Lower(\"print_raw(__format($1, $2))\") public native void printf(String format, Object?... args);\n"
+    "    @Lower(\"print_raw(__str($1))\") public native void print(Object? o);\n"
+    "    @Lower(\"print_raw(__str($1))\") public native void print(String? s);\n"
+    "    @Lower(\"print_raw(str($1))\") public native void print(int i);\n"
+    "    @Lower(\"print_raw(__lstr($1))\") public native void print(long l);\n"
+    "    @Lower(\"print_raw(__dstr($1))\") public native void print(double d);\n"
+    "    @Lower(\"print_raw(__fstr($1))\") public native void print(float f);\n"
+    "    @Lower(\"print_raw(__bs($1))\") public native void print(bool b);\n"
+    "    @Lower(\"print_raw(chr($1))\") public native void print(char c);\n"
+    "    @Lower(\"print_raw(\\\"\\\")\") public native void flush();\n"
     "}\n" },
   { "ash/lang/Record",
     "package ash.lang;\n"
@@ -500,6 +510,8 @@ const JCoreEntry jcore_lang[] = {
     "    @Lower(\"chr($1)\") public static native String valueOf(char c);\n"
     "    /// Joins strings with a separator.\n"
     "    @Lower(\"join($2, $1)\") public static native String join(String sep, Iterable<String> parts);\n"
+    "    @Lower(\"__format($1, $2)\") public static native String format(String format, Object?... args);\n"
+    "    @Lower(\"__format($0, $1)\") public native String formatted(Object?... args);\n"
     "}\n" },
   { "ash/lang/StringBuilder",
     "package ash.lang;\n"
@@ -590,6 +602,23 @@ const JCoreEntry jcore_lang[] = {
     "\n"
     "    /// Creates a new UnsupportedOperationException.\n"
     "    public UnsupportedOperationException(String message, Throwable cause) {\n"
+    "        super(message, cause);\n"
+    "    }\n"
+    "}\n" },
+  { "ash/util/ConcurrentModificationException",
+    "package ash.util;\n"
+    "\n"
+    "/// Thrown when a list is grown or shrunk while a for-each loop is walking it.\n"
+    "public class ConcurrentModificationException extends RuntimeException {\n"
+    "    public ConcurrentModificationException() { }\n"
+    "\n"
+    "    /// Creates a new ConcurrentModificationException.\n"
+    "    public ConcurrentModificationException(String message) {\n"
+    "        super(message);\n"
+    "    }\n"
+    "\n"
+    "    /// Creates a new ConcurrentModificationException.\n"
+    "    public ConcurrentModificationException(String message, Throwable cause) {\n"
     "        super(message, cause);\n"
     "    }\n"
     "}\n" },

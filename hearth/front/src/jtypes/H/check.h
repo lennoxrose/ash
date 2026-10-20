@@ -22,6 +22,9 @@ struct JLocal {
     int elems;       /* jown: a candidate String[] / List<String> whose elements are all fresh Strings it alone owns */
     int *elem_of;    /* jown: a for-each variable over such a container: the container's `elems` flag */
     int param_ok;    /* jown: a parameter the method only reads, so a caller keeps ownership of what it passes */
+    int param_elems_ok; /* jown: ...and it never takes an element out of it, so the caller's `elems` status survives the call */
+    int ul_list;     /* jown/region: a List local nobody else can reference (see ul_prescan): 0 no, else the lambda depth it was declared at + 1 */
+    int rl_list;     /* jown/range: a List / ArrayList local whose size is tracked (see rg_prescan) */
     int drop;        /* jown proved this local is the sole owner of a fresh String/array: free it at scope end */
 };
 
@@ -47,6 +50,9 @@ typedef struct Ctx {
     ExFrame *ex;
     int loop_depth;
     int switch_depth;
+    Node **labels;       /* labeled loops being checked, innermost last (`break outer;`); allocated by the first one */
+    int nlabels, cap_labels;
+    int label_floor;     /* labels below this index belong to an enclosing function: a lambda cannot jump to them */
     int lambda_depth;
     JList captures;      /* (JLocal*) captured by lambdas, validated at method end */
 } Ctx;
@@ -77,8 +83,15 @@ void check_args_for_ctor(Ctx *cx, Node *at, JClass *c, JType *ctype, JList *args
 void check_stmt(Ctx *cx, Node *n);
 void check_block_body(Ctx *cx, Node *block);
 int can_complete(Node *n);
+int jt_const_int(Node *e, long long *out);
 void push_scope(Ctx *cx, int *mark);
 void pop_scope(Ctx *cx, int mark);
+
+/* suggest.c: "did you mean" for names that do not resolve (error path only) */
+void sug_locals(Ctx *cx, JList *out);
+void sug_members(Ctx *cx, JClass *c, int want_methods, int static_only, JList *out);
+const char *sug_value_name(Ctx *cx, const char *name);
+void sug_help(const char *what, const char *guess, const char *suffix);
 
 /* check_class.c */
 void check_method_body(JClass *c, JMethod *m);

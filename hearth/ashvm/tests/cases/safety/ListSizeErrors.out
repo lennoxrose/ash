@@ -1,0 +1,41 @@
+error[E0204]: list index is always out of bounds here: the index is 0 and the list size is 0; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call
+  --> tests/cases/safety/ListSizeErrors.ash:7:22
+   |
+  7|         return l.get(0);
+   |                      ^
+error[E0204]: list index is always out of bounds here: the index is 2 and the list size is 2; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call
+  --> tests/cases/safety/ListSizeErrors.ash:14:22
+   |
+ 14|         return l.get(2);
+   |                      ^
+error[E0204]: list index is always out of bounds here: the index is 1 and the list size is 1; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call
+  --> tests/cases/safety/ListSizeErrors.ash:20:15
+   |
+ 20|         l.set(1, "b");
+   |               ^
+error[E0204]: list index is always out of bounds here: the index is 1 and the list size is 1; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call
+  --> tests/cases/safety/ListSizeErrors.ash:28:22
+   |
+ 28|         return l.get(1);
+   |                      ^
+error[E0203]: list index is always negative here (-1); list indexes start at 0, so fix the index or check it before this call
+  --> tests/cases/safety/ListSizeErrors.ash:34:22
+   |
+ 34|         return l.get(-1);
+   |                      ^
+error[E0204]: list index is always out of bounds here: the index is 1 and the list size is 1; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call
+  --> tests/cases/safety/ListSizeErrors.ash:40:22
+   |
+ 40|         return l.get(l.size());
+   |                      ^
+error[E0204]: list index is always out of bounds here: the index is 2 and the list size is 1 to 2; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call
+  --> tests/cases/safety/ListSizeErrors.ash:46:22
+   |
+ 46|         return l.get(2);
+   |                      ^
+error[E0204]: list index is always out of bounds here: the index is 0 and the list size is 0; valid indexes are 0 to size - 1, so fix the index, add the element first, or check size() before this call
+  --> tests/cases/safety/ListSizeErrors.ash:53:22
+   |
+ 53|         return l.get(0);
+   |                      ^
+8 error(s)

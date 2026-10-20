@@ -1,9 +1,11 @@
+#define _POSIX_C_SOURCE 200809L // fork, execvp, lstat, setenv under -std=c11
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include "H/fsutil.h"
 
 int fsutil_dir_exists(const char *path) {
@@ -70,4 +72,87 @@ int fsutil_copy_dir(const char *src_dir, const char *dest_dir) {
     }
     closedir(d);
     return ok;
+}
+
+// Runs a program with an argument vector, without a shell: nothing in argv can be taken for shell syntax.
+int fsutil_run(char *const argv[]) {
+    fflush(stdout);
+    fflush(stderr);
+    pid_t pid = fork();
+    if (pid < 0) return 0;
+    if (pid == 0) {
+        setenv("GIT_TERMINAL_PROMPT", "0", 1); // a git that cannot find a repository must fail, not ask for a GitHub login
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return 0;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+int fsutil_capture(char *const argv[], char *out, int out_size) {
+    int fds[2];
+    out[0] = '\0';
+    if (pipe(fds) != 0) return 0;
+    fflush(stdout);
+    fflush(stderr);
+    pid_t pid = fork();
+    if (pid < 0) { close(fds[0]); close(fds[1]); return 0; }
+    if (pid == 0) {
+        setenv("GIT_TERMINAL_PROMPT", "0", 1);
+        close(fds[0]);
+        if (dup2(fds[1], STDOUT_FILENO) < 0) _exit(126);
+        close(fds[1]);
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    close(fds[1]);
+    int n = 0;
+    char buf[256];
+    ssize_t got;
+    while ((got = read(fds[0], buf, sizeof(buf))) > 0) {      // drain everything so the child never blocks
+        for (ssize_t i = 0; i < got && n < out_size - 1; i++) out[n++] = buf[i];
+    }
+    close(fds[0]);
+    out[n] = '\0';
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return 0;
+    char *nl = strchr(out, '\n');
+    if (nl) *nl = '\0';
+    size_t len = strlen(out);
+    while (len > 0 && (out[len - 1] == '\r' || out[len - 1] == ' ')) out[--len] = '\0';
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0 && out[0] != '\0';
+}
+
+int fsutil_rm_rf(const char *path) {
+    struct stat st;
+    if (lstat(path, &st) != 0) return 1;
+    if (!S_ISDIR(st.st_mode)) return unlink(path) == 0;
+    DIR *d = opendir(path);
+    if (!d) return 0;
+    int ok = 1;
+    size_t plen = strlen(path);
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        // sized to fit: a path cut short would name some other entry
+        size_t need = plen + 1 + strlen(e->d_name) + 1;
+        char *sub = malloc(need);
+        if (!sub) { ok = 0; continue; }
+        snprintf(sub, need, "%s/%s", path, e->d_name);
+        if (!fsutil_rm_rf(sub)) ok = 0;
+        free(sub);
+    }
+    closedir(d);
+    return rmdir(path) == 0 && ok;
+}
+
+int fsutil_safe_name(const char *name) {
+    size_t n = strlen(name);
+    if (n == 0 || n > 100 || name[0] == '.') return 0;
+    for (size_t i = 0; i < n; i++) {
+        char c = name[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) return 0;
+    }
+    return 1;
 }

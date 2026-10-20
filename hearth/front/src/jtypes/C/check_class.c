@@ -184,6 +184,8 @@ static void init_ctx(Ctx *cx, JClass *c, JMethod *m, int is_static) {
 }
 
 static void finish_ctx(Ctx *cx) {
+    free(cx->labels);
+    cx->labels = NULL;
     for (int i = 0; i < cx->captures.count; i++) {
         JLocal *l = cx->captures.items[i];
         int allowed = l->has_init || l->is_param ? 0 : 1;

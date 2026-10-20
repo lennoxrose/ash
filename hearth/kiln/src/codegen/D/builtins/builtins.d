@@ -7,12 +7,12 @@ src/codegen/O/builtins/builtins.o: src/codegen/C/builtins/builtins.c \
  src/codegen/H/builtins/higher_order.h \
  src/codegen/H/collections/keys_values.h \
  src/codegen/H/strings/string_builtins.h src/codegen/H/io/file_builtins.h \
- src/codegen/H/io/input_builtin.h src/codegen/H/io/argv_builtin.h \
- src/codegen/H/builtins/type_builtin.h \
+ src/codegen/H/io/input_builtin.h src/codegen/H/io/print_builtin.h \
+ src/codegen/H/runtime/trace.h src/codegen/H/emit/emit.h \
+ src/codegen/H/io/argv_builtin.h src/codegen/H/builtins/type_builtin.h \
  src/codegen/H/builtins/exit_builtin.h \
  src/codegen/H/builtins/mem_builtin.h \
- src/codegen/H/builtins/proc_builtins.h src/parser/H/core/parser.h \
- src/codegen/H/emit/emit.h
+ src/codegen/H/builtins/proc_builtins.h src/parser/H/core/parser.h
 src/codegen/H/builtins/builtins.h:
 src/codegen/H/expressions/expr.h:
 ../front/src/ir/H/ir_lex.h:
@@ -26,10 +26,12 @@ src/codegen/H/collections/keys_values.h:
 src/codegen/H/strings/string_builtins.h:
 src/codegen/H/io/file_builtins.h:
 src/codegen/H/io/input_builtin.h:
+src/codegen/H/io/print_builtin.h:
+src/codegen/H/runtime/trace.h:
+src/codegen/H/emit/emit.h:
 src/codegen/H/io/argv_builtin.h:
 src/codegen/H/builtins/type_builtin.h:
 src/codegen/H/builtins/exit_builtin.h:
 src/codegen/H/builtins/mem_builtin.h:
 src/codegen/H/builtins/proc_builtins.h:
 src/parser/H/core/parser.h:
-src/codegen/H/emit/emit.h:

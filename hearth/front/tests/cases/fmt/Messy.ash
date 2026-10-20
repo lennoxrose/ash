@@ -1,0 +1,68 @@
+package t;
+
+import ash.util.List;
+import ash.util.ArrayList;
+
+
+/// A class with sloppy indentation.
+public class Messy {
+	private int count;    
+  static final int LIMIT = 10;
+
+
+
+    int sum(int[] xs) {
+    int total = 0;
+        for (int x : xs) {
+                total += x;
+          }
+    return total;
+    }
+
+  String describe(int n) {
+        switch (n) {
+        case 1:
+        return "one";
+            case 2:
+            case 3: {
+                  int k = n * 2;
+              return "few " + k;
+            }
+        default:
+         return "many";
+        }
+    }
+
+    int arrow(int n) {
+      return switch (n) {
+          case 1 -> 10;
+      case 2 -> {
+              int v = 3;
+              yield v;
+        }
+         default -> 0;
+        };
+    }
+
+    void chain(List<String> xs) {
+        String joined = xs.stream()
+                .map(s -> s + "!")
+                    .collect(null);
+        call(1,
+                2,
+            3);
+        if (count > 0)
+                count--;
+        else
+            count++;
+      /* a block comment
+         with two lines */
+        String s = "braces { in a string } and ${count + 1} \" still string";
+        char c = '{';
+        Runnable r = () -> {
+        count++;
+            };
+    }
+
+    void call(int a, int b, int c) { }
+}

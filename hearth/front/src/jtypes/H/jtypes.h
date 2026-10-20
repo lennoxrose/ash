@@ -53,6 +53,8 @@ struct JField {
     int is_enum_const;
     int elems;       /* jown: as JLocal.elems, for an owned String[] / List<String> field */
     int own;         /* jown: the object exclusively owns this field's String / array (freed with the object) */
+    int rl_state;    /* jown/range: array field length over every assignment in the project: 0 unknown, 1 candidate, 2 known */
+    long long rl_lo, rl_hi;
 };
 
 struct JMethod {
@@ -75,6 +77,8 @@ struct JMethod {
     int own_done;  /* jown: sole-owner analysis of the body has run */
     JClass *fresh_cls; /* jown: the exact class of the fresh object every return hands over (NULL for String / array) */
     int fresh_ret; /* jown: 0 unknown, 1 every return is a fresh heap value, 2 not, 3 being analysed */
+    int lk_keep;   /* jown/region: a call that cannot change the size of any list (for-each without a check): 0 unknown, 1 yes, 2 no, 3 being analysed, 4 yes if the analysis in progress holds */
+    int rg_pure;   /* jown/region: 0 unknown, 1 a call keeps nothing it allocates and returns a primitive, 2 not, 3 being analysed */
     int this_esc;  /* jown: 0 unknown, 1 `this` does not escape, 2 it may, 3 being analysed */
 };
 
@@ -108,6 +112,7 @@ struct JClass {
     JMethod *sam;     /* cached single abstract method; sam_done marks the cache as valid */
     int sam_done;
     int mem_on;       /* in a project with `memory-safety: on`: lowering may free what jown proved unshared */
+    int in_project;   /* the class belongs to the project being compiled (not the library): its statements carry line markers for stack traces */
 };
 
 /* resolution kinds stored in Node.rk */
@@ -167,5 +172,10 @@ void jt_check_class(JClass *c);
 JMethod *jt_find_overridden(JClass *c, JMethod *m); /* method of a supertype that m overrides, or NULL */
 
 void cerr(Node *n, const char *fmt, ...);
+
+/* suggest.c: the name of `cands` (const char*) closest to `name`, or NULL; jt_suggest_type: a class that
+ * `name` could be a misspelling of, resolvable by its simple name from `ctx` (error path only) */
+const char *sug_best(const char *name, JList *cands);
+const char *jt_suggest_type(const char *name, JClass *ctx);
 
 #endif

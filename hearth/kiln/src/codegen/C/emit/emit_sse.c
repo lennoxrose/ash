@@ -47,6 +47,13 @@ void emit_movsd_store_disp32(CodeBuf *buf, Reg base, int32_t disp, XReg src) {
     emit_i32(buf, disp);
 }
 
+void emit_movups_store_disp32(CodeBuf *buf, Reg base, int32_t disp, XReg src) {
+    emit_byte(buf, 0x0F);
+    emit_byte(buf, 0x11); // MOVUPS [base+disp32], xmm
+    emit_byte(buf, modrm_mem_disp32((Reg)src, base));
+    emit_i32(buf, disp);
+}
+
 void emit_pxor_xmm_xmm(CodeBuf *buf, XReg reg) {
     emit_byte(buf, 0x66);
     emit_byte(buf, 0x0F);

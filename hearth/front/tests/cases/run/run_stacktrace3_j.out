@@ -1,0 +1,4 @@
+Exception in thread "main" ash.lang.IndexOutOfBoundsException: index out of bounds
+    at t.Main.get(run_stacktrace3_j.ash:5)
+    at t.Main.middle(run_stacktrace3_j.ash:9)
+    at t.Main.main(run_stacktrace3_j.ash:14)

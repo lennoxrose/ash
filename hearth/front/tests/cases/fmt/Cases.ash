@@ -1,0 +1,34 @@
+package t;
+
+public class Cases {
+static int early(int n, bool flag) {
+int r = 0;
+switch (n) {
+case 5:
+r += 1;
+if (flag) {
+break;
+}
+switch (r) {
+case 1: r = 2;
+break;
+default:
+r = 3;
+}
+r += 10;
+break;
+default:
+r = -1;
+}
+return r;
+}
+
+    // comment between members
+        /// doc comment
+    static void tabs() {
+	int x = 1;
+	if (x > 0) {
+		x++;
+	}
+    }
+}

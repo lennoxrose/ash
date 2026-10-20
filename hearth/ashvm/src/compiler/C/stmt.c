@@ -334,7 +334,13 @@ static Chunk main_chunk;
 // import machinery: only this one namespace exists.
 #define IR_NAMESPACE "g"
 
+static void constants_overflow(void) {
+    diagnostics_report("error", "this function has more than 256 different constants (numbers, strings, names); split it into smaller functions", current.start, current.length);
+    exit(1);
+}
+
 Chunk *compile(const char *source) {
+    chunk_constant_overflow = constants_overflow;
     vm_function_count = 0;
     local_count = 0;
     chunk_init(&main_chunk);

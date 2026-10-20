@@ -46,7 +46,7 @@ typedef enum {
     N_FOR,        /* l1 init, a cond, l2 update, b body */
     N_FOREACH,    /* a=type (NULL for var), name, b=iterable, c=body */
     N_RETURN,     /* a */
-    N_BREAK, N_CONTINUE, N_EMPTY,
+    N_BREAK, N_CONTINUE, N_EMPTY,  /* N_BREAK / N_CONTINUE: name=label or NULL, sym=the labeled loop (checker). A labeled loop (N_WHILE / N_DO / N_FOR / N_FOREACH) keeps its label in str */
     N_THROW,      /* a */
     N_TRY,        /* b block, l1 catches, c finally */
     N_CATCH,      /* l1 types, name, b block */

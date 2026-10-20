@@ -1,0 +1,110 @@
+name: CI
+
+# Builds every subproject and runs the test suites that need no GPU: the Rust unit tests and the C ABI
+# regression of mnemo, the type checker cases of front, the ashvm and kiln regressions (every program run and
+# compared byte for byte), the memory, region and apm checks. The standard library is a sibling checkout
+# (lennoxrose/ash-stdlib), found through ASH_PATH. Not here: anything that needs a Vulkan device (pyre
+# benchmarks), the Windows emulator and Wine checks, the fuzzers and valgrind sweeps (long), and
+# shared_link_check.sh (it installs into /usr/local/lib).
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suites:
+    name: build and test (ubuntu, x86-64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ASH_PATH: ${{ github.workspace }}/ash-stdlib/src/main/ash
+    steps:
+      - name: Check out ash
+        uses: actions/checkout@v4
+        with:
+          path: ash
+
+      - name: Check out the standard library
+        uses: actions/checkout@v4
+        with:
+          repository: lennoxrose/ash-stdlib
+          path: ash-stdlib
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          # pyre (linked into ashvm) needs the Vulkan headers and glslc for its shaders; no device is needed to build
+          sudo apt-get install -y build-essential libvulkan-dev glslc python3 git
+          # mnemo is Rust: use the toolchain of the image when it has one
+          command -v cargo >/dev/null || sudo apt-get install -y cargo rustc
+          cargo --version
+          rustc --version
+          glslc --version
+
+      - name: Build
+        working-directory: ash
+        run: |
+          make @front
+          make @ashvm
+          make @kiln
+          make @apm
+
+      - name: mnemo, Rust unit tests
+        working-directory: ash/hearth/mnemo/Rust
+        run: cargo test --release
+
+      - name: mnemo, C ABI regression
+        working-directory: ash
+        run: bash hearth/mnemo/tests/scripts/run_regression.sh
+
+      - name: front, type checker cases
+        working-directory: ash
+        run: bash hearth/front/tests/scripts/check_types.sh
+
+      - name: front, diagnostics (text and JSON, both engines)
+        working-directory: ash
+        run: bash hearth/front/tests/scripts/diag_check.sh
+
+      - name: ashvm fmt (indentation, whole repository and standard library)
+        working-directory: ash
+        run: bash hearth/front/tests/scripts/fmt_check.sh
+
+      - name: error codes, documented and explained
+        working-directory: ash
+        run: bash hearth/front/tests/scripts/explain_check.sh
+
+      - name: ashvm, regression
+        working-directory: ash
+        run: bash hearth/ashvm/tests/scripts/run_regression.sh
+
+      - name: ashvm, language server (scripted LSP client)
+        working-directory: ash
+        run: bash hearth/ashvm/tests/scripts/lsp_check.sh
+
+      - name: kiln, regression
+        working-directory: ash
+        run: bash hearth/kiln/tests/scripts/run_regression.sh
+
+      - name: ashvm, memory check
+        working-directory: ash
+        run: bash hearth/ashvm/tests/scripts/memory_check.sh
+
+      - name: kiln, memory check
+        working-directory: ash
+        run: bash hearth/kiln/tests/scripts/memory_check.sh
+
+      - name: kiln, region check
+        working-directory: ash
+        run: bash hearth/kiln/tests/scripts/region_check.sh
+
+      - name: apm, smoke test
+        working-directory: ash
+        run: bash hearth/apm/tests/scripts/smoke_test.sh

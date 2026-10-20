@@ -1,10 +1,13 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "jcommon/H/jcommon.h"
 #include "jown/H/own.h"
 #include "mnemo/H/flow/flow.h"
+#include "jown/H/range.h"
+#include "jown/H/region.h"
 #include "jtypes/H/check.h"
 #include "jtypes/H/jtypes.h"
 
@@ -45,14 +48,44 @@ static int memory_safety_on(const char *root) {
 typedef struct Target {
     struct Target *up;
     int is_switch;     /* `break` ends a switch; `continue` belongs to the nearest loop */
+    int reached;       /* a labeled `break` / `continue` from inside an inner loop lands here */
+    Node *loop;        /* the loop this target belongs to (NULL for a switch): where `break label;` / `continue label;` land */
     uint32_t brk, cont; /* mnemo snapshots accumulating the states that leave through break / continue */
+    int nfin;          /* finally blocks open when the target began: a jump out of it runs the ones above */
 } Target;
 
 typedef struct {
     MnemoWalk *m;
+    int in_lambda;     /* inside a lambda body: it runs later, so what is assigned by then is unknown */
     Target *targets;
     JList reported;    /* Node* already diagnosed, so the second loop pass stays quiet */
+    JList fins;        /* finally blocks of the try statements being walked, innermost last */
+    RgCtx rg;          /* value-range facts (range.c); shares the MnemoWalk */
+    int prefix;        /* in the first pass of an outermost loop, on the straight-line part of its first iteration */
+    int catch_depth;   /* inside a try block that has a catch */
+    int loop_depth;    /* loops being walked */
+    int passes;        /* loop passes walked in this method, against LOOP_PASS_BUDGET */
+    JList moves;       /* MoveSite*, in walk order: where each owning local was moved (and, with node == NULL, given a new value) */
+    JMethod *to_call;  /* the project callee whose argument is being moved right now */
 } Walk;
+
+typedef struct { JLocal *l; Node *at; JMethod *callee; } MoveSite;
+
+/* the node where `l` was last moved on the walk, or NULL when the last event was a new value (a join of
+ * paths may then hide the move: say nothing rather than point at the wrong place) */
+static MoveSite *last_move(Walk *w, JLocal *l) {
+    for (int i = w->moves.count - 1; i >= 0; i--) {
+        MoveSite *ms = w->moves.items[i];
+        if (ms->l == l) return ms->at ? ms : NULL;
+    }
+    return NULL;
+}
+
+static void note_reinit(Walk *w, JLocal *l) {
+    MoveSite *ms = j_alloc(sizeof *ms);
+    ms->l = l;
+    j_list_push(&w->moves, ms);
+}
 
 static uint64_t id_of(JLocal *l) { return (uint64_t)(uintptr_t)l; }
 
@@ -71,11 +104,54 @@ static int fixed_project_target(JMethod *m);
 static void expr(Walk *w, Node *n);
 static void stmt(Walk *w, Node *n);
 
+/* A local declared without an initializer is tracked with two more ids in the moved set (a pointer plus 1 and
+ * plus 2 never collides with another local): +1 marks it as declared that way, +2 means "some path assigned it".
+ * The set joins as a union, so a use where +2 is missing is a use where *no* path assigned it: it can only read
+ * the empty value. Paths that merely might leave it unassigned are not reported. */
+static uint64_t decl_id(JLocal *l) { return id_of(l) + 1; }
+static uint64_t set_id(JLocal *l) { return id_of(l) + 2; }
+
+static void mark_assigned(Walk *w, JLocal *l) { mnemo_move(w->m, set_id(l)); }
+
+/* A loop's first pass starts from the state on entry, so what it sees on the straight-line part of the first
+ * iteration (statements that every run of the body executes before any branch, jump or inner loop) is exact:
+ * a variable no path assigned by then is read unassigned there, even if a later statement of the body assigns it
+ * for the next iteration. A use behind a condition is not judged that way (`if (!first) print(c);`). */
 static void use(Walk *w, Node *n) {
     JLocal *l = n->sym;
+    int first_iter = w->rg.mute && w->prefix && !w->catch_depth;
+    if (l && !w->in_lambda && (!w->rg.mute || first_iter) && mnemo_is_moved(w->m, decl_id(l)) && !mnemo_is_moved(w->m, set_id(l))) {
+        int dup = 0;
+        for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) dup = 1;
+        if (!dup) {
+            j_list_push(&w->reported, n);
+            if (first_iter) j_diag_code("E0301"), cerr(n, "variable '%s' is used before it is assigned: the first pass through the loop reaches this use before any assignment; give it a value before the loop (or where it is declared)", n->name);
+            else j_diag_code("E0301"), cerr(n, "variable '%s' is used before it is assigned: no path assigns it before this use; give it a value where it is declared, or assign it first", n->name);
+        }
+        mark_assigned(w, l);                          /* one report per variable and path */
+        return;
+    }
     if (!l || !mnemo_is_moved(w->m, id_of(l))) return;
     for (int i = 0; i < w->reported.count; i++) if (w->reported.items[i] == n) return;
     j_list_push(&w->reported, n);
+    MoveSite *ms = last_move(w, l);
+    if (ms && ms->at == n) {
+        /* the use is the move itself: the loop brings it round again */
+        j_diag_help("this %s moves '%s' on every pass of the loop; declare '%s' inside the loop, or give it a new value before the next pass", ms->callee ? "call" : "statement", n->name, n->name);
+    } else if (ms) {
+        const char *v = n->name;
+        if (ms->callee) {
+            j_diag_note(ms->at->path, ms->at->line, ms->at->col, "'%s' was moved here, into the call to '%s'%s", v, ms->callee->name,
+                        ms->at->line > n->line || (ms->at->line == n->line && ms->at->col > n->col) ? " (in an earlier iteration of the loop)" : "");
+            if (fixed_project_target(ms->callee)) j_diag_help("'%s' keeps its parameter, so '%s' cannot be lent with &%s: use '%s' before the call, or pass a copy", ms->callee->name, v, v, v);
+            else j_diag_help("lend it instead of moving it: %s(&%s)", ms->callee->name, v);
+        } else {
+            j_diag_note(ms->at->path, ms->at->line, ms->at->col, "'%s' was moved here, by storing it%s", v,
+                        ms->at->line > n->line || (ms->at->line == n->line && ms->at->col > n->col) ? " (in an earlier iteration of the loop)" : "");
+            j_diag_help("use '%s' before this point, or use the variable or field it was stored in", v);
+        }
+    }
+    j_diag_code("E0101");
     cerr(n, "use of moved value '%s': it was moved earlier by an assignment or by passing it to a call; lend it with &%s, clone it, or assign a new value first", n->name, n->name);
 }
 
@@ -84,6 +160,11 @@ static void store(Walk *w, Node *e) {
     expr(w, e);
     if (e->kind == N_NAME && e->rk == R_LOCAL && e->sym && owning(((JLocal *)e->sym)->type)) {
         mnemo_move(w->m, id_of(e->sym));
+        MoveSite *ms = j_alloc(sizeof *ms);
+        ms->l = e->sym;
+        ms->at = e;
+        ms->callee = w->to_call;
+        j_list_push(&w->moves, ms);
     }
 }
 
@@ -106,7 +187,13 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
     Borrow seen[32];
     int ns = 0;
     if (m && m->tmpl && !strncmp(m->tmpl, "mem_release(", 12)) {
-        cerr(n, "System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you");
+        int dup = 0;
+        for (int k = 0; k < w->reported.count; k++) if (w->reported.items[k] == n) dup = 1;
+        if (!dup) {
+            j_list_push(&w->reported, n);
+            j_diag_code("E0105");
+            cerr(n, "System.free is only available with 'memory-safety: off' in ash.pkg: with it on, memory is freed for you");
+        }
     }
     if (recv) {
         expr(w, recv);
@@ -116,6 +203,7 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
     for (int i = 0; i < args->count; i++) {
         Node *a = args->items[i];
         if (is_borrow(a)) {
+            if (a->name[1] == 'm') mark_assigned(w, a->a->sym);          /* the callee may fill it in */
             expr(w, a->a);
             /* a borrow may not outlive the call: a callee we can see that keeps its parameter cannot be lent to */
             if (fixed_project_target(m) && !param_borrowed(m, i) && !(m->decl && m->decl->b == NULL)) {
@@ -123,13 +211,17 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
                 for (int k = 0; k < w->reported.count; k++) if (w->reported.items[k] == a) dup = 1;
                 if (!dup) {
                     j_list_push(&w->reported, a);
+                    j_diag_code("E0102");
                     cerr(a, "cannot lend '%s' with '%s': '%s' keeps this parameter (stores, returns or passes it on); pass '%s' by move or clone it",
                          a->a->name, a->name, m->name, a->a->name);
                 }
             }
+            if (a->name[1] == 'm') rg_forget(&w->rg, a->a->sym);        /* the callee may write it */
             if (ns < 32) seen[ns++] = (Borrow){a->a->sym, a->name[1] == 'm', a};
         } else if (takes && !param_borrowed(m, i)) {
+            w->to_call = m;
             store(w, a);
+            w->to_call = NULL;
             if (a->kind == N_NAME && a->rk == R_LOCAL && a->sym && ns < 32) seen[ns++] = (Borrow){a->sym, 0, a};
         } else {
             expr(w, a);
@@ -142,6 +234,7 @@ static void call_args(Walk *w, Node *n, JMethod *m, Node *recv, JList *args) {
             if (seen[i].l != seen[j].l || (!seen[i].mut && !seen[j].mut)) continue;
             for (int k = 0; k < w->reported.count; k++) if (w->reported.items[k] == seen[j].at) goto next_pair;
             j_list_push(&w->reported, seen[j].at);
+            j_diag_code("E0103");
             cerr(seen[j].at, "cannot use '%s' here: it is already %s in this call", seen[i].l->name,
                  seen[i].mut ? "borrowed mutably" : "borrowed, and this use is mutable");
         next_pair:;
@@ -166,53 +259,90 @@ static void expr(Walk *w, Node *n) {
             return;
         case N_ASSIGN:
             if (!strcmp(n->name, "=")) {
+                int to_local = n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym;
+                if (!to_local) expr(w, n->a);               /* Java evaluates the array and the index before the right side */
                 store(w, n->b);
-                if (n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym) mnemo_reinit(m, id_of(n->a->sym));
-                else expr(w, n->a);
+                if (to_local) { mnemo_reinit(m, id_of(n->a->sym)); note_reinit(w, n->a->sym); mark_assigned(w, n->a->sym); }
             } else {
                 expr(w, n->a);
                 expr(w, n->b);
             }
+            rg_assign(&w->rg, n);
             return;
         case N_ARRAYINIT:
             for (int i = 0; i < n->l1.count; i++) store(w, n->l1.items[i]);
             return;
-        case N_CALL: call_args(w, n, n->sym, n->a, &n->l1); return;
+        case N_CALL: call_args(w, n, n->sym, n->a, &n->l1); rg_check_call(&w->rg, n); rg_call_effect(&w->rg, n); return;
         case N_NEW: call_args(w, n, n->sym, NULL, &n->l1); return;
         case N_UNARY:
             if (n->name[0] == '&') {
-                cerr(n, "a borrow ('%s') can only be passed as a call argument", n->name);
+                j_diag_code("E0104");
+                cerr(n, "a borrow ('&%s') can only be passed as a call argument; it cannot be stored, returned or assigned, so pass '%s' by move or clone it", n->a && n->a->name ? n->a->name : "x", n->a && n->a->name ? n->a->name : "x");
                 return;
             }
-            break;
+            children(w, n);
+            if ((n->name[0] == '+' && n->name[1] == '+') || (n->name[0] == '-' && n->name[1] == '-')) rg_incdec(&w->rg, n);
+            return;
+        case N_POSTFIX:
+            children(w, n);
+            rg_incdec(&w->rg, n);
+            return;
+        case N_INDEX: children(w, n); rg_check_index(&w->rg, n); return;
+        case N_NEWARRAY: children(w, n); rg_check_newarray(&w->rg, n); return;
         case N_BINARY:
             if (!strcmp(n->name, "&&") || !strcmp(n->name, "||")) {   /* right side may not run */
                 expr(w, n->a);
+                int pfx = w->prefix;
+                w->prefix = 0;                                 /* the right side may not run */
                 uint32_t after_a = mnemo_save(m);
+                rg_assume(&w->rg, n->a, n->name[0] == '&');
                 expr(w, n->b);
+                w->prefix = pfx;
                 mnemo_join(m, after_a);
                 mnemo_release(m, after_a);
                 return;
             }
-            break;
+            children(w, n);
+            rg_check_binary(&w->rg, n);
+            return;
         case N_COND: {
             expr(w, n->a);
+            int pfx = w->prefix;
+            w->prefix = 0;                                     /* one of the two arms runs */
             uint32_t entry = mnemo_save(m);
+            rg_assume(&w->rg, n->a, 1);
             expr(w, n->b);
             uint32_t then_s = mnemo_save(m);
             mnemo_restore(m, entry);
+            rg_assume(&w->rg, n->a, 0);
             expr(w, n->c);
             mnemo_join(m, then_s);
             mnemo_release(m, entry);
             mnemo_release(m, then_s);
+            w->prefix = pfx;
+            return;
+        }
+        case N_INSTANCEOF:
+            children(w, n);
+            if (n->sym) mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym);       /* the binding is a fresh variable each time the test runs */
+            return;
+        case N_SWITCH: {                     /* a switch expression: each case starts from the state after the selector */
+            int pfx = w->prefix;
+            stmt(w, n);
+            w->prefix = pfx;
             return;
         }
         case N_LAMBDA: {                     /* the body runs later: check its uses, keep its moves local */
+            int pfx = w->prefix;
+            w->prefix = 0;
             uint32_t entry = mnemo_save(m);
             Target *saved = w->targets;
             w->targets = NULL;
+            w->in_lambda++;
             expr(w, n->b);
+            w->in_lambda--;
             w->targets = saved;
+            w->prefix = pfx;
             mnemo_restore(m, entry);
             mnemo_release(m, entry);
             return;
@@ -229,20 +359,48 @@ static void stmts(Walk *w, JList *l) {
     for (int i = 0; i < l->count; i++) stmt(w, l->items[i]);
 }
 
-static Target *find_target(Walk *w, int for_continue) {
+static Target *find_target(Walk *w, int for_continue, Node *labeled) {
+    if (labeled) {                                    /* `break outer;`: the target of the loop the label names (NULL inside a lambda) */
+        for (Target *t = w->targets; t; t = t->up) if (t->loop == labeled) return t;
+        return NULL;
+    }
     for (Target *t = w->targets; t; t = t->up) if (!for_continue || !t->is_switch) return t;
     return NULL;
 }
 
-static void jump(Walk *w, int is_continue) {
-    Target *t = find_target(w, is_continue);
-    if (t) mnemo_join_into(w->m, is_continue ? t->cont : t->brk);
+/* `break` / `continue` run the finally blocks of the try statements they leave before the jump lands, so the
+ * state that reaches the target is the one after them (a `finally { x = 5; }` changes what is known of x). */
+static void jump(Walk *w, int is_continue, Node *labeled) {
+    Target *t = find_target(w, is_continue, labeled);
+    if (t) {
+        if (labeled) t->reached = 1;
+        int open = w->fins.count, n = open - t->nfin;
+        if (n > 0) {
+            Node **mine = malloc((size_t)n * sizeof *mine);      /* the walks below push and pop on the same list */
+            if (mine) {
+                for (int i = 0; i < n; i++) mine[i] = w->fins.items[t->nfin + i];
+                for (int i = n - 1; i >= 0 && !mnemo_is_dead(w->m); i--) {
+                    w->fins.count = t->nfin + i;               /* a jump inside the finally leaves only the ones below it */
+                    stmt(w, mine[i]);
+                }
+                w->fins.count = open;
+                for (int i = 0; i < n; i++) w->fins.items[t->nfin + i] = mine[i];
+                free(mine);
+            } else {
+                mnemo_havoc(w->m);                              /* out of memory: give up the ranges, they may be stale */
+            }
+        }
+        mnemo_join_into(w->m, is_continue ? t->cont : t->brk);
+    }
     mnemo_kill(w->m);
 }
 
-static void push_target(Walk *w, Target *t, int is_switch) {
+static void push_target(Walk *w, Target *t, int is_switch, Node *loop) {
     t->up = w->targets;
     t->is_switch = is_switch;
+    t->loop = loop;
+    t->reached = 0;
+    t->nfin = w->fins.count;
     t->brk = mnemo_save_dead(w->m);
     t->cont = mnemo_save_dead(w->m);
     w->targets = t;
@@ -254,106 +412,233 @@ static void pop_target(Walk *w, Target *t) {
     mnemo_release(w->m, t->cont);
 }
 
-/* Loops run their body again when a move survives to the back edge, so every loop is walked twice;
- * the second pass starts from the entry state joined with the end of the first body. */
+/* A loop that gives up its ranges (havoc) also gives them up for the states it already sent to enclosing loops with
+ * a labeled jump: those came from passes with a narrower head. Only loops a labeled jump landed on are touched. */
+static void havoc_outer(Walk *w, Target *self) {
+    for (Target *u = self->up; u; u = u->up) {
+        if (!u->reached) continue;
+        mnemo_join_into(w->m, u->brk);
+        mnemo_join_into(w->m, u->cont);
+    }
+}
+
+/* Nested loops are walked again for every pass of the loop around them, so a nest of d loops costs about 2^d
+ * walks. Real code stays far below this many passes in a method; past it (a pathological nest) the loops that are
+ * only searching for the outer fixpoint stop after one pass and give up their ranges, which keeps the cost linear
+ * and only costs precision (fewer range errors are certain), never soundness. */
+#define LOOP_PASS_BUDGET 2000
+
+/* A loop is walked until its head state stops changing, then once more with the diagnostics on. The head
+ * is the entry state joined with every back edge: moved variables only grow, and a value range that
+ * grows is widened to infinity, so this takes a few passes. A condition narrows the ranges for the body
+ * and for the exit. A loop that never settles forgets its ranges rather than guessing. */
 static void loop(Walk *w, Node *n) {
     MnemoWalk *m = w->m;
     Target t;
-    push_target(w, &t, 0);
+    push_target(w, &t, 0, n);
     if (n->kind == N_FOREACH) expr(w, n->b);          /* the iterable is evaluated once */
-    uint32_t entry = mnemo_save(m);
+    uint32_t head = mnemo_save(m);
     uint32_t leave = mnemo_save_dead(m);              /* states that leave through the condition */
-    for (int pass = 0; pass < 2; pass++) {
+    int final = 0;
+    int outermost = w->loop_depth == 0;
+    /* inside a pass of an enclosing loop that is itself only searching for its fixpoint nothing is reported, so
+     * this loop need not walk once more with the diagnostics on: stopping as soon as its head is stable already
+     * gives the exit state, and a nest of d loops costs 2^d walks instead of 3^d */
+    int searching = w->rg.mute > 0;
+    w->loop_depth++;
+    for (int pass = 0; pass < 10; pass++) {
+        if (!final) w->rg.mute++;
+        w->prefix = pass == 0 && outermost;
+        w->passes++;
+        mnemo_restore(m, head);
         if (n->kind == N_DO) {
             stmt(w, n->b);
             mnemo_join(m, t.cont);
-            if (n->a) expr(w, n->a);
-            mnemo_join_into(m, leave);
+            if (n->a) {
+                expr(w, n->a);
+                uint32_t s = mnemo_save(m);
+                rg_assume(&w->rg, n->a, 0);
+                mnemo_join_into(m, leave);
+                mnemo_restore(m, s);
+                mnemo_release(m, s);
+                rg_assume(&w->rg, n->a, 1);
+            } else {
+                mnemo_join_into(m, leave);
+            }
         } else {
-            if (n->kind == N_FOREACH) { if (n->sym) mnemo_reinit(m, id_of(n->sym)); }
-            else if (n->a) expr(w, n->a);
-            mnemo_join_into(m, leave);
+            if (n->kind == N_FOREACH) {
+                if (n->sym) { mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym); rg_forget(&w->rg, n->sym); }
+                mnemo_join_into(m, leave);
+            } else if (n->a) {
+                expr(w, n->a);
+                uint32_t s = mnemo_save(m);
+                rg_assume(&w->rg, n->a, 0);
+                mnemo_join_into(m, leave);
+                mnemo_restore(m, s);
+                mnemo_release(m, s);
+                rg_assume(&w->rg, n->a, 1);
+            }                                         /* `for (;;)` leaves only through break */
             stmt(w, n->kind == N_FOREACH ? n->c : n->b);
             mnemo_join(m, t.cont);
             if (n->kind == N_FOR) for (int i = 0; i < n->l2.count; i++) expr(w, n->l2.items[i]);
         }
+        w->prefix = 0;
+        if (!final) w->rg.mute--;
+        if (final) break;
         uint32_t end = mnemo_save(m);
-        mnemo_restore(m, entry);
-        mnemo_join(m, end);                           /* back edge */
+        mnemo_restore(m, head);
+        mnemo_join_widen(m, end);                     /* back edge */
         mnemo_release(m, end);
+        if (searching && w->passes > LOOP_PASS_BUDGET) {
+            /* The moved set of the head is a fixpoint after one pass (a variable moves or is re-initialised on a
+             * path whatever the head holds), so only the ranges are unknown: forget them, and let this head stand
+             * for every state that leaves the loop. */
+            mnemo_havoc(m);
+            mnemo_join_into(m, leave);
+            mnemo_join_into(m, t.brk);
+            havoc_outer(w, &t);
+            mnemo_release(m, head);
+            head = mnemo_save(m);
+            break;
+        }
+        int settled = mnemo_equal(m, head);
+        if (!settled && pass >= 8) { mnemo_havoc(m); havoc_outer(w, &t); settled = 1; }
+        mnemo_release(m, head);
+        head = mnemo_save(m);
+        if (settled && searching) break;
+        if (settled && pass >= 1) final = 1;
     }
+    w->loop_depth--;
     mnemo_restore(m, leave);
     mnemo_join(m, t.brk);
-    mnemo_release(m, entry);
+    mnemo_release(m, head);
     mnemo_release(m, leave);
     pop_target(w, &t);
 }
 
+/* a statement that always runs to its end: blocks, declarations, expression statements and ifs of those */
+static int runs_through(Node *n) {
+    if (!n) return 1;
+    switch (n->kind) {
+        case N_BLOCK: case N_SEQ:
+            for (int i = 0; i < n->l1.count; i++) if (!runs_through(n->l1.items[i])) return 0;
+            return 1;
+        case N_LOCAL: case N_EXPRSTMT: case N_EMPTY: return 1;
+        case N_IF: return runs_through(n->b) && runs_through(n->c);
+        default: return 0;
+    }
+}
+
 static void stmt(Walk *w, Node *n) {
     MnemoWalk *m = w->m;
+    switch (n->kind) {         /* only these keep the straight-line part going (an `if` after its condition) */
+        case N_BLOCK: case N_SEQ: case N_LOCAL: case N_EXPRSTMT: case N_EMPTY: case N_IF: case N_RETURN: case N_THROW: break;
+        default: w->prefix = 0;
+    }
     switch (n->kind) {
         case N_BLOCK: case N_SEQ: stmts(w, &n->l1); return;
         case N_LOCAL:
             if (n->b) store(w, n->b);
-            if (n->sym) mnemo_reinit(m, id_of(n->sym));   /* a fresh variable, also on every loop iteration */
+            if (n->sym) mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym);   /* a fresh variable, also on every loop iteration */
+            if (n->sym && !n->b) { mnemo_move(m, decl_id(n->sym)); mnemo_reinit(m, set_id(n->sym)); }
+            else if (n->sym) mnemo_reinit(m, decl_id(n->sym));
+            rg_declare(&w->rg, n);
             return;
         case N_EXPRSTMT: expr(w, n->a); return;
         case N_IF: {
             expr(w, n->a);
+            int pfx = w->prefix && runs_through(n);     /* the rest still runs after an if without jumps */
+            w->prefix = 0;                             /* the branches are conditional */
             uint32_t entry = mnemo_save(m);
+            rg_assume(&w->rg, n->a, 1);
             stmt(w, n->b);
             uint32_t then_s = mnemo_save(m);
             mnemo_restore(m, entry);
+            rg_assume(&w->rg, n->a, 0);
             if (n->c) stmt(w, n->c);
             mnemo_join(m, then_s);
             mnemo_release(m, entry);
             mnemo_release(m, then_s);
+            w->prefix = pfx;
             return;
         }
         case N_WHILE: case N_DO: case N_FOR: case N_FOREACH:
             if (n->kind == N_FOR) stmts(w, &n->l1);
             loop(w, n);
             return;
-        case N_RETURN: if (n->a) expr(w, n->a); mnemo_kill(m); return;
-        case N_THROW: expr(w, n->a); mnemo_kill(m); return;
-        case N_BREAK: jump(w, 0); return;
-        case N_CONTINUE: jump(w, 1); return;
+        case N_RETURN: if (n->a) expr(w, n->a); w->prefix = 0; mnemo_kill(m); return;
+        case N_THROW: expr(w, n->a); w->prefix = 0; mnemo_kill(m); return;
+        case N_BREAK: jump(w, 0, n->name ? n->sym : NULL); return;
+        case N_CONTINUE: jump(w, 1, n->name ? n->sym : NULL); return;
         case N_TRY: {
             uint32_t entry = mnemo_save(m);
+            if (n->l1.count) { w->rg.mute++; w->catch_depth++; }   /* a catch may be the point: the program can provoke the exception */
+            if (n->c) j_list_push(&w->fins, n->c);
             stmt(w, n->b);
+            if (n->l1.count) { w->rg.mute--; w->catch_depth--; }
             uint32_t out = mnemo_save(m);
             mnemo_restore(m, entry);
             mnemo_join(m, out);                        /* the try block may stop anywhere */
+            rg_forget_assigned(&w->rg, n->b);          /* ... so what it assigns is unknown in the handlers */
             uint32_t into_catch = mnemo_save(m);
             for (int i = 0; i < n->l1.count; i++) {
                 mnemo_restore(m, into_catch);
                 stmt(w, n->l1.items[i]);
                 mnemo_join_into(m, out);
             }
+            if (n->c) w->fins.count--;                 /* the catches were still inside the try for a jump */
             mnemo_restore(m, out);
-            if (n->c) stmt(w, n->c);
+            if (n->c) {                                /* a finally also runs after an exception from anywhere in the try / catches */
+                rg_forget_assigned(&w->rg, n->b);
+                for (int i = 0; i < n->l1.count; i++) rg_forget_assigned(&w->rg, n->l1.items[i]);
+                stmt(w, n->c);
+            }
             mnemo_release(m, entry);
             mnemo_release(m, out);
             mnemo_release(m, into_catch);
             return;
         }
-        case N_CATCH: stmt(w, n->b); return;
+        case N_CATCH:
+            if (n->sym) mnemo_reinit(m, id_of(n->sym)), note_reinit(w, n->sym);   /* a fresh variable on every iteration, like a local */
+            stmt(w, n->b);
+            return;
         case N_SWITCH: {
             expr(w, n->a);
             uint32_t entry = mnemo_save(m);
             Target t;
-            push_target(w, &t, 1);
+            push_target(w, &t, 1, NULL);
             uint32_t out = mnemo_save_dead(m);
             uint32_t fall = mnemo_save_dead(m);
+            uint32_t gfail = mnemo_save_dead(m);       /* states of a `when` guard that failed: the next cases start from them too */
             int has_default = 0;
             for (int i = 0; i < n->l1.count; i++) {
                 Node *c = n->l1.items[i];
                 if (c->flags == 1) has_default = 1;
                 mnemo_restore(m, entry);
+                rg_assume_case(&w->rg, n->a, c);       /* ... or the selector matched one of this case's labels */
                 mnemo_join(m, fall);                   /* colon-form cases fall through */
                 mnemo_release(m, fall);
+                mnemo_join(m, gfail);
+                for (int j = 0; j < c->l1.count; j++) {   /* a type pattern binds a fresh variable */
+                    Node *lb = c->l1.items[j];
+                    if (lb->kind == N_TYPEPATTERN && lb->sym) mnemo_reinit(m, id_of(lb->sym)), note_reinit(w, lb->sym);
+                }
+                for (int j = 0; j < c->l1.count; j++) {   /* a guard runs after the pattern matched; when it fails the next case is tried */
+                    Node *lb = c->l1.items[j];
+                    if (lb->kind != N_TYPEPATTERN || !lb->b) continue;
+                    int pfx = w->prefix;
+                    w->prefix = 0;
+                    expr(w, lb->b);
+                    w->prefix = pfx;
+                    uint32_t after = mnemo_save(m);
+                    rg_assume(&w->rg, lb->b, 0);
+                    mnemo_join_into(m, gfail);
+                    mnemo_restore(m, after);
+                    mnemo_release(m, after);
+                    rg_assume(&w->rg, lb->b, 1);
+                }
                 if (c->b) {
-                    if (c->b->kind == N_BLOCK) stmt(w, c->b); else expr(w, c->b);
+                    if (c->b->kind == N_BLOCK || c->b->kind == N_THROW) stmt(w, c->b); else expr(w, c->b);
                     mnemo_join_into(m, out);
                     fall = mnemo_save_dead(m);
                 } else {
@@ -364,10 +649,12 @@ static void stmt(Walk *w, Node *n) {
             mnemo_restore(m, out);
             mnemo_join(m, fall);
             mnemo_join(m, t.brk);
+            mnemo_join(m, gfail);
             if (!has_default) mnemo_join(m, entry);
             mnemo_release(m, entry);
             mnemo_release(m, out);
             mnemo_release(m, fall);
+            mnemo_release(m, gfail);
             pop_target(w, &t);
             return;
         }
@@ -550,6 +837,16 @@ static JType *tracked_type(Node *n) {
     return field_node(n) ? ((JField *)n->sym)->type : ((JLocal *)n->sym)->type;
 }
 
+/* does `n` assign the local `l` (plain or compound assignment, ++ / --)? */
+static int assigns_local(Node *n, JLocal *l) {
+    if (!n) return 0;
+    if (n->kind == N_ASSIGN && n->a && n->a->kind == N_NAME && n->a->rk == R_LOCAL && n->a->sym == l) return 1;
+    if (assigns_local(n->a, l) || assigns_local(n->b, l) || assigns_local(n->c, l)) return 1;
+    JList *ls[] = {&n->l1, &n->l2, &n->l3, &n->l4, &n->l5};
+    for (int k = 0; k < 5; k++) for (int i = 0; i < ls[k]->count; i++) if (assigns_local(ls[k]->items[i], l)) return 1;
+    return 0;
+}
+
 static void untrack(Node *n) {
     if (field_node(n)) ((JField *)n->sym)->own = 0;
     else if (n->sym) ((JLocal *)n->sym)->drop = 0;
@@ -561,6 +858,19 @@ static int str_elems(JType *t) {
     if (!t) return 0;
     if (t->kind == TY_ARRAY) return t->elem && ty_is_string(t->elem);
     return list_type(t) && t->nargs == 1 && t->args && ty_is_string(t->args[0]);
+}
+
+/* a T[][] (any depth): its elements are arrays; the container is freed together with the inner arrays only it holds */
+static int arr_elems(JType *t) {
+    return t && t->kind == TY_ARRAY && t->elem && t->elem->kind == TY_ARRAY;
+}
+
+static int elems_type(JType *t) { return str_elems(t) || arr_elems(t); }
+
+/* an element that is a new heap value of the kind `t` holds (a fresh String, or a new array) and nothing else references yet */
+static int elem_fresh(Node *e, JType *t) {
+    if (arr_elems(t)) return e->kind == N_NEWARRAY || e->kind == N_ARRAYINIT;
+    return jown_is_fresh_string(e);
 }
 
 /* the `elems` flag of a tracked container node, or NULL */
@@ -575,13 +885,15 @@ static void elems_off(Node *n) {
 }
 
 /* a container expression whose elements are known fresh Strings (or that has none yet) */
-static int init_elems_fresh(Node *e) {
+static int init_elems_fresh(Node *e, JType *t) {
     if (e->kind == N_NEWARRAY) {
-        if (!e->b) return 1;                              /* new String[n]: elements start as none */
+        /* new String[n]: elements start as none. new T[a][b]: lowered so every inner array is its own new block
+         * (__newarr2); three or more sizes are built by the generic helper, which kiln cannot free */
+        if (!e->b) return !arr_elems(t) || e->l1.count <= 2;
         e = e->b;
     }
     if (e->kind == N_ARRAYINIT) {
-        for (int i = 0; i < e->l1.count; i++) if (!jown_is_fresh_string(e->l1.items[i])) return 0;
+        for (int i = 0; i < e->l1.count; i++) if (!elem_fresh(e->l1.items[i], t)) return 0;
         return 1;
     }
     return fresh_list(e);
@@ -601,7 +913,7 @@ static void collect(Node *n, int in_lambda) {
             if (l && s->b && is_fresh(s->b) &&
                 (l->type->kind == TY_ARRAY || ty_is_string(l->type) || (list_type(l->type) && (fresh_list(s->b) || s->b->kind == N_CALL)) || (map_type(l->type) && fresh_map(s->b)) ||
                  (obj_type(l->type) && ((s->b->kind == N_NEW && l->type->cls == ((JMethod *)s->b->sym)->cls) ||
-                                        (s->b->kind == N_CALL && ((JMethod *)s->b->sym)->fresh_cls == l->type->cls))))) { l->drop = 1; l->elems = str_elems(l->type) && init_elems_fresh(s->b); }
+                                        (s->b->kind == N_CALL && ((JMethod *)s->b->sym)->fresh_cls == l->type->cls))))) { l->drop = 1; l->elems = elems_type(l->type) && init_elems_fresh(s->b, l->type); }
         }
     }
     collect(n->a, in_lambda); collect(n->b, in_lambda); collect(n->c, in_lambda);
@@ -623,6 +935,11 @@ static int print_method(JMethod *m) {
 }
 
 static void scan(Node *n, int in_lambda);
+static int param_borrowed(JMethod *m, int i);
+
+/* argument `i` goes to a parameter the callee only reads. A container whose elements the callee may take out loses its
+ * `elems` status (the callee could keep an element, and freeing the inner values with the container would dangle) */
+static void borrowed_arg(JMethod *m, int i, Node *arg, int in_lambda);
 
 /* a use of `n` that cannot create a second reference */
 static void fieldacc_base(Node *n, int in_lambda);
@@ -652,10 +969,19 @@ static void benign(Node *n, int in_lambda) {
     if (in_lambda) { if (is_tracked(n)) untrack(n); alias_touch(n); }   /* captured */
 }
 
+static void borrowed_arg(JMethod *m, int i, Node *arg, int in_lambda) {
+    Node *t = is_borrow(arg) ? arg->a : arg;
+    benign(t, in_lambda);
+    Node *pn = m->decl->l1.items[i];
+    JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
+    if (!l || !l->param_elems_ok) elems_off(t);
+}
+
 /* the target of `x.f` / `x.length` */
 static void fieldacc_base(Node *n, int in_lambda) {
     if (is_cand(n->a) && obj_type(((JLocal *)n->a->sym)->type)) benign(n->a, in_lambda);
     else if (n->name && !strcmp(n->name, "length") && n->a->kind == N_NAME) benign(n->a, in_lambda);
+    else if (n->name && !strcmp(n->name, "length") && n->a->kind == N_INDEX && elems_flag(n->a->a)) benign(n->a, in_lambda);   /* m[i].length */
     else scan(n->a, in_lambda);
 }
 
@@ -699,7 +1025,7 @@ static void scan(Node *n, int in_lambda) {
                     int last = n->l1.count - 1;
                     if (!strcmp(m->name, "get")) elems_off(n->a);                 /* reached here: not in a harmless context */
                     else if ((!strcmp(m->name, "add") && n->l1.count == 1) || (!strcmp(m->name, "set") && n->l1.count == 2)) {
-                        if (!jown_is_fresh_string(n->l1.items[last]) || in_lambda) elems_off(n->a);   /* a shared / literal element */
+                        if (!elem_fresh(n->l1.items[last], tracked_type(n->a)) || in_lambda) elems_off(n->a);   /* a shared / literal element */
                     }
                 }
             } else if (n->a) { if (safe_string_method(m)) benign(n->a, in_lambda); else scan(n->a, in_lambda); }
@@ -707,8 +1033,7 @@ static void scan(Node *n, int in_lambda) {
                 Node *arg = n->l1.items[i];
                 int obj_arg = arg->kind == N_NAME && is_cand(arg) && obj_type(((JLocal *)arg->sym)->type);
                 if ((print_method(m) || safe_string_method(m)) && !obj_arg) benign(arg, in_lambda);
-                else if (param_borrowed(m, i) && is_borrow(arg)) benign(arg->a, in_lambda);
-                else if (param_borrowed(m, i)) benign(arg, in_lambda);
+                else if (param_borrowed(m, i)) borrowed_arg(m, i, arg, in_lambda);
                 else scan(n->l1.items[i], in_lambda);
             }
             return;
@@ -716,7 +1041,7 @@ static void scan(Node *n, int in_lambda) {
         case N_EXPRSTMT:
             if (n->a->kind == N_ASSIGN && n->a->a->kind == N_INDEX && elems_flag(n->a->a->a)) {
                 Node *as = n->a;                                 /* xs[i] = value */
-                if (strcmp(as->name, "=") != 0 || !jown_is_fresh_string(as->b) || in_lambda) elems_off(as->a->a);
+                if (strcmp(as->name, "=") != 0 || !elem_fresh(as->b, tracked_type(as->a->a)) || in_lambda) elems_off(as->a->a);
                 benign(as->a->a, in_lambda);
                 scan(as->a->b, in_lambda);
                 scan(as->b, in_lambda);
@@ -724,7 +1049,7 @@ static void scan(Node *n, int in_lambda) {
             }
             if (n->a->kind == N_ASSIGN && is_tracked(n->a->a)) {
                 Node *as = n->a;
-                if (elems_flag(as->a) && (strcmp(as->name, "=") != 0 || !init_elems_fresh(as->b))) elems_off(as->a);   /* a new container with unknown elements */
+                if (elems_flag(as->a) && (strcmp(as->name, "=") != 0 || !init_elems_fresh(as->b, tracked_type(as->a)))) elems_off(as->a);   /* a new container with unknown elements */
                 int ok = (!strcmp(as->name, "=") && is_fresh(as->b)) || (!strcmp(as->name, "+=") && ty_is_string(tracked_type(as->a)));
                 if (!ok || in_lambda) untrack(as->a);
                 if (as->a->kind == N_FIELDACC) fieldacc_base(as->a, in_lambda);
@@ -737,14 +1062,13 @@ static void scan(Node *n, int in_lambda) {
             /* a local's value goes to the caller (lowering skips freeing it on this path); a parameter's value
              * is the caller's own, so returning it is an escape */
             if (n->a && is_tracked(n->a) && (field_node(n->a) || ((JLocal *)n->a->sym)->is_param)) scan(n->a, in_lambda);
-            else if (n->a) benign(n->a, in_lambda);
+            else if (n->a) { if (n->a->kind == N_INDEX) elems_off(n->a->a); benign(n->a, in_lambda); }   /* `return xs[i]` hands out an element */
             return;
         case N_NEW: {
             JMethod *k = n->sym;
             for (int i = 0; i < n->l1.count; i++) {
                 Node *arg = n->l1.items[i];
-                if (is_borrow(arg) && param_borrowed(k, i)) benign(arg->a, in_lambda);
-                else if (param_borrowed(k, i)) benign(arg, in_lambda);
+                if (param_borrowed(k, i)) borrowed_arg(k, i, arg, in_lambda);
                 else scan(arg, in_lambda);
             }
             scan(n->a, in_lambda);
@@ -752,6 +1076,9 @@ static void scan(Node *n, int in_lambda) {
         }
         case N_FOREACH:
             if (n->sym && elems_flag(n->b)) ((JLocal *)n->sym)->elem_of = elems_flag(n->b);   /* the loop variable aliases the elements */
+            /* the loop keeps walking the value the iterable had when it began: a body that stores another one in that
+             * local would free the old array / list under the loop (a reassignment of a sole owner frees the old value) */
+            if (n->b && n->b->kind == N_NAME && n->b->rk == R_LOCAL && n->b->sym && is_tracked(n->b) && assigns_local(n->c, n->b->sym)) untrack(n->b);
             benign(n->b, in_lambda);
             scan(n->c, in_lambda);
             return;
@@ -781,13 +1108,13 @@ static void analyze_method(JMethod *m) {
     for (int i = 0; i < m->decl->l1.count; i++) {
         Node *pn = m->decl->l1.items[i];
         JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
-        if (l && param_cand(l->type) && !(m->flags & M_VARARGS)) l->drop = 1;
+        if (l && param_cand(l->type) && !(m->flags & M_VARARGS)) { l->drop = 1; l->elems = elems_type(l->type); }
     }
     scan(m->decl->b, 0);
     for (int i = 0; i < m->decl->l1.count; i++) {
         Node *pn = m->decl->l1.items[i];
         JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
-        if (l) { l->param_ok = l->drop; l->drop = 0; }   /* a parameter is never freed by the callee */
+        if (l) { l->param_ok = l->drop; l->param_elems_ok = l->drop && l->elems; l->drop = 0; l->elems = 0; }   /* a parameter is never freed by the callee */
     }
 }
 
@@ -854,8 +1181,12 @@ static void check_method(JMethod *m, int flow) {
     if (!m->decl || !m->decl->b) return;
     analyze_method(m);
     if (!flow) return;
+    rg_check_recursion(m);
     Walk w = {0};
     w.m = mnemo_walk_new();
+    w.rg.m = w.m;
+    rg_prescan(m->decl->b);
+    region_mark_loops(m->decl->b);
     stmt(&w, m->decl->b);
     mnemo_walk_free(w.m);
 }
@@ -888,9 +1219,11 @@ int jown_field_assign_frees(Node *n) {
 
 void jown_check_project(const char *entry_path) {
     char *root = find_project_root(entry_path);
-    if (!root || !memory_safety_on(root)) return;
+    if (!root) return;
     JClass **all;
     int n = jt_all_classes(&all);
+    for (int i = 0; i < n; i++) if (under(all[i]->path, root)) all[i]->in_project = 1;
+    if (!memory_safety_on(root)) return;
     for (int i = 0; i < n; i++) if (under(all[i]->path, root)) all[i]->mem_on = 1;   /* before any analysis reads it */
     /* fields start as "exclusively owned" candidates (a plain class's String / array instance fields) and lose
      * the status at the first use that could alias or replace them with a shared value */
@@ -900,7 +1233,7 @@ void jown_check_project(const char *entry_path) {
         for (int k = 0; k < c->fields.count; k++) {
             JField *f = c->fields.items[k];
             f->own = !(f->flags & M_STATIC) && f->type && (f->type->kind == TY_ARRAY || ty_is_string(f->type) || list_type(f->type) || map_type(f->type));
-            f->elems = f->own && str_elems(f->type) && !(f->decl && f->decl->b);   /* no initializer: elements start empty */
+            f->elems = f->own && elems_type(f->type) && !(f->decl && f->decl->b);   /* no initializer: elements start empty */
         }
     }
     for (int i = 0; i < n; i++) {
@@ -910,10 +1243,11 @@ void jown_check_project(const char *entry_path) {
             JField *f = c->fields.items[k];
             if (!f->own || !f->decl || !f->decl->b) continue;
             if (!is_fresh(f->decl->b)) f->own = 0;               /* a literal / alias initializer: the value is shared */
-            f->elems = f->own && str_elems(f->type) && init_elems_fresh(f->decl->b);
+            f->elems = f->own && elems_type(f->type) && init_elems_fresh(f->decl->b, f->type);
             scan(f->decl->b, 0);
         }
     }
+    rg_prepare_project(all, n);
     for (int i = 0; i < n; i++) {
         JClass *c = all[i];
         if (!c->mem_on) continue;

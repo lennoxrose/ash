@@ -1,7 +1,8 @@
 #include "parser/H/statements/loop_stack.h"
 #include "parser/H/core/parser.h"
 
-#define MAX_LOOP_NESTING 16
+#define MAX_LOOP_NESTING 16   // loops nested inside one function body
+#define MAX_LOOP_SLOTS 64     // ... and in the functions (lambdas) written inside them: see loop_scope_reset
 #define MAX_LOOP_JUMPS 64
 
 typedef struct {
@@ -12,12 +13,13 @@ typedef struct {
     int attempt_base; // attempt_depth when the loop began
 } LoopContext;
 
-static LoopContext loop_stack[MAX_LOOP_NESTING];
+static LoopContext loop_stack[MAX_LOOP_SLOTS];
 static int loop_depth = 0;
+static int loop_floor = 0;    // loops below this index belong to an enclosing function body (see loop_scope_reset)
 static int attempt_depth = 0; // attempt blocks currently open in this function body
 
 void loop_push(void) {
-    if (loop_depth >= MAX_LOOP_NESTING) parse_error("too many nested loops");
+    if (loop_depth - loop_floor >= MAX_LOOP_NESTING || loop_depth >= MAX_LOOP_SLOTS) parse_error("too many nested loops");
     loop_stack[loop_depth].stop_count = 0;
     loop_stack[loop_depth].next_count = 0;
     loop_stack[loop_depth].attempt_base = attempt_depth;
@@ -25,14 +27,14 @@ void loop_push(void) {
 }
 
 void loop_record_stop(int patch_offset) {
-    if (loop_depth == 0) parse_error("'stop' outside a loop");
+    if (loop_depth <= loop_floor) parse_error("'stop' outside a loop");
     LoopContext *ctx = &loop_stack[loop_depth - 1];
     if (ctx->stop_count >= MAX_LOOP_JUMPS) parse_error("too many stop statements in one loop");
     ctx->stop_jumps[ctx->stop_count++] = patch_offset;
 }
 
 void loop_record_next(int patch_offset) {
-    if (loop_depth == 0) parse_error("'next' outside a loop");
+    if (loop_depth <= loop_floor) parse_error("'next' outside a loop");
     LoopContext *ctx = &loop_stack[loop_depth - 1];
     if (ctx->next_count >= MAX_LOOP_JUMPS) parse_error("too many next statements in one loop");
     ctx->next_jumps[ctx->next_count++] = patch_offset;
@@ -49,9 +51,11 @@ void loop_pop_and_patch_stops(void) {
     loop_depth--;
 }
 
-void loop_scope_save(LoopScope *out) { out->loops = loop_depth; out->attempts = attempt_depth; }
-void loop_scope_reset(void) { loop_depth = 0; attempt_depth = 0; }
-void loop_scope_restore(LoopScope saved) { loop_depth = saved.loops; attempt_depth = saved.attempts; }
+void loop_scope_save(LoopScope *out) { out->loops = loop_depth; out->attempts = attempt_depth; out->floor = loop_floor; }
+// The body compiled next has no loop of its own yet, but the contexts of the loops it is written inside still hold
+// the jumps waiting to be patched: its loops stack above them instead of reusing their slots.
+void loop_scope_reset(void) { loop_floor = loop_depth; attempt_depth = 0; }
+void loop_scope_restore(LoopScope saved) { loop_depth = saved.loops; attempt_depth = saved.attempts; loop_floor = saved.floor; }
 
 void attempt_enter(void) { attempt_depth++; }
 void attempt_leave(void) { attempt_depth--; }
@@ -64,5 +68,5 @@ void emit_attempt_unwind_all(void) { emit_handler_pops(attempt_depth); }
 
 // stop/next leave every attempt block opened since the innermost loop began.
 void emit_attempt_unwind_to_loop(void) {
-    if (loop_depth > 0) emit_handler_pops(attempt_depth - loop_stack[loop_depth - 1].attempt_base);
+    if (loop_depth > loop_floor) emit_handler_pops(attempt_depth - loop_stack[loop_depth - 1].attempt_base);
 }

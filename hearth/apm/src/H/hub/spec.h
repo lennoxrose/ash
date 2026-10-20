@@ -14,6 +14,10 @@ typedef struct {
 // outside its own directory or carry shell syntax) and [0-9A-Za-z._+-] in the version. Returns 1 on success.
 int hubspec_parse(const char *text, HubSpec *out);
 
+// 1 when `text` is a source a dependency may name: a hub package (hubspec_parse) or "github:user/repo[@ref]"
+// (git_fetch_spec_ok).
+int depspec_ok(const char *text);
+
 // A name that is safe as a directory name under @ash-modules/: [A-Za-z0-9][A-Za-z0-9_.-]*, at most 100 characters.
 int name_is_safe(const char *name);
 

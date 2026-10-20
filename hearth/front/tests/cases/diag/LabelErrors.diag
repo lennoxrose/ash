@@ -1,0 +1,56 @@
+error: missing return statement in 'missing'
+  --> tests/cases/diag/LabelErrors.ash:4:12
+   |
+  4|     static int missing(int n) {
+   |            ^
+error: unreachable statement
+  --> tests/cases/diag/LabelErrors.ash:31:13
+   |
+ 31|             n++;                              // the inner loop never completes: it leaves by a labeled jump
+   |             ^
+error: unreachable statement
+  --> tests/cases/diag/LabelErrors.ash:40:17
+   |
+ 40|                 n++;
+   |                 ^
+error: 'break nowhere': no enclosing loop is labeled 'nowhere' (a label names a loop of the same method or lambda, and the jump must be inside it)
+  --> tests/cases/diag/LabelErrors.ash:47:13
+   |
+ 47|             break nowhere;
+   |             ^
+error: 'continue other': no enclosing loop is labeled 'other' (a label names a loop of the same method or lambda, and the jump must be inside it)
+  --> tests/cases/diag/LabelErrors.ash:50:13
+   |
+ 50|             continue other;
+   |             ^
+error: label 'a' is already in use by an enclosing loop; pick another name
+  --> tests/cases/diag/LabelErrors.ash:58:13
+   |
+ 58|             for (int j = 0; j < n; j++) {
+   |             ^
+error: 'break outer': no enclosing loop is labeled 'outer' (a label names a loop of the same method or lambda, and the jump must be inside it)
+  --> tests/cases/diag/LabelErrors.ash:68:17
+   |
+ 68|                 break outer;
+   |                 ^
+error: 'continue outer': no enclosing loop is labeled 'outer' (a label names a loop of the same method or lambda, and the jump must be inside it)
+  --> tests/cases/diag/LabelErrors.ash:72:21
+   |
+ 72|                     continue outer;
+   |                     ^
+error: label 'outer' is already in use by an enclosing loop; pick another name
+  --> tests/cases/diag/LabelErrors.ash:77:17
+   |
+ 77|                 for (int k = 0; k < 3; k++) {
+   |                 ^
+error: 'break outer': no enclosing loop is labeled 'outer' (a label names a loop of the same method or lambda, and the jump must be inside it)
+  --> tests/cases/diag/LabelErrors.ash:89:9
+   |
+ 89|         break outer;                          // the loop is over: its label is out of scope
+   |         ^
+error: 'continue a': no enclosing loop is labeled 'a' (a label names a loop of the same method or lambda, and the jump must be inside it)
+  --> tests/cases/diag/LabelErrors.ash:98:13
+   |
+ 98|             continue a;
+   |             ^
+11 error(s)

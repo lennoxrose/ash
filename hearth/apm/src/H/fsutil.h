@@ -13,4 +13,18 @@ int fsutil_mkdir_p(const char *path);
 // build just because the original source directory did.
 int fsutil_copy_dir(const char *src_dir, const char *dest_dir);
 
+// Runs argv[0] with the given arguments and no shell. Returns 1 when it exited with status 0.
+int fsutil_run(char *const argv[]);
+
+// Runs argv[0] like fsutil_run and stores the first line it printed on stdout in `out` (without the line ending).
+// Returns 1 when it exited with status 0 and printed something.
+int fsutil_capture(char *const argv[], char *out, int out_size);
+
+// rm -rf without a shell (symbolic links are removed, never followed). Returns 1 when `path` is gone.
+int fsutil_rm_rf(const char *path);
+
+// A name that is safe as one path component and in a command line: letters, digits, '-', '_', '.', not
+// starting with '.', at most 100 characters. Dependency names become directories under @ash-modules.
+int fsutil_safe_name(const char *name);
+
 #endif

@@ -14,7 +14,7 @@ static JClass *load_and_check(const char *path, const char *src) {
     jt_check_all();
     if (!j_error_count()) jown_check_project(path);
     if (j_error_count()) {
-        fprintf(stderr, "%d error(s)\n", j_error_count());
+        if (!j_diag_is_json()) fprintf(stderr, "%d error(s)\n", j_error_count());
         return NULL;
     }
     return entry;
@@ -26,7 +26,7 @@ char *jdriver_compile_source(const char *path, const char *src, int wrap_int) {
     if (!entry) return NULL;
     char *ir = jlower_program(entry);
     if (!ir || j_error_count()) {
-        fprintf(stderr, "%d error(s)\n", j_error_count());
+        if (!j_diag_is_json()) fprintf(stderr, "%d error(s)\n", j_error_count());
         return NULL;
     }
     return ir;
@@ -35,7 +35,8 @@ char *jdriver_compile_source(const char *path, const char *src, int wrap_int) {
 char *jdriver_compile_file(const char *path, int wrap_int) {
     char *src = j_read_file(path);
     if (!src) {
-        fprintf(stderr, "error: cannot read %s\n", path);
+        if (j_diag_is_json()) j_error_soft(path, 0, 0, "cannot read %s", path);
+        else fprintf(stderr, "error: cannot read %s\n", path);
         return NULL;
     }
     return jdriver_compile_source(path, src, wrap_int);
@@ -44,7 +45,8 @@ char *jdriver_compile_file(const char *path, int wrap_int) {
 int jdriver_check_file(const char *path) {
     char *src = j_read_file(path);
     if (!src) {
-        fprintf(stderr, "error: cannot read %s\n", path);
+        if (j_diag_is_json()) j_error_soft(path, 0, 0, "cannot read %s", path);
+        else fprintf(stderr, "error: cannot read %s\n", path);
         return 1;
     }
     return load_and_check(path, src) ? 0 : 1;

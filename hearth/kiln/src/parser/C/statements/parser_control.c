@@ -6,6 +6,7 @@
 #include "parser/H/statements/each_loop.h"
 #include "parser/H/statements/loop_stack.h"
 #include "codegen/H/expressions/expr.h"
+#include "codegen/H/runtime/trace.h"
 #include "codegen/H/emit/emit_sse.h"
 #include "codegen/H/emit/value.h"
 
@@ -158,6 +159,7 @@ void forge_statement(void) {
     emit_mov_reg_reg(code, REG_RSP, REG_RBP);
     emit_pop_reg(code, REG_RBP);
     emit_ret(code);
+    trace_note_end(code->count);
 
     vars_restore(&outer_vars);
     each_depth_restore(outer_each_depth);

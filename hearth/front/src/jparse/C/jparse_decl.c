@@ -445,9 +445,13 @@ static char *dotted_name(Parser *p, int *wildcard) {
     return b.data;
 }
 
+const char *jparse_capture_path;
+JTokens jparse_captured;
+
 Node *jparse_unit(const char *path, const char *src) {
     j_register_source(path, src);
     Parser p = {jlex_tokenize(path, src), 0, 0, 0};
+    if (jparse_capture_path && strcmp(path, jparse_capture_path) == 0) jparse_captured = p.t;
     Node *u = p_node(&p, N_UNIT);
     u->name = "";
     p_old_syntax(&p, 2);

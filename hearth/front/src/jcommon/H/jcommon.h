@@ -42,6 +42,19 @@ void j_error_soft(const char *path, int line, int col, const char *fmt, ...);
 void j_abort_if_errors(void);
 int j_error_count(void);
 
+/* Extra lines for the NEXT diagnostic reported (error or soft error); they are dropped once it is printed.
+ * j_diag_help adds `= help: ..`; j_diag_note adds `= note: ..` that points at a second place in the source
+ * (the line and a caret under `col`, e.g. where a value was moved); j_diag_code names it (`E0101`). */
+void j_diag_help(const char *fmt, ...);
+void j_diag_note(const char *path, int line, int col, const char *fmt, ...);
+void j_diag_code(const char *code);
+
+/* JSON mode (ashvm check --json, kiln --json): diagnostics are collected and written to stdout as one
+ * document {"diagnostics":[{severity, code, message, file, line, column, help[], notes[]}], "errors":N}
+ * when the process exits; nothing goes to stderr. */
+void j_diag_json(void);
+int j_diag_is_json(void);
+
 char *j_read_file(const char *path); /* NULL when unreadable */
 
 #endif

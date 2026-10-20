@@ -264,6 +264,7 @@ void codegen_builtin_mem_free_map(void) {
 }
 
 // mem_free_elems(x): the Strings of a String[] / List<String> whose elements are all fresh concatenations only
+// (or the rows of a T[][] whose rows only it holds)
 // it references (front/src/jown) go back to the allocator; the array itself is freed by mem_free_arr afterwards.
 // Anything else, and programs without free lists, is evaluated and ignored.
 // Scratch frame (RSP-relative through a copy, since freeing clobbers registers): [0]=cursor [8]=remaining.
@@ -294,7 +295,16 @@ void codegen_builtin_mem_free_elems(void) {
     int not_string = emit_jcc_rel32(code, COND_NE);     // none and the like stay
     emit_load_mem_disp32(code, REG_RAX, REG_RDX, 8);    // the String's payload
     heap_emit_free_string_rax(code);
+    int elem_done = emit_jmp_rel32(code);
     emit_patch_jump(code, not_string);
+    if (heap_free_arrays_on()) {                        // a T[][]: the rows (made by mem_newarr1 / literals) go back too
+        emit_cmp_reg_imm32(code, REG_RAX, TAG_ARRAY);
+        int not_row = emit_jcc_rel32(code, COND_NE);
+        emit_load_mem_disp32(code, REG_RAX, REG_RDX, 8);
+        heap_emit_free_array_rax(code);
+        emit_patch_jump(code, not_row);
+    }
+    emit_patch_jump(code, elem_done);
     emit_mov_reg_reg(code, REG_RSI, REG_RSP);
     emit_load_mem_disp32(code, REG_RAX, REG_RSI, 0);
     emit_add_reg_imm8(code, REG_RAX, 16);
@@ -307,5 +317,24 @@ void codegen_builtin_mem_free_elems(void) {
     emit_patch_jump(code, done);
     emit_add_reg_imm8(code, REG_RSP, 16);
     emit_patch_jump(code, not_array);
+    push_nil();
+}
+
+void codegen_builtin_mem_region_enter(void) {
+    expect(TOKEN_RPAREN, "expected ')' after 'mem_region_enter('");
+    heap_emit_checkpoint(code);                                  // RAX = heap pointer
+    // kept as the raw address in a number slot: nothing ever computes with it, and a round trip through a double
+    // (two conversions on the path of every iteration) costs more than the allocation it brackets
+    emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
+    emit_push_reg(code, REG_RBX);
+    emit_push_reg(code, REG_RAX);
+}
+
+void codegen_builtin_mem_region_leave(void) {
+    codegen_expression();
+    expect(TOKEN_RPAREN, "expected ')' after argument");
+    emit_pop_reg(code, REG_RDI);                                 // payload: the checkpoint, the raw address
+    emit_pop_reg(code, REG_RBX);
+    heap_emit_region_reset(code);
     push_nil();
 }

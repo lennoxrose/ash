@@ -1,0 +1,5 @@
+error: expected ';' but found 'System'
+  --> tests/cases/diag/ParseError.ash:6:9
+   |
+  6|         System.out.println("quote \" and backslash \\ in the source line");
+   |         ^

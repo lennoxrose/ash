@@ -31,6 +31,9 @@ public class Main {
 }
 ```
 
+Loops can be labeled and left or continued from an inner loop, as in Java: `outer: for (...) { for (...) { if (done) break outer; if (skip) continue outer; } }`
+(also on `while`, `do` and for-each loops; the jump runs the `finally` blocks it leaves, and the ownership and range checks follow it).
+
 ## Getting started
 
 ```bash
@@ -39,6 +42,10 @@ make                                    # builds bin/ashvm, bin/kiln and the res
 bin/ashvm run Main.ash                  # run a program on the VM
 bin/ashvm run --wrap-int Main.ash       # Java's 32-bit int overflow (slower arithmetic loops)
 bin/ashvm check Main.ash                # parse and type-check only
+bin/ashvm fmt --write Main.ash          # fix indentation and trailing white space (`--check` lists files that would change)
+bin/ashvm explain E0101                 # what a memory-safety error code means (also `kiln --explain`)
+bin/ashvm check --json Main.ash         # the same, diagnostics as JSON on stdout (editors; kiln has --json too)
+bin/ashvm lsp                           # language server on stdin / stdout: diagnostics, hover (types), go to definition
 bin/ashvm                               # interactive REPL
 
 bin/kiln Main.ash -o main               # compile to a native ELF binary (no VM, no libc)
@@ -109,17 +116,37 @@ roughly the ceiling for anything short of a full optimizing native compiler.
 
 ## Memory safety (`memory-safety` in `ash.pkg`)
 
+Every memory-safety error has a stable code (`error[E0101]: use of moved value ...`); `ashvm explain E0101` prints its entry from the same page. Every rule below, with examples, the error messages and the switches (`KILN_NO_REGIONS`, `KILN_REGION_POISON`, `ASH_REGION_TRACE`, ...), is written out in [docs/MEMORY_SAFETY.md](docs/MEMORY_SAFETY.md).
+
 `memory-safety: on` is the default; `off` switches every check and every free below off and generates exactly the code Ash always did. It is read from the project's `ash.pkg` (no `ash.pkg`: the entry file's directory is the project), and only the project's own sources are checked, never the standard library or dependencies.
 
 With it on, at compile time:
 
 - **Ownership.** Storing an owning variable (`b = a`, `T b = a`, `this.f = a`, `xs[i] = a`, `{a}`) or passing it to project code moves it unless the callee only reads that parameter (the compiler works that out, so `size(a)` twice is fine); using it afterwards is an error until it gets a new value. Library and native calls only look at their arguments. Moves follow `if`, `switch`, `try`, loops, `return`, `throw`, `break` and `continue`.
 - **Borrows.** `&x` lends a local (shared), `&mut x` lends it exclusively; both are written only as call arguments. Within one call an exclusive borrow excludes every other use of the same variable, and a loan cannot be handed to a method the compiler can see keeps its parameter (stores, returns or passes it on).
+- **Ranges.** The compiler tracks the possible values of `int` / `long` locals and the lengths of arrays (loops and conditions included) and rejects what can only fail: an index that is always negative or always past the end, an `int` operation that always overflows (not under `--wrap-int`), a divisor that is always `0`, a negative array size, and a method that calls itself before any branch. A value that merely *might* be out of range is left to the run-time check, and nothing inside a `try` with a `catch` is reported.
 - **Constants.** A constant `int` expression outside the 32-bit range (`2147483647 + 1`) and a constant array index that is negative or past the length of a literal / `final` array are errors (not under `--wrap-int`).
 
-And at run time memory is freed with no collector (`ashvm`: Strings, arrays, lists, objects, maps and sets; `kiln`: Strings, one-dimensional arrays, objects, maps and sets): a local that is the sole owner of a fresh String, array, `ArrayList`, `HashMap` / `HashSet` or plain object (`new T(..)` whose `this` never escapes, or the fresh result of a project method that returns one) and is only read is freed (with the String and array fields that only it ever references) at the end of its scope, before `return`/`break`/`continue`, and before it is reassigned; concatenation temporaries are freed as soon as they are used, and a list or `String[]` of fresh Strings that are only read in harmless ways frees those Strings with it. Everything the compiler cannot prove unshared is simply left alone, so a leak is possible but a use-after-free is not. A loop building millions of short-lived strings and arrays runs in a few MB.
+And at run time memory is freed with no collector (`ashvm`: Strings, arrays, lists, objects, maps and sets; `kiln`: Strings, one-dimensional arrays, objects, maps and sets): a local that is the sole owner of a fresh String, array, `ArrayList`, `HashMap` / `HashSet` or plain object (`new T(..)` whose `this` never escapes, or the fresh result of a project method that returns one) and is only read is freed (with the String and array fields that only it ever references) at the end of its scope, before `return`/`break`/`continue`, and before it is reassigned; concatenation temporaries are freed as soon as they are used, and a list or `String[]` of fresh Strings that are only read in harmless ways frees those Strings with it. Everything the compiler cannot prove unshared is simply left alone, so a leak is possible but a use-after-free is not. In `kiln` (Linux static builds), a loop whose body keeps nothing it allocates past the iteration (no calls into project code, no stores of references to anything declared outside the loop; see `hearth/front/src/jown/C/region.c`) also gives the whole iteration's allocations back at once by moving the heap pointer back. A loop building millions of short-lived strings and arrays runs in a few MB.
 
 With `memory-safety: off`, `System.free(x)` frees a String, array or object yourself in `ashvm` (`kiln` ignores it); it is an error with safety on. `kiln` runs the same checks and frees them too (static builds, Linux and Windows; `--link=shared` builds keep the old allocator). The shared move-flow engine is the Rust library `bin/lib/mnemo.a` (`hearth/mnemo`), linked by both engines.
+
+## Editor support (`ashvm lsp`)
+
+`ashvm lsp` is a Language Server Protocol server over stdio, for any editor with an LSP client (point it at the command
+`ashvm lsp` for `*.ash` files, started in the project directory or with `ASH_PATH` set like for `ashvm run`):
+
+- **Diagnostics** (`textDocument/publishDiagnostics`) are the ones of `ashvm check --json` for the text in the editor, with
+  the error code (`E0101`), the help lines in the message and the notes (where a value was moved) as related information;
+  errors in the files the document imports are published on those files, and cleared when they are gone.
+- **Hover** shows the type of the local, parameter, field, method, class or expression under the cursor, and
+  **go to definition** jumps to where that local, field, method or class is declared (the built-in core library, which
+  has no file, has no definition to jump to).
+- Positions are UTF-16 as the protocol wants, or UTF-8 when the client asks for it. The file is analysed in the project it
+  belongs to (the nearest directory above it with an `ash.pkg`), by a child process per request, so a file the compiler
+  chokes on (or one that takes more than 10 seconds) costs one warning on that file, never the session; bursts of edits
+  are coalesced into one analysis. `hearth/ashvm/tests/scripts/lsp_check.sh` drives it with a scripted client,
+  bad input included.
 
 ## Package manager (`apm`)
 
@@ -157,8 +184,10 @@ test: ashvm run src/test/ash/AllTests.ash
 apm init                                   # create ash.pkg
 apm add owner/repo[@version] [--as name] [--dev]   # a package from the hub, e.g. apm add lennoxrose/ash-stdlib
 apm add github:user/repo[@ref] [--as name] [--dev] # any GitHub repository
-apm install                                # fetch [dependencies] and [dev-dependencies] into ./@ash-modules/
-apm list                                   # metadata, dependencies (and whether installed), libraries, scripts
+apm install [--locked]                     # fetch [dependencies] and [dev-dependencies] (and theirs) into ./@ash-modules/, at the commits in ash.lock
+apm update [<name>]                        # look dependencies up again (the tip of their tag / branch) and move ash.lock
+apm remove <name>                          # take a dependency out of ash.pkg, @ash-modules/ and ash.lock (and what only it needed)
+apm list                                   # metadata, dependencies with their locked commit (and whether installed), libraries, scripts
 apm run <script>                           # run a [scripts] entry with sh -c; `apm build` / `apm test` are shorthands
 apm license [<id>] [--author <name>] [--year <yyyy>]   # list licenses / write LICENSE and set license: in ash.pkg
 ```
@@ -186,6 +215,8 @@ A browser login gives a token valid for 90 days with `profile:read`, `packages:r
 
 `apm license MIT` writes a `LICENSE` file and sets `license: MIT` in `ash.pkg`; running it again with another id replaces both. The copyright holder defaults to `author:` (without the `<email>`), the year to the current year. Built in (no network): MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC, OFL-1.1, GPL-2.0, GPL-3.0, LGPL-2.1, LGPL-3.0 (texts from the SPDX list; the `-only` forms are accepted as aliases).
 
+`ash.lock` (written next to `ash.pkg`; commit it) records the exact commit of every package under `@ash-modules/`, so `apm install` gives the same sources on every machine whatever a tag or branch points to today, and only `apm update` moves them. A dependency's own `[dependencies]` (not its `[dev-dependencies]`) are installed too, flat in the project's `@ash-modules/` and listed in the lockfile with the package that required them (`via`); when two packages ask for the same name from different sources the first one asked for stays (the project's own entries first) and apm warns. `apm install --locked` changes nothing and fails when `ash.lock` is missing a package or has a stale one (for CI); `apm update <name>` looks that package up again together with the packages only it brought in. A dependency's `ash.pkg` is not trusted: unusable names and sources in it are refused.
+
 `[libraries]` records the external native libraries a package links; apm stores and lists them, but
 `ashvm` and `kiln` do not consume them yet. Scripts run with the same trust as `npm run`: only the
 project's own `ash.pkg` is consulted, never an installed dependency's.
@@ -201,7 +232,7 @@ hearth/front/     the only frontend: lexer, parser, AST, type checker, lowering,
                   Built as front.a (in bin/lib/), linked by ashvm and kiln. There is no front-end executable.
 hearth/ashvm/     the VM engine: compiler (IR -> bytecode), value, vm, builtins, diagnostics, app (CLI + REPL)
 hearth/kiln/      the native compiler: IR -> machine code -> ELF/PE (no VM, no libc)
-hearth/apm/       the Ash package manager: apm init/add/install/list/run, packages resolved by the APMH hub or fetched from GitHub
+hearth/apm/       the Ash package manager: apm init/add/install/update/remove/list/run, packages resolved by the APMH hub or fetched from GitHub, pinned in ash.lock
                   into a project-local @ash-modules/ folder; point ASH_PATH at an installed source root
                   to compile against it (see ideas/ash_modules.md)
 hearth/pyre/      GPU/CPU compute backends (C ABI)

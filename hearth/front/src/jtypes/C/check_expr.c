@@ -635,13 +635,14 @@ JType *check_lambda(Ctx *cx, Node *lam, JType *target, JType **result) {
     int mark;
     push_scope(cx, &mark);
     int saved_base = cx->lambda_base;
-    int saved_loop = cx->loop_depth, saved_switch = cx->switch_depth;
+    int saved_loop = cx->loop_depth, saved_switch = cx->switch_depth, saved_floor = cx->label_floor;
     JType *saved_ret = cx->ret;
     JList *saved_rt = cx->ret_types;
     int saved_rv = cx->ret_seen_void;
     ExFrame *saved_ex = cx->ex;
     cx->lambda_base = cx->locals.count;
     cx->loop_depth = cx->switch_depth = 0;
+    cx->label_floor = cx->nlabels;
     cx->lambda_depth++;
     ExFrame fr = {0};
     fr.kind = F_LAMBDA;
@@ -693,6 +694,7 @@ JType *check_lambda(Ctx *cx, Node *lam, JType *target, JType **result) {
     cx->lambda_depth--;
     cx->loop_depth = saved_loop;
     cx->switch_depth = saved_switch;
+    cx->label_floor = saved_floor;
     cx->lambda_base = saved_base;
     cx->ret = saved_ret;
     cx->ret_types = saved_rt;
@@ -770,6 +772,11 @@ static JType *check_name(Ctx *cx, Node *n, int allow_type) {
         n->sym2 = (void *)n->name;
         return ty_error();
     }
+    {
+        const char *guess = sug_value_name(cx, n->name);
+        if (!guess && n->name[0] >= 'A' && n->name[0] <= 'Z') guess = jt_suggest_type(n->name, cx->cls);
+        sug_help("name", guess, "");
+    }
     cerr(n, "cannot find symbol '%s'", n->name);
     return ty_error();
 }
@@ -805,6 +812,12 @@ static JType *check_fieldacc(Ctx *cx, Node *n, int allow_type) {
             if (!allow_type) cerr(n, "'%s' is a type, not a value", n->name);
             return class_ref(n, nc);
         }
+        {
+            JList cands = {0};
+            sug_members(cx, c, 0, 1, &cands);
+            for (int i = 0; i < c->nested.count; i++) j_list_push(&cands, (void *)((JClass *)c->nested.items[i])->name);
+            sug_help("name", sug_best(n->name, &cands), "");
+        }
         cerr(n, "cannot find symbol '%s' in %s", n->name, c->name);
         return ty_error();
     }
@@ -821,6 +834,14 @@ static JType *check_fieldacc(Ctx *cx, Node *n, int allow_type) {
     }
     JField *f = jt_find_field(rc->cls, n->name);
     if (!f) {
+        {
+            JList cands = {0};
+            sug_members(cx, rc->cls, 0, 0, &cands);
+            sug_help("field", sug_best(n->name, &cands), "");
+            JList ms = {0};
+            jt_collect_methods(rc->cls, n->name, &ms);
+            if (ms.count) j_diag_help("'%s' is a method; call it as %s()", n->name, n->name);
+        }
         cerr(n, "cannot find field '%s' in %s", n->name, ty_str(tt));
         return ty_error();
     }
@@ -845,6 +866,11 @@ static JType *check_call(Ctx *cx, Node *n, JType *expected) {
             if (cands.count) { recv = c->self_type; static_only = c != cx->cls; break; }
         }
         if (!cands.count) {
+            {
+                JList names = {0};
+                for (JClass *c = cx->cls; c; c = c->outer) sug_members(cx, c, 1, cx->is_static && c == cx->cls, &names);
+                sug_help("method", sug_best(n->name, &names), "");
+            }
             cerr(n, "cannot find method '%s'", n->name);
             return ty_error();
         }
@@ -872,6 +898,12 @@ static JType *check_call(Ctx *cx, Node *n, JType *expected) {
             jt_collect_methods(recv->cls, n->name, &cands);
         }
         if (!cands.count) {
+            {
+                JList names = {0};
+                sug_members(cx, recv->cls, 1, n->a->rk == R_CLASS, &names);
+                sug_help("method", sug_best(n->name, &names), "");
+                if (n->a->rk != R_CLASS && jt_find_field(recv->cls, n->name)) j_diag_help("'%s' is a field, not a method; drop the parentheses", n->name);
+            }
             cerr(n, "cannot find method '%s' in %s", n->name, ty_str(tt));
             return ty_error();
         }
@@ -1028,11 +1060,18 @@ static int fold_int(Node *e, long long *out, Node **culprit) {
     return 0;
 }
 
+/* an int constant expression's value (literals, final constants, + - * / %), for the reachability rules */
+int jt_const_int(Node *e, long long *out) {
+    Node *culprit = NULL;
+    return fold_int(e, out, &culprit) == 1;
+}
+
 static void check_const_arith(Node *n, JType *result) {
     if (jl_wrap_int || result->kind != TY_INT) return;   /* --wrap-int defines overflow as Java wrap-around */
     long long v;
     Node *culprit = NULL;
     if (fold_int(n, &v, &culprit) == 2 && culprit == n) {
+        j_diag_code("E0210");
         cerr(n, "arithmetic overflow: constant expression is outside the range of int; use an 'L' suffix for long");
     }
 }
@@ -1061,9 +1100,9 @@ static long const_array_len(Node *e) {
 static void check_const_index(Node *n) {
     long long k; Node *c = NULL;
     if (fold_int(n->b, &k, &c) != 1) return;
-    if (k < 0) { cerr(n, "array index %lld is negative", k); return; }
+    if (k < 0) { j_diag_code("E0211"); cerr(n, "array index %lld is negative", k); return; }
     long len = const_array_len(n->a);
-    if (len >= 0 && k >= len) cerr(n, "array index %lld is out of bounds for an array of length %ld", k, len);
+    if (len >= 0 && k >= len) j_diag_code("E0212"), cerr(n, "array index %lld is out of bounds for an array of length %ld", k, len);
 }
 
 static JType *check_binary(Ctx *cx, Node *n) {

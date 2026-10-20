@@ -66,6 +66,7 @@ ASHVM_SRC = \
     src/builtins/C/matrix.c \
     src/builtins/C/proc.c \
     src/builtins/C/mem.c \
+    src/builtins/C/trace.c \
     src/diagnostics/C/diagnostics.c
 
 # Objects and dependency files live in trees parallel to each C tree:

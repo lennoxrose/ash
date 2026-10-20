@@ -1,6 +1,12 @@
-error: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
+error[E0101]: use of moved value 'a': it was moved earlier by an assignment or by passing it to a call; lend it with &a, clone it, or assign a new value first
   --> tests/cases/ownership/OwnBranch.ash:6:28
    |
   6|         System.out.println(a);            // error: maybe moved
    |                            ^
+   = note: 'a' was moved here, by storing it
+  --> tests/cases/ownership/OwnBranch.ash:5:37
+   |
+  5|         if (args.length > 0) keep = a;    // moved on one path only
+   |                                     ^
+   = help: use 'a' before this point, or use the variable or field it was stored in
 1 error(s)

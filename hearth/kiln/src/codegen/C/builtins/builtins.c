@@ -11,6 +11,8 @@
 #include "codegen/H/strings/string_builtins.h"
 #include "codegen/H/io/file_builtins.h"
 #include "codegen/H/io/input_builtin.h"
+#include "codegen/H/io/print_builtin.h"
+#include "codegen/H/runtime/trace.h"
 #include "codegen/H/io/argv_builtin.h"
 #include "codegen/H/builtins/type_builtin.h"
 #include "codegen/H/builtins/exit_builtin.h"
@@ -120,11 +122,17 @@ int codegen_try_builtin_call(const char *name, int len) {
     if (len == 9 && strncmp(name, "ends_with", 9) == 0) { codegen_builtin_ends_with(); return 1; }
     if (len == 6 && strncmp(name, "repeat", 6) == 0) { codegen_builtin_repeat(); return 1; }
     if (len == 4 && strncmp(name, "exit", 4) == 0) { codegen_builtin_exit(); return 1; }
+    if (len == 9 && strncmp(name, "print_raw", 9) == 0) { codegen_builtin_print_raw(); return 1; }
+    if (len == 7 && strncmp(name, "trace_n", 7) == 0) { codegen_builtin_trace_n(); return 1; }
+    if (len == 8 && strncmp(name, "trace_fn", 8) == 0) { codegen_builtin_trace_fn(); return 1; }
+    if (len == 10 && strncmp(name, "trace_line", 10) == 0) { codegen_builtin_trace_line(); return 1; }
     if (len == 8 && strncmp(name, "mem_free", 8) == 0) { codegen_builtin_mem_free(); return 1; }
     if (len == 14 && strncmp(name, "mem_free_elems", 14) == 0) { codegen_builtin_mem_free_elems(); return 1; }
     if (len == 12 && strncmp(name, "mem_free_map", 12) == 0) { codegen_builtin_mem_free_map(); return 1; }
     if (len == 12 && strncmp(name, "mem_free_obj", 12) == 0) { codegen_builtin_mem_free_obj(); return 1; }
     if (len == 12 && strncmp(name, "mem_free_arr", 12) == 0) { codegen_builtin_mem_free_arr(); return 1; }
+    if (len == 16 && strncmp(name, "mem_region_enter", 16) == 0) { codegen_builtin_mem_region_enter(); return 1; }
+    if (len == 16 && strncmp(name, "mem_region_leave", 16) == 0) { codegen_builtin_mem_region_leave(); return 1; }
     if (len == 11 && strncmp(name, "mem_newarr1", 11) == 0) { codegen_builtin_mem_newarr1(); return 1; }
     if (len == 11 && strncmp(name, "mem_release", 11) == 0) { codegen_builtin_mem_release(); return 1; }
     if (len == 7 && strncmp(name, "mem_cat", 7) == 0) { codegen_builtin_mem_cat(); return 1; }
@@ -273,8 +281,8 @@ int codegen_builtin_arity(const char *name, int len) {
         {"read_file", 1}, {"write_file", 2}, {"append_file", 2}, {"file_exists", 1},
         {"type", 1}, {"chr", 1}, {"ord", 1}, {"pop", 1}, {"insert", 3}, {"slice", 3}, {"sort", 1},
         {"rename_file", 2}, {"delete_file", 1}, {"make_dir", 1}, {"list_dir", 1},
-        {"contains", 2}, {"starts_with", 2}, {"ends_with", 2}, {"repeat", 2}, {"exit", 1}, {"argv", 0},
-        {"sys_fork", 0}, {"sys_wait", 1}, {"sys_exec", 2}, {"mem_free", 1}, {"mem_cat", 3}, {"mem_release", 1}, {"mem_free_arr", 1}, {"mem_free_obj", 1}, {"mem_free_map", 1}, {"mem_free_elems", 1}, {"mem_newarr1", 2},
+        {"contains", 2}, {"starts_with", 2}, {"ends_with", 2}, {"repeat", 2}, {"exit", 1}, {"print_raw", 1}, {"trace_n", 0}, {"trace_fn", 1}, {"trace_line", 1}, {"argv", 0},
+        {"sys_fork", 0}, {"sys_wait", 1}, {"sys_exec", 2}, {"mem_free", 1}, {"mem_cat", 3}, {"mem_release", 1}, {"mem_free_arr", 1}, {"mem_free_obj", 1}, {"mem_free_map", 1}, {"mem_free_elems", 1}, {"mem_newarr1", 2}, {"mem_region_enter", 0}, {"mem_region_leave", 1},
     };
     for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
         if ((int)strlen(table[i].name) == len && strncmp(table[i].name, name, (size_t)len) == 0) return table[i].arity;

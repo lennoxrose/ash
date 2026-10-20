@@ -4,8 +4,8 @@ src/parser/O/statements/parser_control.o: \
  src/parser/H/core/parser_internal.h src/parser/H/declarations/vars.h \
  src/parser/H/declarations/functions.h \
  src/parser/H/statements/each_loop.h src/parser/H/statements/loop_stack.h \
- src/codegen/H/expressions/expr.h src/codegen/H/emit/emit_sse.h \
- src/codegen/H/emit/value.h
+ src/codegen/H/expressions/expr.h src/codegen/H/runtime/trace.h \
+ src/codegen/H/emit/emit_sse.h src/codegen/H/emit/value.h
 src/parser/H/core/parser.h:
 ../front/src/ir/H/ir_lex.h:
 src/codegen/H/emit/emit.h:
@@ -15,5 +15,6 @@ src/parser/H/declarations/functions.h:
 src/parser/H/statements/each_loop.h:
 src/parser/H/statements/loop_stack.h:
 src/codegen/H/expressions/expr.h:
+src/codegen/H/runtime/trace.h:
 src/codegen/H/emit/emit_sse.h:
 src/codegen/H/emit/value.h:

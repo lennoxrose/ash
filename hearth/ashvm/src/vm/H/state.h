@@ -54,6 +54,17 @@ extern int has_raised_value;
 extern const char *current_pos;
 extern int current_poslen;
 
+// The call stack at the latest raise that no user `attempt` could catch (try_depth == 1: only the program's own
+// top-level handler is active), innermost frame first. An exception that a user `catch` or `finally` sees first
+// gets its stack when it is raised again at the top level (a rethrow), so the code that handles exceptions
+// ordinarily never pays for a capture. Read by the trace_* builtins to print the stack of an
+// uncaught exception; capturing it costs a copy of the frames and only happens when an exception is raised.
+extern int trace_count;
+extern unsigned trace_gen;                 // bumped by every capture, so the builtins resolve a stack once
+extern Chunk *trace_chunk[FRAMES_MAX];
+extern uint8_t *trace_ip[FRAMES_MAX];
+void vm_capture_trace(void);
+
 void type_error(const char *context) __attribute__((noreturn));
 double require_num(VMValue v, const char *context);
 int truthy(VMValue v, const char *context);

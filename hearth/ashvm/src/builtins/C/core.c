@@ -85,6 +85,12 @@ VMValue vm_call_builtin_core(int id, VMValue *args, int argc) {
             fflush(stdout);
             exit((int)args[0].number);
         }
+        case 54: { // print_raw -- System.out.print: the String with no newline; the empty String flushes (System.out.flush)
+            if (argc != 1 || args[0].type != VM_STR) { vm_runtime_error("print_raw(s) expects a string\n"); }
+            if (args[0].str[0] == '\0') fflush(stdout);
+            else fputs(args[0].str, stdout);
+            return vm_nil();
+        }
         case 28: { // chr -- byte value to a one-byte string (strings are C strings: no 0)
             if (argc != 1 || args[0].type != VM_NUM) { vm_runtime_error("chr() expects a number\n"); }
             double n = args[0].number;
