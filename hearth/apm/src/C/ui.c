@@ -30,6 +30,7 @@ static void emit(FILE *stream, const char *color, const char *symbol, const char
     else fprintf(stream, "%s ", symbol);
     vfprintf(stream, fmt, args);
     fprintf(stream, "\n");
+    fflush(stream); // a one-time login code must show up at once, also when output is piped (CI logs)
 }
 
 void ui_ok(const char *fmt, ...) {
@@ -63,5 +64,6 @@ void ui_header(const char *fmt, ...) {
     vprintf(fmt, args);
     if (c) printf("%s", RESET);
     printf("\n");
+    fflush(stdout);
     va_end(args);
 }

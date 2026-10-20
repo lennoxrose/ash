@@ -138,7 +138,8 @@ main: demo.Main
 keywords: ash, cli
 
 [dependencies]
-ash-stdlib: github:<user>/ash-stdlib@v0.1.0
+ash-stdlib: lennoxrose/ash-stdlib@v0.1.0   # a package on the hub: owner/repo[@version]
+native-bits: github:<user>/native-bits       # or any GitHub repository
 
 [dev-dependencies]
 test-kit: github:<user>/test-kit
@@ -154,12 +155,34 @@ test: ashvm run src/test/ash/AllTests.ash
 
 ```bash
 apm init                                   # create ash.pkg
-apm add github:user/repo[@ref] [--as name] [--dev]
+apm add owner/repo[@version] [--as name] [--dev]   # a package from the hub, e.g. apm add lennoxrose/ash-stdlib
+apm add github:user/repo[@ref] [--as name] [--dev] # any GitHub repository
 apm install                                # fetch [dependencies] and [dev-dependencies] into ./@ash-modules/
 apm list                                   # metadata, dependencies (and whether installed), libraries, scripts
 apm run <script>                           # run a [scripts] entry with sh -c; `apm build` / `apm test` are shorthands
 apm license [<id>] [--author <name>] [--year <yyyy>]   # list licenses / write LICENSE and set license: in ash.pkg
 ```
+
+### The hub (hub.ash-project.org)
+
+APMH is the package hub: people sign in with GitHub and link public repositories that have an `ash.pkg`. It stores metadata and links only, never package code. `apm add lennoxrose/ash-stdlib` needs just the GitHub owner and the repository: apm asks the hub which commit that is (the newest tag, or the head of the default branch for an untagged package), fetches exactly that commit with `git`, records `ash-stdlib: lennoxrose/ash-stdlib@v0.1.0` in `ash.pkg`, and installs the package's own dependencies too (flat in `@ash-modules/`). `apm list` shows the installed commit. `ash.pkg` is only changed when the install worked.
+
+```bash
+apm search json                                 # search the hub                       (no login)
+apm info lennoxrose/ash-stdlib                  # version, license, source, latest tag  (no login)
+
+apm auth login                                  # like `gh auth login`: asks for the browser or a token
+apm auth login --web                            # shows a one-time code, you approve it at hub.ash-project.org/login/device
+apm auth login --with-token < token.txt         # a token you made in Settings > API tokens
+apm auth status | logout | token                # who you are and what the token may do / forget it / print it for scripts
+
+apm link [owner/repo]                           # list your repository on the hub (default: `repository:` of ash.pkg)
+apm sync [owner/repo]                           # have the hub re-read it now (once a minute per package)
+apm unlink [owner/repo]                         # remove it from the hub; your repository is not touched
+apm packages                                    # the packages you linked
+```
+
+A browser login gives a token valid for 90 days with `profile:read`, `packages:read` and `packages:write`; revoke it any time under Settings > API tokens on the hub. The login lives in `~/.config/apm/hosts` (mode 0600, `$APM_CONFIG_DIR` / `$XDG_CONFIG_HOME` change the place). For CI set the secret `APM_TOKEN` instead of logging in, e.g. after pushing a release tag: `apm link && apm sync`. `APM_HUB` points apm at another hub (a saved token is only ever sent to the hub that issued it), `APM_GIT_BASE` at a git mirror. apm uses the system `curl` for the hub and `git` for fetching; it has no TLS or git code of its own.
 
 `apm license MIT` writes a `LICENSE` file and sets `license: MIT` in `ash.pkg`; running it again with another id replaces both. The copyright holder defaults to `author:` (without the `<email>`), the year to the current year. Built in (no network): MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC, OFL-1.1, GPL-2.0, GPL-3.0, LGPL-2.1, LGPL-3.0 (texts from the SPDX list; the `-only` forms are accepted as aliases).
 
@@ -178,7 +201,7 @@ hearth/front/     the only frontend: lexer, parser, AST, type checker, lowering,
                   Built as front.a (in bin/lib/), linked by ashvm and kiln. There is no front-end executable.
 hearth/ashvm/     the VM engine: compiler (IR -> bytecode), value, vm, builtins, diagnostics, app (CLI + REPL)
 hearth/kiln/      the native compiler: IR -> machine code -> ELF/PE (no VM, no libc)
-hearth/apm/       the Ash package manager: apm init/add/install/list/run, dependencies fetched from GitHub
+hearth/apm/       the Ash package manager: apm init/add/install/list/run, packages resolved by the APMH hub or fetched from GitHub
                   into a project-local @ash-modules/ folder; point ASH_PATH at an installed source root
                   to compile against it (see ideas/ash_modules.md)
 hearth/pyre/      GPU/CPU compute backends (C ABI)

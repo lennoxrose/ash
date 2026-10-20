@@ -14,6 +14,8 @@
 #include "H/git_fetch.h"
 #include "H/ui.h"
 #include "H/license/licenses.h"
+#include "H/hub/client.h"
+#include "H/hub/spec.h"
 
 static void infer_project_name(char *out, int out_size) {
     char cwd[PATH_MAX];
@@ -241,19 +243,21 @@ int cmd_init(const char *project_dir, int argc, char **argv) {
     return 0;
 }
 
-// apm add github:user/repo[@ref] [--as <name>] [--dev]
+// apm add owner/repo[@version] [--as <name>] [--dev]     a package linked on the APMH hub
+// apm add github:user/repo[@ref] [--as <name>] [--dev]    any git repository on GitHub
 //
-// GitHub-only for now -- apm has no registry/index yet (it will,
-// see ideas/ash_modules.md's phased plan; ash-project.org is reserved
-// for that once there's a real flat index worth serving from it), so a
-// git source is the only dependency kind that's actually installable
-// without a server.
+// `owner/repo` is the GitHub owner and repository of a package, as listed on the hub: the hub resolves it to an exact
+// commit, so installs are reproducible (see install.h). Without @version the newest tag is recorded in ash.pkg; a package
+// without tags tracks the head of its default branch. ash.pkg is only written once the install worked.
 int cmd_add(const char *project_dir, int argc, char **argv) {
-    if (argc < 1 || !git_fetch_is_github_spec(argv[0])) {
-        ui_err("usage: apm add github:<user>/<repo>[@ref] [--as <name>] [--dev]");
+    HubSpec hub;
+    int github = argc >= 1 && git_fetch_is_github_spec(argv[0]);
+    if (argc < 1 || (!github && !hubspec_parse(argv[0], &hub))) {
+        ui_err("usage: apm add <owner>/<repo>[@version] | github:<user>/<repo>[@ref]  [--as <name>] [--dev]");
         return 1;
     }
-    const char *source = argv[0];
+    char source[MANIFEST_VALUE_LEN];
+    snprintf(source, sizeof(source), "%s", argv[0]);
     const char *explicit_name = NULL;
     int dev = 0;
     for (int i = 1; i < argc; i++) {
@@ -262,37 +266,54 @@ int cmd_add(const char *project_dir, int argc, char **argv) {
     }
 
     char name[MANIFEST_NAME_LEN];
-    if (explicit_name) {
-        snprintf(name, sizeof(name), "%s", explicit_name);
-    } else {
-        git_fetch_infer_name(source, name, sizeof(name));
-    }
-
-    Manifest m;
-    if (!manifest_load(project_dir, &m)) {
-        char project_name[MANIFEST_NAME_LEN];
-        infer_project_name(project_name, sizeof(project_name));
-        manifest_init_default(&m, project_name);
-        ui_info("no %s here, creating one", MANIFEST_FILE);
-    }
-    EntryList *target = dev ? &m.dev_deps : &m.deps;
-    if (!entry_set(target, name, source)) {
-        ui_err("dependency table full (max %d)", MANIFEST_MAX_ENTRIES);
+    if (explicit_name) snprintf(name, sizeof(name), "%s", explicit_name);
+    else if (github) git_fetch_infer_name(source, name, sizeof(name));
+    else snprintf(name, sizeof(name), "%s", hub.repo);
+    if (!name_is_safe(name)) {
+        ui_err("'%s' is not a valid package name (letters, digits, '.', '_' and '-', starting with a letter or digit)", name);
         return 1;
     }
-    if (!manifest_save(project_dir, &m)) return 1;
+    if (!github && !hub.version[0]) { // pin the newest tag, like npm records a version
+        Auth auth;
+        char path[400], err[512];
+        config_load(&auth);
+        snprintf(path, sizeof(path), "/api/v1/packages/%s/%s/versions", hub.owner, hub.repo);
+        Json *res = NULL;
+        int status = 0;
+        if (!hub_call(&auth, "GET", path, 0, NULL, &status, &res, err, sizeof(err))) {
+            ui_err("%s/%s: %s", hub.owner, hub.repo, status == 404 ? "no such package on the hub" : err);
+            json_free(res);
+            return 1;
+        }
+        const char *latest = json_gets(res, "latest");
+        if (latest && strlen(source) + strlen(latest) + 2 < sizeof(source)) { strcat(source, "@"); strcat(source, latest); }
+        json_free(res);
+    }
+
+    Manifest *m = malloc(sizeof(*m));
+    if (!m) { ui_err("out of memory"); return 1; }
+    if (!manifest_load(project_dir, m)) {
+        char project_name[MANIFEST_NAME_LEN];
+        infer_project_name(project_name, sizeof(project_name));
+        manifest_init_default(m, project_name);
+        ui_info("no %s here, creating one", MANIFEST_FILE);
+    }
+    EntryList *target = dev ? &m->dev_deps : &m->deps;
+    if (!entry_set(target, name, source)) {
+        ui_err("dependency table full (max %d)", MANIFEST_MAX_ENTRIES);
+        free(m);
+        return 1;
+    }
 
     char ash_modules[1024];
     snprintf(ash_modules, sizeof(ash_modules), "%s/@ash-modules", project_dir);
     fsutil_mkdir_p(ash_modules);
-
-    Dependency *dep = entry_find(target, name);
-    if (!install_dependency(project_dir, dep)) {
-        ui_err("failed to install '%s'", name);
-        return 1;
-    }
-    ui_ok("added %s (%s)", name, source);
-    return 0;
+    int ok = install_dependency(project_dir, entry_find(target, name));
+    if (ok) ok = manifest_save(project_dir, m);
+    else ui_err("failed to install '%s' (ash.pkg was not changed)", name);
+    free(m);
+    if (ok) ui_ok("added %s (%s)", name, source);
+    return ok ? 0 : 1;
 }
 
 static int install_all(const char *project_dir, EntryList *list) {
@@ -328,13 +349,35 @@ int cmd_install(const char *project_dir, int argc, char **argv) {
     return ok ? 0 : 1;
 }
 
+// The commit a hub dependency was installed at, from the .apm-source file install.c wrote ("<spec> <commit>").
+static void read_installed_commit(const char *dir, char *out, size_t size) {
+    char path[1100], line[400];
+    snprintf(path, sizeof(path), "%s/.apm-source", dir);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    if (fgets(line, sizeof(line), f)) {
+        char *space = strrchr(line, ' ');
+        if (space) {
+            snprintf(out, size, "%s", space + 1);
+            out[strcspn(out, "\r\n")] = '\0';
+            if (strcmp(out, "-") == 0) out[0] = '\0';
+        }
+    }
+    fclose(f);
+}
+
 static void list_dependencies(const char *project_dir, const char *title, EntryList *list) {
     if (list->count == 0) return;
     ui_header("%s", title);
     for (int i = 0; i < list->count; i++) {
         char dest[1024];
         snprintf(dest, sizeof(dest), "%s/@ash-modules/%s", project_dir, list->items[i].name);
-        if (fsutil_dir_exists(dest)) ui_bullet("%s: %s", list->items[i].name, list->items[i].value);
+        if (fsutil_dir_exists(dest)) {
+            char commit[64] = "";
+            read_installed_commit(dest, commit, sizeof(commit));
+            if (commit[0]) ui_bullet("%s: %s (%.12s)", list->items[i].name, list->items[i].value, commit);
+            else ui_bullet("%s: %s", list->items[i].name, list->items[i].value);
+        }
         else ui_bullet("%s: %s (not installed)", list->items[i].name, list->items[i].value);
     }
 }

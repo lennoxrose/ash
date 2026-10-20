@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "H/git_fetch.h"
+#include "H/hub/proc.h"
 
 int git_fetch_is_github_spec(const char *value) {
     return strncmp(value, "github:", 7) == 0;
@@ -58,26 +59,66 @@ void git_fetch_infer_name(const char *spec, char *out, int out_size) {
     }
 }
 
+// Runs git without a shell and without prompts; true when it exits 0.
+static int git(char *const argv[], const char *allow_protocols) {
+    char allow[64], *out;
+    snprintf(allow, sizeof(allow), "GIT_ALLOW_PROTOCOL=%s", allow_protocols);
+    const char *env[] = { "GIT_TERMINAL_PROMPT=0", allow, NULL };
+    int rc = proc_run(argv, NULL, 0, &out, 1 << 20, env);
+    free(out);
+    return rc == 0;
+}
+
+static int is_commit(const char *s) {
+    if (strlen(s) != 40) return 0;
+    for (int i = 0; i < 40; i++) if (!((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'f'))) return 0;
+    return 1;
+}
+
+static void remove_dir(const char *dir) {
+    char *rm[] = { "rm", "-rf", "--", (char *)dir, NULL }, *out;
+    if (proc_run(rm, NULL, 0, &out, 4096, NULL) == 0) free(out);
+}
+
+int git_fetch_repo(const char *owner, const char *repo, const char *commit, const char *ref, const char *dest_dir) {
+    int commit_given = commit && commit[0], ref_given = ref && ref[0];
+    if (!is_safe_component(owner, (int)strlen(owner)) || !is_safe_component(repo, (int)strlen(repo))
+        || (ref_given && !is_safe_component(ref, (int)strlen(ref))) || (commit_given && !is_commit(commit))) {
+        fprintf(stderr, "apm: refusing a malformed repository reference '%s/%s'\n", owner, repo);
+        return 0;
+    }
+    const char *base = getenv("APM_GIT_BASE");
+    int mirror = base && (strncmp(base, "https://", 8) == 0 || strncmp(base, "file://", 7) == 0);
+    char url[1100];
+    snprintf(url, sizeof(url), "%s/%s/%s.git", mirror ? base : "https://github.com", owner, repo);
+    const char *proto = mirror ? "https:file" : "https";
+
+    int ok;
+    if (commit_given) { // the exact commit the hub resolved, whatever the tag or branch does later
+        char *init[] = { "git", "init", "--quiet", "--", (char *)dest_dir, NULL };
+        char *remote[] = { "git", "-C", (char *)dest_dir, "remote", "add", "origin", url, NULL };
+        char *fetch[] = { "git", "-C", (char *)dest_dir, "fetch", "--quiet", "--depth", "1", "origin", (char *)commit, NULL };
+        char *checkout[] = { "git", "-C", (char *)dest_dir, "checkout", "--quiet", "FETCH_HEAD", NULL };
+        ok = git(init, proto) && git(remote, proto) && git(fetch, proto) && git(checkout, proto);
+    } else if (ref_given) {
+        char *clone[] = { "git", "clone", "--quiet", "--depth", "1", "--branch", (char *)ref, "--", url, (char *)dest_dir, NULL };
+        ok = git(clone, proto);
+    } else {
+        char *clone[] = { "git", "clone", "--quiet", "--depth", "1", "--", url, (char *)dest_dir, NULL };
+        ok = git(clone, proto);
+    }
+    if (!ok) {
+        fprintf(stderr, "apm: could not fetch %s/%s from git\n", owner, repo);
+        remove_dir(dest_dir);
+    }
+    return ok;
+}
+
 int git_fetch_github(const char *spec, const char *dest_dir) {
     char user[128], repo[128], ref[128];
     if (!parse_github_spec(spec, user, sizeof(user), repo, sizeof(repo), ref, sizeof(ref))) {
         fprintf(stderr, "apm: malformed github spec '%s' (expected github:user/repo or github:user/repo@ref)\n", spec);
         return 0;
     }
-
-    char cmd[1024];
-    if (ref[0] != '\0') {
-        snprintf(cmd, sizeof(cmd), "git clone --quiet --depth 1 --branch %s https://github.com/%s/%s.git %s",
-                 ref, user, repo, dest_dir);
-    } else {
-        snprintf(cmd, sizeof(cmd), "git clone --quiet --depth 1 https://github.com/%s/%s.git %s",
-                 user, repo, dest_dir);
-    }
-
-    int rc = system(cmd);
-    if (rc != 0) {
-        fprintf(stderr, "apm: 'git clone' failed for %s\n", spec);
-        return 0;
-    }
-    return 1;
+    return git_fetch_repo(user, repo, NULL, ref, dest_dir);
 }

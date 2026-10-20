@@ -8,9 +8,9 @@
 #define MANIFEST_VALUE_LEN 256
 #define MANIFEST_FILE "ash.pkg"
 
-// One "name: value" line of a section. In [dependencies] / [dev-dependencies] the value is a raw
-// source spec: "github:user/repo" or "github:user/repo@ref" (ref = tag or branch). No registry yet
-// (see ideas/ash_modules.md), so plain versions and local "path:" dependencies aren't supported.
+// One "name: value" line of a section. In [dependencies] / [dev-dependencies] the value is a source spec:
+// "owner/repo" or "owner/repo@version" (a package linked on the APMH hub, resolved to an exact commit by the hub) or
+// "github:user/repo[@ref]" (ref = tag or branch, no hub involved). Plain version ranges and "path:" aren't supported.
 typedef struct {
     char name[MANIFEST_NAME_LEN];
     char value[MANIFEST_VALUE_LEN];

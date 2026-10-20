@@ -12,6 +12,14 @@ APM_SRC = \
     src/C/install.c \
     src/C/cmd.c \
     src/C/ui.c \
+    src/C/hub/json.c \
+    src/C/hub/proc.c \
+    src/C/hub/http.c \
+    src/C/hub/config.c \
+    src/C/hub/client.c \
+    src/C/hub/spec.c \
+    src/C/hub/auth.c \
+    src/C/hub/hubcmd.c \
     src/C/license/licenses.c \
     src/C/license/texts_permissive.c \
     src/C/license/texts_copyleft.c
