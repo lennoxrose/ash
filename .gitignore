@@ -28,9 +28,7 @@ hearth/pyre/src/H/backends/vulkan/*_spv.h
 *.swp
 *~
 
-# Dont put ai Slop in my Code
-CLAUDE.md
-AGENTS.md
+# Private Ai Files
 .claude
 .agents
 skills-lock.json
@@ -40,7 +38,6 @@ docs/*
 spec/
 
 # Private Notes
-goals.md
 rundown.md
 missing.md
 test.ash
