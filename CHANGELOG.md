@@ -1,3 +1,10 @@
+## 2026-10-21 (beta-v0.1.4: 4096 functions, recursion and shared locals in the ownership checker, raw_fill / raw_copy)
+- **`ashvm`.** Programs can have up to 4096 functions (was 256): calls and closures past index 255 use new 16-bit `OP_CALL_WIDE` / `OP_MAKE_CLOSURE_WIDE`, the one-byte forms and the hot path are unchanged. The ceiling is measured: the table is static, and at 16384 entries every start-up got ~5% slower.
+- **Ownership checker.** A parameter passed to the method itself is no longer "kept" by that (the fixed point starts from "only read" and a parameter loses it on a real store, return or escape); a parameter lent with `&p` is not kept; a project `@Lower` native that only reads (pure template, primitive result) borrows its arguments. New local modifier `shared T x = ...`: a shared local is not moved when stored and stays usable (never freed by the compiler). See docs/MEMORY_SAFETY.md.
+- **Builtins.** `raw_fill(addr, value32, count)` and `raw_copy(dst, src, n)` (memmove) in `ashvm` and `kiln` (`rep stosd` / `rep movsb`).
+- **Library.** `Math.ceil`, `List.clear()`.
+- Tests: `functions/ManyFunctions`, `ownership/OwnRecursion`, `OwnRecursionKeeps`, `OwnShared`, `OwnSharedNot`, `OwnNativeRead`, `collections/ListClearCeil`, `raw/RawMem` (fill / copy).
+
 ## 2026-10-21 (beta-v0.1.3: raw device access, X11 client in Ash)
 - **`ashvm` and `kiln` builtins.** `raw_syscall(n, a1..a6)`, `raw_alloc(n)`, `raw_free(p)`, `raw_peek(p, width)`, `raw_poke(p, width, v)`: raw Linux syscalls and byte buffers, so a library written in Ash can talk to a device or a socket itself. No checking (a bad address crashes the process). Reached from a library with `@Lower("raw_...")` native methods. `kiln` emits them inline (`raw_alloc` is an anonymous `mmap` with a size header, `raw_free` the matching `munmap`; r8-r10 are cleared again after each syscall because `sys_wait` relies on r10 being 0). Linux only. Hot paths are untouched, both regression suites are byte-identical.
 

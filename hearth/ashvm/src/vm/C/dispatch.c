@@ -42,7 +42,8 @@ void vm_execute(int stop_at_frame_count) {
         &&do_RAISE,
         &&do_BAND, &&do_BOR, &&do_BXOR, &&do_BNOT, &&do_SHL, &&do_SHR,
         &&do_TRUNC_LOCALS,
-        &&do_GET_GLOBAL, &&do_SET_GLOBAL
+        &&do_GET_GLOBAL, &&do_SET_GLOBAL,
+        &&do_CALL_WIDE, &&do_MAKE_CLOSURE_WIDE
     };
 
     #define DISPATCH() \
@@ -100,6 +101,18 @@ void vm_execute(int stop_at_frame_count) {
     do_CALL: {
         uint8_t func_idx = *frame->ip++;
         uint8_t argc = *frame->ip++;
+        VMFunction *fn = &vm_functions[func_idx];
+        CallFrame *volatile newf = &frames[frame_count++];
+        newf->chunk = &fn->chunk;
+        newf->ip = fn->chunk.code;
+        newf->slots = stack_top - argc;
+        frame = newf;
+        DISPATCH();
+    }
+    do_CALL_WIDE: {
+        unsigned func_idx = frame->ip[0] | (unsigned)frame->ip[1] << 8;
+        uint8_t argc = frame->ip[2];
+        frame->ip += 3;
         VMFunction *fn = &vm_functions[func_idx];
         CallFrame *volatile newf = &frames[frame_count++];
         newf->chunk = &fn->chunk;
@@ -259,6 +272,20 @@ void vm_execute(int stop_at_frame_count) {
     do_MAKE_CLOSURE: {
         uint8_t fn_idx = *frame->ip++;
         uint8_t cap_count = *frame->ip++;
+        GC_SAFEPOINT();
+        VMClosureObj *c = malloc(sizeof(VMClosureObj));
+        c->function_index = fn_idx;
+        c->capture_count = cap_count;
+        c->captured = malloc(sizeof(VMValue) * (cap_count > 0 ? cap_count : 1));
+        for (int i = 0; i < cap_count; i++) c->captured[i] = frame->slots[i];
+        GC_REGISTER(c, GC_CLOSURE);
+        *stack_top++ = vm_closure_val(c);
+        DISPATCH();
+    }
+    do_MAKE_CLOSURE_WIDE: {
+        unsigned fn_idx = frame->ip[0] | (unsigned)frame->ip[1] << 8;
+        uint8_t cap_count = frame->ip[2];
+        frame->ip += 3;
         GC_SAFEPOINT();
         VMClosureObj *c = malloc(sizeof(VMClosureObj));
         c->function_index = fn_idx;

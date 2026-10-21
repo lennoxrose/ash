@@ -61,6 +61,22 @@ VMValue vm_call_builtin_raw(int id, VMValue *args, int argc) {
             }
             vm_runtime_error("raw_poke width must be 1, 2, 4 or 8\n");
         }
+        case 63: { // raw_fill(addr, value32, count) -- count 32-bit words, the low 32 bits of value (a pixel row)
+            if (argc != 3) { vm_runtime_error("raw_fill(addr, value32, count) expected\n"); }
+            uint32_t *p = (uint32_t *)(uintptr_t)arg_i64(args[0], "raw_fill");
+            uint32_t v = (uint32_t)arg_i64(args[1], "raw_fill");
+            int64_t n = arg_i64(args[2], "raw_fill");
+            for (int64_t i = 0; i < n; i++) p[i] = v;   // the compiler turns this into rep stos / SIMD stores
+            return vm_nil();
+        }
+        case 64: { // raw_copy(dst, src, n) -- n bytes, the ranges may overlap (memmove)
+            if (argc != 3) { vm_runtime_error("raw_copy(dst, src, n) expected\n"); }
+            void *dst = (void *)(uintptr_t)arg_i64(args[0], "raw_copy");
+            const void *src = (const void *)(uintptr_t)arg_i64(args[1], "raw_copy");
+            int64_t n = arg_i64(args[2], "raw_copy");
+            if (n > 0) memmove(dst, src, (size_t)n);
+            return vm_nil();
+        }
     }
     vm_runtime_error("unknown builtin id: %d\n", id);
 }

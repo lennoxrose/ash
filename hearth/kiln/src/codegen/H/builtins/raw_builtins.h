@@ -14,5 +14,9 @@ void codegen_builtin_raw_alloc(void);
 void codegen_builtin_raw_free(void);
 void codegen_builtin_raw_peek(void);
 void codegen_builtin_raw_poke(void);
+//   raw_fill(p, v, count)  -> stores the low 32 bits of v into count consecutive dwords at p
+//   raw_copy(dst, src, n)  -> copies n bytes, the ranges may overlap (memmove)
+void codegen_builtin_raw_fill(void);
+void codegen_builtin_raw_copy(void);
 
 #endif

@@ -1,0 +1,12 @@
+error[E0101]: use of moved value 'b': it was moved earlier by an assignment or by passing it to a call; lend it with &b, clone it, or assign a new value first
+  --> tests/cases/ownership/OwnRecursionKeeps.ash:12:28
+   |
+ 12|         System.out.println(b[0]);
+   |                            ^
+   = note: 'b' was moved here, into the call to 'keep'
+  --> tests/cases/ownership/OwnRecursionKeeps.ash:11:14
+   |
+ 11|         keep(b, 1);
+   |              ^
+   = help: 'keep' keeps its parameter, so 'b' cannot be lent with &b: use 'b' before the call, or pass a copy
+1 error(s)

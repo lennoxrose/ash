@@ -1,0 +1,12 @@
+error[E0101]: use of moved value 'status': it was moved earlier by an assignment or by passing it to a call; lend it with &status, clone it, or assign a new value first
+  --> tests/cases/ownership/OwnSharedNot.ash:17:9
+   |
+ 17|         status.setText("late");
+   |         ^
+   = note: 'status' was moved here, into the call to 'add'
+  --> tests/cases/ownership/OwnSharedNot.ash:16:17
+   |
+ 16|         col.add(status);
+   |                 ^
+   = help: 'add' keeps its parameter, so 'status' cannot be lent with &status: use 'status' before the call, or pass a copy
+1 error(s)

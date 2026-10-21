@@ -25,6 +25,7 @@ int find_function(const char *name, int len);
 // error-reporting convention (see diagnostics_report call sites).
 void emit(uint8_t byte);
 void emit_op(uint8_t op);
+void emit_call_op(int fn_idx, int argc); // OP_CALL, or OP_CALL_WIDE when the index does not fit a byte
 void emit2(uint8_t a, uint8_t b);
 void emit_constant(VMValue v);
 int emit_jump(uint8_t op);

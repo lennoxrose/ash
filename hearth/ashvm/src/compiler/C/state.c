@@ -80,7 +80,7 @@ int declare_function_in_context(const char *name, int len) {
         vm_functions[existing].defined = 1;
         return existing;
     }
-    if (vm_function_count >= MAX_VM_FUNCS) { diagnostics_report("error", "too many functions (limit 256: calls address a function with one byte)", current.start, current.length); exit(1); }
+    if (vm_function_count >= MAX_VM_FUNCS) { diagnostics_report("error", "too many functions (limit 4096)", current.start, current.length); exit(1); }
     if (final_len >= (int)sizeof(vm_functions[0].name)) { diagnostics_report("error", "function name too long", current.start, current.length); exit(1); }
     int fn_idx = vm_function_count++;
     memcpy(vm_functions[fn_idx].name, final_name, (size_t)final_len);
@@ -121,6 +121,18 @@ int find_function_in_context(const char *name, int len) {
 void emit(uint8_t byte) { chunk_write(chunk, byte); }
 void emit_op(uint8_t op) { chunk_write_pos(chunk, op, previous.start, previous.length); }
 void emit2(uint8_t a, uint8_t b) { emit_op(a); emit(b); }
+
+void emit_call_op(int fn_idx, int argc) {
+    if (fn_idx < 256) {
+        emit_op(OP_CALL);
+        emit((uint8_t)fn_idx);
+    } else {
+        emit_op(OP_CALL_WIDE);
+        emit((uint8_t)(fn_idx & 255));
+        emit((uint8_t)(fn_idx >> 8));
+    }
+    emit((uint8_t)argc);
+}
 
 void emit_constant(VMValue v) {
     int idx = chunk_add_constant(chunk, v);

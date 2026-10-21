@@ -14,9 +14,17 @@ Node *p_block(Parser *p) {
     return b;
 }
 
+/* `shared` is a modifier only when a type follows (`shared Label l = ...`); elsewhere it is an ordinary name */
+static int p_is_shared_modifier(Parser *p) {
+    if (!p_is_word(p, "shared")) return 0;
+    JTokKind k = p_peek_at(p, 1)->kind;
+    return k == JT_IDENT || (p_is_prim(k) && k != JT_VOID);
+}
+
 int p_looks_like_local_decl(Parser *p) {
     JToken *t = p_peek(p);
     if (t->kind == JT_FINAL) return 1;
+    if (p_is_shared_modifier(p)) return 1;
     if (p_is_prim(t->kind) && t->kind != JT_VOID) {
         return p_peek_at(p, 1)->kind != JT_COLONCOLON && p_peek_at(p, 1)->kind != JT_DOT;
     }
@@ -56,8 +64,8 @@ Node *p_array_init(Parser *p, Node *type) {
 
 Node *p_local_decl(Parser *p, int final_flag, int require_semi) {
     int flags = final_flag ? M_FINAL : 0;
-    while (p_is(p, JT_FINAL)) {
-        flags |= M_FINAL;
+    while (p_is(p, JT_FINAL) || p_is_shared_modifier(p)) {
+        flags |= p_is(p, JT_FINAL) ? M_FINAL : M_SHARED;
         p_next(p);
     }
     Node *type = NULL;

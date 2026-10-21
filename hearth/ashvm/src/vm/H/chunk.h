@@ -26,7 +26,9 @@ typedef enum {
     OP_RAISE,
     OP_BAND, OP_BOR, OP_BXOR, OP_BNOT, OP_SHL, OP_SHR,
     OP_TRUNC_LOCALS,
-    OP_GET_GLOBAL, OP_SET_GLOBAL
+    OP_GET_GLOBAL, OP_SET_GLOBAL,
+    OP_CALL_WIDE,               // OP_CALL for a function index above 255: [op, index lo, index hi, argc]
+    OP_MAKE_CLOSURE_WIDE        // OP_MAKE_CLOSURE likewise: [op, index lo, index hi, capture count]
 } OpCode;
 
 typedef struct {

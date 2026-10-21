@@ -185,3 +185,65 @@ void codegen_builtin_raw_poke(void) {
     }
     push_nil();
 }
+
+void codegen_builtin_raw_fill(void) {
+    codegen_expression();
+    expect(TOKEN_COMMA, "expected ',' after address");
+    codegen_expression();
+    expect(TOKEN_COMMA, "expected ',' after value");
+    codegen_expression();
+    expect(TOKEN_RPAREN, "expected ')' after arguments");
+    if (!unsupported_target()) {
+        pop_int(REG_RCX);                                 // count
+        pop_int(REG_RDX);                                 // value
+        pop_int(REG_RDI);                                 // address (pop_int clobbers RAX, so the value waits in RDX)
+        emit_mov_reg_reg(code, REG_RAX, REG_RDX);         // rep stosd stores EAX
+        emit_cmp_reg_imm32(code, REG_RCX, 0);
+        int skip = emit_jcc_rel32(code, COND_LE);
+        emit_cld(code);
+        emit_rep_stosd(code);
+        emit_patch_jump(code, skip);
+    } else {
+        emit_add_reg_imm32(code, REG_RSP, 3 * 16);
+    }
+    push_nil();
+}
+
+void codegen_builtin_raw_copy(void) {
+    codegen_expression();
+    expect(TOKEN_COMMA, "expected ',' after destination");
+    codegen_expression();
+    expect(TOKEN_COMMA, "expected ',' after source");
+    codegen_expression();
+    expect(TOKEN_RPAREN, "expected ')' after arguments");
+    if (!unsupported_target()) {
+        pop_int(REG_RCX);                                 // n
+        pop_int(REG_RSI);                                 // src
+        pop_int(REG_RDI);                                 // dst
+        emit_cmp_reg_imm32(code, REG_RCX, 0);
+        int done = emit_jcc_rel32(code, COND_LE);
+        emit_cmp_reg_reg(code, REG_RDI, REG_RSI);
+        int forward = emit_jcc_rel32(code, COND_LE);      // dst <= src: a forward copy is safe
+        emit_mov_reg_reg(code, REG_RAX, REG_RSI);
+        emit_add_reg_reg(code, REG_RAX, REG_RCX);
+        emit_cmp_reg_reg(code, REG_RDI, REG_RAX);
+        int disjoint = emit_jcc_rel32(code, COND_GE);     // dst >= src + n: no overlap, forward is safe
+        emit_add_reg_reg(code, REG_RSI, REG_RCX);         // overlapping with dst above src: copy backward
+        emit_sub_reg_imm8(code, REG_RSI, 1);
+        emit_add_reg_reg(code, REG_RDI, REG_RCX);
+        emit_sub_reg_imm8(code, REG_RDI, 1);
+        emit_std(code);
+        emit_rep_movsb(code);
+        emit_cld(code);
+        int end = emit_jmp_rel32(code);
+        emit_patch_jump(code, forward);
+        emit_patch_jump(code, disjoint);
+        emit_cld(code);
+        emit_rep_movsb(code);
+        emit_patch_jump(code, end);
+        emit_patch_jump(code, done);
+    } else {
+        emit_add_reg_imm32(code, REG_RSP, 3 * 16);
+    }
+    push_nil();
+}

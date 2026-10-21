@@ -76,6 +76,19 @@ void emit_mov_hi_reg_imm32(CodeBuf *buf, int hi, int32_t imm) {
     emit_i32(buf, imm);
 }
 
+void emit_rep_stosd(CodeBuf *buf) {
+    emit_byte(buf, 0xF3);
+    emit_byte(buf, 0xAB);
+}
+
+void emit_rep_movsb(CodeBuf *buf) {
+    emit_byte(buf, 0xF3);
+    emit_byte(buf, 0xA4);
+}
+
+void emit_std(CodeBuf *buf) { emit_byte(buf, 0xFD); }
+void emit_cld(CodeBuf *buf) { emit_byte(buf, 0xFC); }
+
 void emit_syscall(CodeBuf *buf) {
     emit_byte(buf, 0x0F);
     emit_byte(buf, 0x05);

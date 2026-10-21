@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -100,6 +101,7 @@ static int owning(JType *t) {
 /* ---------------------------------------------------------------- expressions */
 
 static int param_borrowed(JMethod *m, int i);
+static int native_reads_only(JMethod *m);
 static int fixed_project_target(JMethod *m);
 static void expr(Walk *w, Node *n);
 static void stmt(Walk *w, Node *n);
@@ -158,7 +160,7 @@ static void use(Walk *w, Node *n) {
 /* evaluates `e` as a value that is being stored: a bare owning local is moved out of */
 static void store(Walk *w, Node *e) {
     expr(w, e);
-    if (e->kind == N_NAME && e->rk == R_LOCAL && e->sym && owning(((JLocal *)e->sym)->type)) {
+    if (e->kind == N_NAME && e->rk == R_LOCAL && e->sym && owning(((JLocal *)e->sym)->type) && !(((JLocal *)e->sym)->flags & M_SHARED)) {
         mnemo_move(w->m, id_of(e->sym));
         MoveSite *ms = j_alloc(sizeof *ms);
         ms->l = e->sym;
@@ -969,11 +971,17 @@ static void benign(Node *n, int in_lambda) {
     if (in_lambda) { if (is_tracked(n)) untrack(n); alias_touch(n); }   /* captured */
 }
 
+/* `&p` / `&mut p` of one of this method's own parameters: a loan cannot be kept, so handing it out does not keep p
+ * (a local that is lent is still never freed: scan treats it as an escape) */
+static int lent_param(Node *arg) {
+    return is_borrow(arg) && ((JLocal *)arg->a->sym)->is_param;
+}
+
 static void borrowed_arg(JMethod *m, int i, Node *arg, int in_lambda) {
     Node *t = is_borrow(arg) ? arg->a : arg;
     benign(t, in_lambda);
-    Node *pn = m->decl->l1.items[i];
-    JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
+    Node *pn = m->decl && i < m->decl->l1.count ? m->decl->l1.items[i] : NULL;
+    JLocal *l = pn && pn->kind == N_PARAM ? pn->sym : NULL;
     if (!l || !l->param_elems_ok) elems_off(t);
 }
 
@@ -1032,7 +1040,8 @@ static void scan(Node *n, int in_lambda) {
             for (int i = 0; i < n->l1.count; i++) {
                 Node *arg = n->l1.items[i];
                 int obj_arg = arg->kind == N_NAME && is_cand(arg) && obj_type(((JLocal *)arg->sym)->type);
-                if ((print_method(m) || safe_string_method(m)) && !obj_arg) benign(arg, in_lambda);
+                if (lent_param(arg)) benign(arg->a, in_lambda);
+                else if ((print_method(m) || safe_string_method(m)) && !obj_arg) benign(arg, in_lambda);
                 else if (param_borrowed(m, i)) borrowed_arg(m, i, arg, in_lambda);
                 else scan(n->l1.items[i], in_lambda);
             }
@@ -1068,7 +1077,8 @@ static void scan(Node *n, int in_lambda) {
             JMethod *k = n->sym;
             for (int i = 0; i < n->l1.count; i++) {
                 Node *arg = n->l1.items[i];
-                if (param_borrowed(k, i)) borrowed_arg(k, i, arg, in_lambda);
+                if (lent_param(arg)) benign(arg->a, in_lambda);
+                else if (param_borrowed(k, i)) borrowed_arg(k, i, arg, in_lambda);
                 else scan(arg, in_lambda);
             }
             scan(n->a, in_lambda);
@@ -1099,23 +1109,74 @@ static int param_cand(JType *t) {
     return t && (t->kind == TY_ARRAY || ty_is_string(t) || obj_type(t) || list_type(t) || map_type(t));
 }
 
+/* The method whose body analyze_method is scanning right now. A call of it from inside its own body goes by the
+ * current guess for its parameters (see below); a call of a method further out on the stack gets no guess. */
+static JMethod *own_current;
+static int own_guess_used;                            /* a call inside own_current's body consulted the guess */
+
 static void analyze_method(JMethod *m) {
     if (m->own_done || !m->decl || !m->decl->b) return;
+    m->own_done = 2;                                  /* in progress: a recursive call must not start it again */
+    JMethod *outer = own_current;
+    own_current = m;
+    int n = m->decl->l1.count;
+    /* Parameters are analysed like sole-owner locals, with one difference: returning one hands the caller's own value
+     * back, which is an escape. The fixed point starts from "every parameter is only read" and a parameter loses that
+     * only when a use really keeps it (a store, a return, an escape); passing it to this same method does not, so
+     * the guess is used for such a call and the body is scanned again whenever a guess turned out false (at most
+     * once per parameter, as a guess only ever goes from "read only" to "kept"). */
+    for (int i = 0; i < n; i++) {
+        Node *pn = m->decl->l1.items[i];
+        JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
+        if (l && param_cand(l->type) && !(m->flags & M_VARARGS)) { l->param_ok = 1; l->param_elems_ok = elems_type(l->type); }
+    }
+    for (;;) {
+        collect(m->decl->b, 0);
+        for (int i = 0; i < n; i++) {
+            Node *pn = m->decl->l1.items[i];
+            JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
+            if (l && param_cand(l->type) && !(m->flags & M_VARARGS)) { l->drop = 1; l->elems = elems_type(l->type); }
+        }
+        own_guess_used = 0;
+        scan(m->decl->b, 0);
+        int settled = 1;
+        for (int i = 0; i < n; i++) {
+            Node *pn = m->decl->l1.items[i];
+            JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
+            if (!l) continue;
+            int ok = l->drop, elems_ok = l->drop && l->elems;
+            if (own_guess_used && (ok != l->param_ok || elems_ok != l->param_elems_ok)) settled = 0;   /* a guess that did not hold */
+            l->param_ok = ok;
+            l->param_elems_ok = elems_ok;
+            l->drop = 0;                              /* a parameter is never freed by the callee */
+            l->elems = 0;
+        }
+        if (settled) break;
+    }
+    own_current = outer;
     m->own_done = 1;
-    collect(m->decl->b, 0);
-    /* parameters are analysed like sole-owner locals, with one difference: returning one hands the
-     * caller's own value back, which is an escape */
-    for (int i = 0; i < m->decl->l1.count; i++) {
-        Node *pn = m->decl->l1.items[i];
-        JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
-        if (l && param_cand(l->type) && !(m->flags & M_VARARGS)) { l->drop = 1; l->elems = elems_type(l->type); }
+}
+
+/* A project `native` method (`@Lower("ord(substring($1, $2, $2 + 1))") native int charAt(String s, int i)`) that only reads
+ * what it is given: it returns a primitive, and its template calls nothing but functions that read their arguments
+ * (no push, insert, delete, sort, ... that could store one). Such a call keeps no reference, so it borrows. */
+static int native_reads_only(JMethod *m) {
+    static const char *pure[] = {"len", "ord", "chr", "indexOf", "contains", "starts_with", "ends_with", "substring", "upper", "lower",
+                                 "trim", "str", "num", "type", "abs", "floor", "sqrt", NULL};
+    if (!m->cls || !m->cls->mem_on || !m->ret || param_cand(m->ret)) return 0;
+    for (const char *t = m->tmpl; *t; t++) {
+        if (*t == '"') { for (t++; *t && *t != '"'; t++) if (*t == '\\' && t[1]) t++; if (!*t) break; continue; }
+        if (!(isalpha((unsigned char)*t) || *t == '_') || (t > m->tmpl && (isalnum((unsigned char)t[-1]) || t[-1] == '_' || t[-1] == '$'))) continue;
+        const char *e = t;
+        while (isalnum((unsigned char)*e) || *e == '_') e++;
+        if (*e == '(') {
+            int ok = 0;
+            for (int k = 0; pure[k]; k++) if ((size_t)(e - t) == strlen(pure[k]) && !strncmp(t, pure[k], (size_t)(e - t))) ok = 1;
+            if (!ok) return 0;
+        }
+        t = e - 1;
     }
-    scan(m->decl->b, 0);
-    for (int i = 0; i < m->decl->l1.count; i++) {
-        Node *pn = m->decl->l1.items[i];
-        JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
-        if (l) { l->param_ok = l->drop; l->param_elems_ok = l->drop && l->elems; l->drop = 0; l->elems = 0; }   /* a parameter is never freed by the callee */
-    }
+    return 1;
 }
 
 /* project code whose body we can see and whose target is fixed at compile time (no override can run instead) */
@@ -1128,10 +1189,15 @@ static int fixed_project_target(JMethod *m) {
 /* 1 when argument `i` of a call to `m` is only read by the callee, so the caller keeps owning what it passes
  * (and nothing is moved). The target must be fixed at compile time (no override can run instead). */
 static int param_borrowed(JMethod *m, int i) {
-    if (!m || m->tmpl || !m->cls || !m->cls->mem_on || !m->decl || !m->decl->b || (m->flags & M_VARARGS)) return 0;
+    if (m && m->tmpl) return native_reads_only(m);
+    if (!m || !m->cls || !m->cls->mem_on || !m->decl || !m->decl->b || (m->flags & M_VARARGS)) return 0;
     if (!m->is_ctor && !(m->flags & (M_STATIC | M_PRIVATE | M_FINAL)) && (m->cls->kind == N_INTERFACE || m->cls->subclasses.count)) return 0;
     if (i >= m->decl->l1.count) return 0;
     analyze_method(m);
+    if (m->own_done == 2) {                           /* still being analysed: only its own body may go by the guess */
+        if (m != own_current) return 0;
+        own_guess_used = 1;
+    }
     Node *pn = m->decl->l1.items[i];
     JLocal *l = pn->kind == N_PARAM ? pn->sym : NULL;
     return l && l->param_ok;

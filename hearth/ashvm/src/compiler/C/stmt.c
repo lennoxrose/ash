@@ -354,9 +354,7 @@ Chunk *compile(const char *source) {
     set_import_namespace(NULL, 0);
     int start_fn = find_function(IR_NAMESPACE ".start", (int)strlen(IR_NAMESPACE ".start"));
     if (start_fn == -1) { fprintf(stderr, "error: program has no entry point\n"); exit(1); }
-    emit_op(OP_CALL);
-    emit((uint8_t)start_fn);
-    emit(0);
+    emit_call_op(start_fn, 0);
     emit_op(OP_POP);
     return &main_chunk;
 }

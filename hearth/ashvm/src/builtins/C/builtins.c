@@ -16,7 +16,7 @@ static const char *builtin_names[] = {
     "sys_fork", "sys_wait", "sys_exec",
     "mem_free", "mem_cat", "mem_release", "mem_free_arr", "mem_free_obj", "mem_free_map", "mem_free_elems",
     "print_raw", "trace_n", "trace_fn", "trace_line",
-    "raw_syscall", "raw_alloc", "raw_free", "raw_peek", "raw_poke"
+    "raw_syscall", "raw_alloc", "raw_free", "raw_peek", "raw_poke", "raw_fill", "raw_copy"
 };
 // Argument count each builtin is wrapped with when used as a value
 // (`map(xs, str)`); same order as builtin_names.
@@ -33,7 +33,7 @@ static const int builtin_arity[] = {
     0, 1, 2,
     1, 3, 1, 1, 1, 1, 1,
     1, 0, 1, 1,
-    7, 1, 1, 2, 3
+    7, 1, 1, 2, 3, 3, 3
 };
 #define NUM_BUILTINS (int)(sizeof(builtin_names) / sizeof(builtin_names[0]))
 
@@ -63,6 +63,6 @@ VMValue vm_call_builtin(int id, VMValue *args, int argc) {
     if (id >= 47 && id <= 53) return vm_call_builtin_mem(id, args, argc); // mem_free
     if (id == 54) return vm_call_builtin_core(id, args, argc); // print_raw
     if (id >= 55 && id <= 57) return vm_call_builtin_trace(id, args, argc); // trace_n, trace_fn, trace_line
-    if (id >= 58 && id <= 62) return vm_call_builtin_raw(id, args, argc); // raw_syscall, raw_alloc, raw_free, raw_peek, raw_poke
+    if (id >= 58 && id <= 64) return vm_call_builtin_raw(id, args, argc); // raw_syscall, raw_alloc, raw_free, raw_peek, raw_poke, raw_fill, raw_copy
     vm_runtime_error("unknown builtin id: %d\n", id);
 }

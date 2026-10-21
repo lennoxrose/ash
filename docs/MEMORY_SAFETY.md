@@ -75,6 +75,14 @@ error[E0101]: use of moved value 'a': it was moved earlier by an assignment or b
   body only reads (indexing, `.length`, operands, String methods that return primitives, printing, passing it on
   to another read-only parameter) is borrowed, so `sum(a)` twice is fine. Library and native calls only look at
   their arguments and never move.
+- Passing a parameter to the method itself does not keep it: a recursive method that only reads its parameter
+  (`depth(xs, n - 1)`) borrows it like any other. A parameter that is really stored, returned or handed to code the
+  checker cannot see is still kept, recursive or not. A parameter that is lent with `&p` to an overridable method
+  is not kept either, because a loan cannot outlive the call.
+- A project `@Lower` native method whose template only calls functions that read their arguments (`len`, `ord`,
+  `substring`, `indexOf`, ...) and that returns a primitive borrows its arguments, so a method built on it borrows
+  its parameter too. A native that stores into an argument (`push`, `insert`, ...) or returns a String or array still
+  keeps it.
 - Moves follow `if`, `switch`, `try`, loops (a move that survives to the back edge is caught), `return`, `throw`,
   `break` and `continue`, labeled ones included (`break outer;` carries the state to the end of the loop named
   `outer`, after the `finally` blocks it leaves). A move in one branch counts after the `if`.
@@ -105,6 +113,21 @@ error[E0102]: cannot lend 'a' with '&': 'store' keeps this parameter (stores, re
 
   Calls whose target is not fixed (overridable or library code) accept a loan, and a lent variable is never freed
   by the compiler, since the callee could keep it.
+
+## Shared locals
+
+`shared` in front of a local declaration turns off the move for that variable: it may be stored and used afterwards.
+
+```java
+shared Label status = new Label("ready");
+column.add(status);          // column keeps a reference
+status.setText("loading");   // still fine: status is shared, not moved
+```
+
+The compiler never frees a shared value on its own (a value that more than one place can reach is never freed
+by the compiler, as for any stored value), so nothing dangles; the cost is that it is only freed when the program
+ends. Without `shared`, `column.add(status)` moves `status` and the second line is E0101. `shared` is a modifier
+only in a local declaration followed by a type; elsewhere it is an ordinary name.
 
 ## Ranges: indexes, overflow, division, array sizes
 

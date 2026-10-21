@@ -312,6 +312,8 @@ const JCoreEntry jcore_lang[] = {
     "    @Lower(\"sqrt($1)\") public static native double sqrt(double x);\n"
     "    /// Largest whole number not above the argument.\n"
     "    @Lower(\"floor($1)\") public static native double floor(double x);\n"
+    "    /// Smallest whole number not below the argument.\n"
+    "    @Lower(\"(0 - floor(0 - ($1)))\") public static native double ceil(double x);\n"
     "    /// Absolute value.\n"
     "    @Lower(\"abs($1)\") public static native int abs(int x);\n"
     "    /// Absolute value.\n"

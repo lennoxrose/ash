@@ -30,9 +30,7 @@ void emit_call(Token id) {
             diagnostics_report("error", msg, id.start, id.length);
             exit(1);
         }
-        emit_op(OP_CALL);
-        emit((uint8_t)fn_idx);
-        emit((uint8_t)argc);
+        emit_call_op(fn_idx, argc);
     } else if (local_slot != -1) {
         emit2(OP_GET_LOCAL, (uint8_t)local_slot);
         emit_op(OP_CALL_VALUE);
@@ -72,9 +70,7 @@ void emit_call_named(const char *name, int len) {
         diagnostics_report("error", msg, current.start, current.length);
         exit(1);
     }
-    emit_op(OP_CALL);
-    emit((uint8_t)fn_idx);
-    emit((uint8_t)argc);
+    emit_call_op(fn_idx, argc);
 }
 
 // forge(params) { body } as an expression. Captures the ENTIRE enclosing
@@ -91,7 +87,7 @@ void lambda_literal(void) {
     int namelen = snprintf(namebuf, sizeof(namebuf), "__lambda_%d", lambda_counter++);
     if (namelen > (int)sizeof(namebuf) - 1) namelen = (int)sizeof(namebuf) - 1;
 
-    if (vm_function_count >= MAX_VM_FUNCS) { diagnostics_report("error", "too many functions (limit 256: calls address a function with one byte)", current.start, current.length); exit(1); }
+    if (vm_function_count >= MAX_VM_FUNCS) { diagnostics_report("error", "too many functions (limit 4096)", current.start, current.length); exit(1); }
     int fn_idx = vm_function_count++;
     memcpy(vm_functions[fn_idx].name, namebuf, namelen);
     vm_functions[fn_idx].name[namelen] = '\0';
@@ -144,8 +140,14 @@ void lambda_literal(void) {
     memcpy(local_names, outer_locals, sizeof(local_names));
     loop_scope_restore(outer_loop_scope);
 
-    emit_op(OP_MAKE_CLOSURE);
-    emit((uint8_t)fn_idx);
+    if (fn_idx < 256) {
+        emit_op(OP_MAKE_CLOSURE);
+        emit((uint8_t)fn_idx);
+    } else {
+        emit_op(OP_MAKE_CLOSURE_WIDE);
+        emit((uint8_t)(fn_idx & 255));
+        emit((uint8_t)(fn_idx >> 8));
+    }
     emit((uint8_t)capture_count);
 }
 

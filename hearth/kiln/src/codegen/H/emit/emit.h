@@ -89,6 +89,13 @@ void emit_load_dword(CodeBuf *buf, Reg dst, Reg base);
 void emit_store_word(CodeBuf *buf, Reg base, Reg src);
 void emit_store_dword(CodeBuf *buf, Reg base, Reg src);
 
+// String instructions: rep stosd stores EAX to ECX dwords at [RDI]; rep movsb copies RCX bytes from [RSI] to
+// [RDI]. Both follow the direction flag, so a backward copy is std ... rep movsb ... cld.
+void emit_rep_stosd(CodeBuf *buf);
+void emit_rep_movsb(CodeBuf *buf);
+void emit_std(CodeBuf *buf);
+void emit_cld(CodeBuf *buf);
+
 void emit_syscall(CodeBuf *buf);
 
 // r8, r9 and r10 (hi = 8, 9, 10) are the syscall argument registers Reg cannot name. Everything else in

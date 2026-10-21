@@ -15,7 +15,7 @@ struct JLocal;
 enum {
     M_PUBLIC = 1, M_PRIVATE = 2, M_PROTECTED = 4, M_STATIC = 8, M_FINAL = 16,
     M_ABSTRACT = 32, M_NATIVE = 64, M_CONST = 128, M_SEALED = 256, M_DEFAULT = 512,
-    M_VARARGS = 1024
+    M_VARARGS = 1024, M_SHARED = 2048   /* M_SHARED: `shared T x = ...`, a local that may be stored and used afterwards (jown does not move it) */
 };
 
 typedef enum {

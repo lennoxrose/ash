@@ -447,6 +447,7 @@ void emit_prelude(JBuf *b) {
         "}\n"
         "forge __lset(l, i, v) { local o = l[i]; l[i] = v; yield o; }\n"
         "forge __lremove(l, i) { local o = l[i]; delete(l, i); yield o; }\n"
+        "forge __lclear(l) { during len(l) > 0 { pop(l); } }\n"
         "forge __lcontains(l, x) { each v in l { given __eq(v, x) { yield yes; } } yield no; }\n"
         "forge __key(k) {\n"
         "    local t = type(k);\n"
