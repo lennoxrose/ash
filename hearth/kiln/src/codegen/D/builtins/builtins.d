@@ -12,7 +12,8 @@ src/codegen/O/builtins/builtins.o: src/codegen/C/builtins/builtins.c \
  src/codegen/H/io/argv_builtin.h src/codegen/H/builtins/type_builtin.h \
  src/codegen/H/builtins/exit_builtin.h \
  src/codegen/H/builtins/mem_builtin.h \
- src/codegen/H/builtins/proc_builtins.h src/parser/H/core/parser.h
+ src/codegen/H/builtins/proc_builtins.h \
+ src/codegen/H/builtins/raw_builtins.h src/parser/H/core/parser.h
 src/codegen/H/builtins/builtins.h:
 src/codegen/H/expressions/expr.h:
 ../front/src/ir/H/ir_lex.h:
@@ -34,4 +35,5 @@ src/codegen/H/builtins/type_builtin.h:
 src/codegen/H/builtins/exit_builtin.h:
 src/codegen/H/builtins/mem_builtin.h:
 src/codegen/H/builtins/proc_builtins.h:
+src/codegen/H/builtins/raw_builtins.h:
 src/parser/H/core/parser.h:

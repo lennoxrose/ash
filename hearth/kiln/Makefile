@@ -22,6 +22,7 @@ KILN_SRC = \
     src/codegen/C/builtins/exit_builtin.c \
     src/codegen/C/builtins/mem_builtin.c \
     src/codegen/C/builtins/proc_builtins.c \
+    src/codegen/C/builtins/raw_builtins.c \
     src/codegen/C/builtins/filter_builtin.c \
     src/codegen/C/builtins/map_builtin.c \
     src/codegen/C/builtins/type_builtin.c \

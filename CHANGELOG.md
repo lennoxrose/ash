@@ -1,3 +1,6 @@
+## 2026-10-21 (beta-v0.1.3: raw device access, X11 client in Ash)
+- **`ashvm` and `kiln` builtins.** `raw_syscall(n, a1..a6)`, `raw_alloc(n)`, `raw_free(p)`, `raw_peek(p, width)`, `raw_poke(p, width, v)`: raw Linux syscalls and byte buffers, so a library written in Ash can talk to a device or a socket itself. No checking (a bad address crashes the process). Reached from a library with `@Lower("raw_...")` native methods. `kiln` emits them inline (`raw_alloc` is an anonymous `mmap` with a size header, `raw_free` the matching `munmap`; r8-r10 are cleared again after each syscall because `sys_wait` relies on r10 being 0). Linux only. Hot paths are untouched, both regression suites are byte-identical.
+
 ## 2026-10-21 (beta-v0.1.2: language server, formatter, labeled jumps, interpolation, lockfile)
 - **Tooling.** `ashvm lsp` (diagnostics, hover, go to definition), `ashvm fmt` (whitespace formatter with a token-equality safety net), `ashvm explain` with stable error codes `E0101` to `E0401`, `--json` diagnostics, "did you mean" help lines.
 - **Language.** Labeled `break` / `continue` (`outer: for (...) { ... break outer; }`), string interpolation `"x = ${x}"`, `String.format` / `formatted` / `printf`, `System.out.print`, `when` guards on `switch` type patterns, stack traces for uncaught exceptions on `ashvm` and `kiln`.

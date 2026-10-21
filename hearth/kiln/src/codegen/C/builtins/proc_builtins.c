@@ -18,7 +18,7 @@
 // payload is a double's bit pattern.
 
 // RAX = int64 -> pushes it as a NUMBER.
-static void push_rax_as_number(void) {
+void codegen_push_rax_as_number(void) {
     emit_cvtsi2sd(code, XMM0, REG_RAX);
     emit_movq_reg_from_xmm(code, REG_RAX, XMM0);
     emit_mov_reg_imm64(code, REG_RBX, TAG_NUMBER);
@@ -48,7 +48,7 @@ void codegen_builtin_sys_fork(void) {
     } else {
         emit_mov_reg_imm64(code, REG_RAX, 0);
     }
-    push_rax_as_number();
+    codegen_push_rax_as_number();
 }
 
 void codegen_builtin_sys_wait(void) {
@@ -58,7 +58,7 @@ void codegen_builtin_sys_wait(void) {
     emit_pop_reg(code, REG_RBX); // tag (ignored)
     if (unsupported_target()) {
         emit_mov_reg_imm64(code, REG_RAX, 0);
-        push_rax_as_number();
+        codegen_push_rax_as_number();
         return;
     }
     emit_movq_xmm_from_reg(code, XMM0, REG_RAX);
@@ -70,7 +70,7 @@ void codegen_builtin_sys_wait(void) {
     // r8-r15 (see emit.h), and fork() keeps it.
     emit_mov_reg_imm64(code, REG_RAX, 61); // syscall: wait4
     emit_syscall(code);
-    push_rax_as_number();
+    codegen_push_rax_as_number();
 }
 
 void codegen_builtin_sys_exec(void) {
@@ -83,7 +83,7 @@ void codegen_builtin_sys_exec(void) {
         emit_pop_reg(code, REG_RAX); emit_pop_reg(code, REG_RBX);
         emit_pop_reg(code, REG_RAX); emit_pop_reg(code, REG_RBX);
         emit_mov_reg_imm64(code, REG_RAX, 0);
-        push_rax_as_number();
+        codegen_push_rax_as_number();
         return;
     }
     pop_path_nullterm();                                      // arg
@@ -110,5 +110,5 @@ void codegen_builtin_sys_exec(void) {
     emit_mov_reg_imm64(code, REG_RDX, 0);
     emit_mov_reg_imm64(code, REG_RAX, 59);                    // syscall: execve
     emit_syscall(code);
-    push_rax_as_number();                                     // only reached on failure
+    codegen_push_rax_as_number();                                     // only reached on failure
 }

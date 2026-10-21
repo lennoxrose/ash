@@ -41,6 +41,41 @@ void emit_load_byte_reg(CodeBuf *buf, Reg dst, Reg base) {
     emit_byte(buf, modrm_mem(dst, base));
 }
 
+void emit_load_word(CodeBuf *buf, Reg dst, Reg base) {
+    emit_byte(buf, 0x0F);
+    emit_byte(buf, 0xB7); // MOVZX r32, r/m16 (writing a 32-bit register clears the upper half)
+    emit_byte(buf, modrm_mem(dst, base));
+}
+
+void emit_load_dword(CodeBuf *buf, Reg dst, Reg base) {
+    emit_byte(buf, 0x8B); // MOV r32, r/m32 (zero-extends)
+    emit_byte(buf, modrm_mem(dst, base));
+}
+
+void emit_store_word(CodeBuf *buf, Reg base, Reg src) {
+    emit_byte(buf, 0x66);
+    emit_byte(buf, 0x89); // MOV r/m16, r16
+    emit_byte(buf, modrm_mem(src, base));
+}
+
+void emit_store_dword(CodeBuf *buf, Reg base, Reg src) {
+    emit_byte(buf, 0x89); // MOV r/m32, r32
+    emit_byte(buf, modrm_mem(src, base));
+}
+
+void emit_mov_hi_reg_from_rax(CodeBuf *buf, int hi) {
+    emit_byte(buf, 0x49); // REX.W + REX.B
+    emit_byte(buf, 0x89); // MOV r/m64, r64
+    emit_byte(buf, (uint8_t)(0xC0 | (REG_RAX << 3) | (hi & 7)));
+}
+
+void emit_mov_hi_reg_imm32(CodeBuf *buf, int hi, int32_t imm) {
+    emit_byte(buf, 0x49); // REX.W + REX.B
+    emit_byte(buf, 0xC7); // MOV r/m64, imm32 (sign-extended)
+    emit_byte(buf, (uint8_t)(0xC0 | (hi & 7)));
+    emit_i32(buf, imm);
+}
+
 void emit_syscall(CodeBuf *buf) {
     emit_byte(buf, 0x0F);
     emit_byte(buf, 0x05);

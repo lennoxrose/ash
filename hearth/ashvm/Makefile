@@ -65,6 +65,7 @@ ASHVM_SRC = \
     src/builtins/C/string.c \
     src/builtins/C/matrix.c \
     src/builtins/C/proc.c \
+    src/builtins/C/raw.c \
     src/builtins/C/mem.c \
     src/builtins/C/trace.c \
     src/diagnostics/C/diagnostics.c

@@ -82,7 +82,19 @@ void emit_store_byte_imm(CodeBuf *buf, Reg base, uint8_t imm);
 void emit_store_byte_reg(CodeBuf *buf, Reg base, Reg src); // src must be RAX/RCX/RDX/RBX (low byte AL/CL/DL/BL)
 void emit_load_byte_reg(CodeBuf *buf, Reg dst, Reg base);  // dst = zero-extended byte from [base] (MOVZX)
 
+// 16- and 32-bit memory access through [base] (base must not be RSP/RBP, as for the byte forms). The loads
+// zero-extend into the full register; the stores take the low 16 / 32 bits of src.
+void emit_load_word(CodeBuf *buf, Reg dst, Reg base);
+void emit_load_dword(CodeBuf *buf, Reg dst, Reg base);
+void emit_store_word(CodeBuf *buf, Reg base, Reg src);
+void emit_store_dword(CodeBuf *buf, Reg base, Reg src);
+
 void emit_syscall(CodeBuf *buf);
+
+// r8, r9 and r10 (hi = 8, 9, 10) are the syscall argument registers Reg cannot name. Everything else in
+// kiln assumes they are zero (see sys_wait), so a caller that sets one clears it again after the syscall.
+void emit_mov_hi_reg_from_rax(CodeBuf *buf, int hi);
+void emit_mov_hi_reg_imm32(CodeBuf *buf, int hi, int32_t imm); // imm is sign-extended to 64 bits
 
 // Returns the byte offset of the rel32 placeholder to pass to
 // emit_patch_jump() once the jump target is known (forward jump).
